@@ -30,7 +30,7 @@ description: "测试驱动的系统化调试技能。先写测试复现问题，
      - `mcp_xcode-log_get_latest_run_log` - 获取最近一次运行日志
      - `mcp_xcode-log_get_latest_build_log` - 获取最近一次编译日志
      - `mcp_xcode-log_get_latest_test_result` - 获取最近一次测试结果
-   - 没有明确要求，只获取运行日志（run log）
+   - 没有明确要求，只获取运行日志（run log）要求读取完整的日志内容
 
 2. **日志分析**
    - 如果成功获取到日志，分析日志中的错误信息、警告和异常
