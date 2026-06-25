@@ -53,6 +53,7 @@ digraph bug_fix_workflow {
 
 - 调用 `using-git-worktrees` 创建隔离工作树
 - 后续所有操作在该工作树目录中进行
+- **必须记录创建工作树前所在分支名**（如 `BASE_BRANCH`）供后续步骤使用：`git rev-parse --abbrev-ref HEAD`（在工作树创建前执行）
 - **成功标准：** 工作树目录存在且可操作
 - **失败：** 报错并停止，不继续
 - **边界：** 已在 worktree 中 → 仍需新建工作树，确保隔离环境
@@ -79,10 +80,44 @@ digraph bug_fix_workflow {
 
 **必需技能：** `git-commit`
 
-- 调用 `git-commit` 提交变更
+**流程顺序：fetch → rebase → lint → commit → push，缺一不可。**
+
+#### 4.1 拉取远端最新代码
+- `git fetch origin` 同步远端最新状态
+- 若 `BASE_BRANCH`（步骤 1 记录的原始分支）有更新：后续 rebase 会基于最新代码
+
+#### 4.2 变基到 BASE_BRANCH 并解决冲突
+- 执行 `git rebase origin/<BASE_BRANCH>`（推荐基于远端最新）或 `git rebase <BASE_BRANCH>`（仅本地）
+- **冲突处理流程：**
+  1. `git status` 查看冲突文件列表
+  2. 手动逐个文件解决冲突（保留正确逻辑、删除冲突标记 `<<<<<<<` `=======` `>>>>>>>`）
+  3. `git add <已解决文件>` 标记冲突已解决
+  4. `git rebase --continue` 继续 rebase
+  5. 若 rebase 过程中有多个冲突 commit，重复步骤 1-4
+  6. **成功标准：** `git status` 显示 `rebase in progress` 已结束，无冲突文件
+- **失败处理：** rebase 冲突无法解决 → 使用 `AskUserQuestion` 询问用户：
+  - 选项 1（推荐）：使用 `git rebase --abort` 中止，提交当前状态（不包含本次 rebase 集成），回到步骤 2 在 BASE_BRANCH 最新代码上重新修复
+  - 选项 2：继续手动解决冲突（提供具体冲突位置和上下文）
+  - 选项 3：放弃本次修复，清理工作树
+- **禁止：** 跳过 rebase 直接 commit、强制 `--no-edit` 跳过冲突处理、使用 `git rebase --skip` 丢弃提交
+
+#### 4.3 代码质量检查
 - Swift 项目必须先通过 `swiftlint lint --strict`
+- 运行项目对应的 lint / typecheck 命令
+- **失败：** 修复 lint 错误后重新检查，不得跳过
+
+#### 4.4 提交
+- 调用 `git-commit` 技能提交变更
 - **成功标准：** commit 成功
 - **失败：** 回到步骤 2 修复问题，不跳过
+
+#### 4.5 Push 到远端
+- 先 `git remote -v` 确认远端仓库存在
+- 若分支无 upstream：`git push -u origin <当前分支>`
+- 若分支已有 upstream：`git push`
+- **push 失败处理：** push 失败（如无网络、远端拒绝、权限不足等）→ 使用 `AskUserQuestion` 询问用户：重试 / 跳过 push 继续 / 停止工作流
+- **禁止使用 `git push --force` / `git push -f`**（除非用户明确要求）
+- **禁止推送到 main/master**（除非用户明确要求）
 
 ### 步骤 5：合并清理
 
