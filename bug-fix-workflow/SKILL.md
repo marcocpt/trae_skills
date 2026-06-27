@@ -130,6 +130,26 @@ digraph bug_fix_workflow {
 - **禁止使用 `git push --force` / `git push -f`**（除非用户明确要求）
 - **禁止推送到 main/master**（除非用户明确要求）
 
+#### 4.4 同步 AI/test 测试工作树
+
+确保 AI/test 测试工作树复位到最新修复分支，便于测试验证最新代码。
+
+- **先询问用户是否需要同步 AI/test 工作树**：使用 `AskUserQuestion` 工具给出结构化选项
+  - 选项 1（推荐）：同步 AI/test 工作树 → 继续以下流程
+  - 选项 2：跳过，直接进入步骤 5
+- **获取当前修复分支名**：`FIX_BRANCH=$(git rev-parse --abbrev-ref HEAD)`（当前工作树所在分支，即步骤 1 创建的修复分支）
+- **AI/test 工作树路径**：`<worktree_dir>/AI/test`，其中 `<worktree_dir>` 为 `<project-name>-worktrees`（步骤 1 工作树目录的上级）
+- **不存在则创建**：基于当前修复分支创建 AI/test 工作树与分支
+  ```bash
+  git worktree add <worktree_dir>/AI/test -b AI/test $FIX_BRANCH
+  ```
+- **已存在则复位**：将 AI/test 工作树重置到修复分支最新 commit
+  ```bash
+  git -C <worktree_dir>/AI/test reset --hard $FIX_BRANCH
+  ```
+- **成功标准**：AI/test 工作树 HEAD 等于当前修复分支最新 commit，工作区干净
+- **失败**：使用 `AskUserQuestion` 询问用户：重试 / 跳过继续 / 停止工作流
+
 ### 步骤 5：合并清理
 
 - 使用 `AskUserQuestion` 询问用户是否需要合并到创建工作树前的分支
