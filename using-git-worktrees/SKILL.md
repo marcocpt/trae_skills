@@ -9,7 +9,7 @@ description: 当需要开始与当前工作区隔离的功能开发或执行实�
 
 Git 工作树创建共享同一仓库的隔离工作区，允许同时在多个分支上工作而无需切换。
 
-**核心原则：** 系统化的目录选择 + 安全验证 = 可靠的隔离。
+**核心原则：** 固定的目录规则 + 自动化设置 + 基线验证 = 可靠的隔离。
 
 **开始时宣布：** "我正在使用 using-git-worktrees 技能来建立一个隔离的工作区。"
 
@@ -17,83 +17,53 @@ Git 工作树创建共享同一仓库的隔离工作区，允许同时在多个�
 
 ## 目录选择流程
 
-按以下优先顺序执行：
+工作树目录固定位于当前项目的**上级目录**，命名为 `<project-name>-worktrees`。
 
-### 1. 检查现有目录
+例如：项目路径为 `Keyboard/Macim`，则工作树目录为 `Keyboard/Macim-worktrees`（与项目同级）。
 
-```bash
-# 按优先顺序检查
-ls -d .worktrees 2>/dev/null     # 首选（隐藏目录）
-ls -d worktrees 2>/dev/null      # 备选
-```
+### 计算路径
 
-**如果找到：** 使用该目录。如果两者都存在，`.worktrees` 优先。
-
-### 2. 检查 CLAUDE.md
+**关键：** 必须基于**主仓库**位置计算，而非当前工作树——否则在工作树内再次调用时，项目名会被误识别为分支名，导致工作树目录嵌套。
 
 ```bash
-grep -i "worktree.*director" CLAUDE.md 2>/dev/null
+# 获取主仓库根目录（即使当前已在某个 worktree 中也能正确识别主仓库）
+common_dir=$(git rev-parse --git-common-dir)      # 主仓库的 .git 目录
+main_root=$(cd "$(dirname "$common_dir")" && pwd) # 主仓库根目录
+# 获取项目名（基于主仓库，而非当前工作树）
+project=$(basename "$main_root")
+# 工作树目录 = 主仓库上级目录 + 项目名 + -worktrees
+worktree_dir=$(dirname "$main_root")/${project}-worktrees
 ```
 
-**如果指定了偏好：** 直接使用，无需询问。
+**为什么不用 `--show-toplevel`：** 该命令在 worktree 内返回的是**当前工作树**路径，而非主仓库路径，会导致项目名错误和工作树目录嵌套。
 
-### 3. 询问用户
-
-如果没有现有目录且 CLAUDE.md 中无偏好设置：
-
-```
-未找到工作树目录。我应该在哪里创建工作树？
-
-1. .worktrees/（项目本地，隐藏目录）
-2. ~/.config/superpowers/worktrees/<project-name>/（全局位置）
-
-你倾向哪个？
-```
+**示例：**
+- 主仓库：`/Users/jesse/projects/myproject`
+- 工作树目录：`/Users/jesse/projects/myproject-worktrees`
+- 分支工作树：`/Users/jesse/projects/myproject-worktrees/auth`
+- 在 `myproject-worktrees/auth` 内再次调用 → 仍识别主仓库 `myproject`，工作树目录仍为 `myproject-worktrees`（不会嵌套）
 
 ## 安全验证
 
-### 项目本地目录（.worktrees 或 worktrees）
-
-**创建工作树前必须验证目录已被忽略：**
-
-```bash
-# 检查目录是否被忽略（遵循本地、全局和系统 gitignore）
-git check-ignore -q .worktrees 2>/dev/null || git check-ignore -q worktrees 2>/dev/null
-```
-
-**如果未被忽略：**
-
-根据 Jesse 的规则"立即修复坏掉的东西"：
-1. 在 .gitignore 中添加相应条目
-2. 提交更改
-3. 继续创建工作树
-
-**为什么这很关键：** 防止意外将工作树内容提交到仓库。
-
-### 全局目录（~/.config/superpowers/worktrees）
-
-无需 .gitignore 验证——完全在项目之外。
+工作树目录位于项目上级目录（项目之外），完全脱离当前仓库，**无需 .gitignore 验证**——不会污染 git status，也不会被意外提交到当前仓库。
 
 ## 创建步骤
 
-### 1. 检测项目名称
+### 1. 计算工作树路径
 
 ```bash
-project=$(basename "$(git rev-parse --show-toplevel)")
+# 基于主仓库计算，避免在 worktree 内调用时项目名识别错误
+common_dir=$(git rev-parse --git-common-dir)
+main_root=$(cd "$(dirname "$common_dir")" && pwd)
+project=$(basename "$main_root")
+worktree_dir=$(dirname "$main_root")/${project}-worktrees
 ```
 
 ### 2. 创建工作树
 
 ```bash
-# 确定完整路径
-case $LOCATION in
-  .worktrees|worktrees)
-    path="$LOCATION/$BRANCH_NAME"
-    ;;
-  ~/.config/superpowers/worktrees/*)
-    path="~/.config/superpowers/worktrees/$project/$BRANCH_NAME"
-    ;;
-esac
+# 每个分支作为工作树目录的子目录
+path="$worktree_dir/$BRANCH_NAME"
 
 # 创建带有新分支的工作树
 git worktree add "$path" -b "$BRANCH_NAME"
@@ -149,25 +119,11 @@ go test ./...
 
 | 情况 | 操作 |
 |------|------|
-| `.worktrees/` 存在 | 使用它（验证已忽略） |
-| `worktrees/` 存在 | 使用它（验证已忽略） |
-| 两者都存在 | 使用 `.worktrees/` |
-| 都不存在 | 检查 CLAUDE.md → 询问用户 |
-| 目录未被忽略 | 添加到 .gitignore + 提交 |
+| 计算路径 | `../<project-name>-worktrees`（项目上级目录） |
 | 基线测试失败 | 报告失败 + 询问 |
 | 无 package.json/Cargo.toml | 跳过依赖安装 |
 
 ## 常见错误
-
-### 跳过忽略验证
-
-- **问题：** 工作树内容被跟踪，污染 git status
-- **修复：** 创建项目本地工作树前始终使用 `git check-ignore`
-
-### 假设目录位置
-
-- **问题：** 造成不一致，违反项目约定
-- **修复：** 遵循优先级：现有目录 > CLAUDE.md > 询问
 
 ### 带着失败的测试继续
 
@@ -179,18 +135,23 @@ go test ./...
 - **问题：** 在使用不同工具的项目上会出错
 - **修复：** 从项目文件自动检测（package.json 等）
 
+### 在项目内部创建工作树
+
+- **问题：** 工作树目录被仓库跟踪，污染 git status
+- **修复：** 始终使用项目上级目录 `../<project-name>-worktrees`
+
 ## 示例工作流
 
 ```
 你：我正在使用 using-git-worktrees 技能来建立一个隔离的工作区。
 
-[检查 .worktrees/ - 存在]
-[验证已忽略 - git check-ignore 确认 .worktrees/ 已被忽略]
-[创建工作树：git worktree add .worktrees/auth -b feature/auth]
+[计算路径：项目 myproject 位于 /Users/jesse/projects/myproject]
+[工作树目录：/Users/jesse/projects/myproject-worktrees]
+[创建工作树：git worktree add ../myproject-worktrees/auth -b feature/auth]
 [运行 npm install]
 [运行 npm test - 47 个通过]
 
-工作树已就绪：/Users/jesse/myproject/.worktrees/auth
+工作树已就绪：/Users/jesse/projects/myproject-worktrees/auth
 测试通过（47 个测试，0 个失败）
 准备实现 auth 功能
 ```
@@ -198,15 +159,12 @@ go test ./...
 ## 红线
 
 **绝不：**
-- 创建项目本地工作树时不验证是否已忽略
 - 跳过基线测试验证
 - 不询问就带着失败的测试继续
-- 在有歧义时假设目录位置
-- 跳过 CLAUDE.md 检查
+- 在项目内部创建工作树目录
 
 **始终：**
-- 遵循目录优先级：现有目录 > CLAUDE.md > 询问
-- 对项目本地目录验证是否已忽略
+- 使用项目上级目录 + `<project-name>-worktrees` 作为工作树目录
 - 自动检测并运行项目设置
 - 验证测试基线干净
 - 调用后会话工作目录始终位于工作树路径下
