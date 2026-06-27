@@ -134,16 +134,18 @@ digraph bug_fix_workflow {
 
 确保 AI-test 测试工作树复位到最新修复分支，便于测试验证最新代码。
 
+**必须完成本步骤后方可进入步骤 5**（用户选择"不同步"视为 4.4 完成，可直接进入步骤 5）。
+
 - **先询问用户是否需要同步 AI-test 工作树**：使用 `AskUserQuestion` 工具给出结构化选项
   - 选项 1（推荐）：同步 AI-test 工作树 → 继续以下流程
-  - 选项 2：跳过，直接进入步骤 5
+  - 选项 2：不同步，结束 4.4
 - **获取当前修复分支名**：`FIX_BRANCH=$(git rev-parse --abbrev-ref HEAD)`（当前工作树所在分支，即步骤 1 创建的修复分支）
 - **AI-test 工作树路径**：`<worktree_dir>/AI-test`，其中 `<worktree_dir>` 为 `<project-name>-worktrees`（步骤 1 工作树目录的上级）
-- **不存在则创建**：基于当前修复分支创建 AI-test 工作树与分支
+- **不存在则创建**：基于当前修复分支创建 AI-test 工作树（分支 `AI/test`）
   ```bash
-  git worktree add <worktree_dir>/AI-test -b AI-test $FIX_BRANCH
+  git worktree add <worktree_dir>/AI-test -b AI/test $FIX_BRANCH
   ```
-- **已存在则复位**：将 AI-test 工作树重置到修复分支最新 commit
+- **已存在则同步**：使用 `git reset --hard` 将 `AI/test` 分支同步到新修复分支最新 commit
   ```bash
   git -C <worktree_dir>/AI-test reset --hard $FIX_BRANCH
   ```
