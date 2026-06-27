@@ -27,8 +27,16 @@ description: "测试驱动的系统化调试技能。先写测试复现问题，
 
 **目标：自动收集项目运行日志作为调试依据。**
 
-1. **自动获取日志**
-   - 调用 MCP 工具获取项目的运行日志：
+1. **获取运行日志（按优先级）**
+
+   **优先级 1：本地日志目录**
+   - 计算日志目录路径：`<worktree_dir>/AI-test/logs`
+     - `<worktree_dir>` 为项目上级目录的 `<project-name>-worktrees`（如项目 `Keyboard/Macim` → 日志目录 `Keyboard/Macim-worktrees/AI-test/logs`）
+   - 列出该目录下日志文件，按修改时间排序取最新一个，读取完整内容
+   - 若本地存在日志文件，使用本地日志，跳过 MCP
+
+   **优先级 2：MCP 工具**
+   - 本地日志目录不存在或为空时，调用 MCP 工具获取运行日志：
      - `mcp_xcode-log_get_latest_run_log` - 获取最近一次运行日志
      - `mcp_xcode-log_get_latest_build_log` - 获取最近一次编译日志
      - `mcp_xcode-log_get_latest_test_result` - 获取最近一次测试结果
@@ -49,7 +57,7 @@ description: "测试驱动的系统化调试技能。先写测试复现问题，
 4. **记录到日志**
    ```
    ## [前置] 运行日志获取
-   - 日志来源：MCP / 用户提供
+   - 日志来源：本地目录 / MCP / 用户提供
    - 关键错误信息：xxx
    - 警告信息：xxx
    - 异常堆栈：xxx
