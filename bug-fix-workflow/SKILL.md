@@ -40,7 +40,7 @@ digraph bug_fix_workflow {
 严格按 0→1→2→3→4→5→6→7 顺序执行。禁止跳步、禁止省略步骤、禁止并行执行不同步骤。步骤 4 可回到步骤 1 或 2 重新执行。
 </HARD-GATE>
 
-> **全局会话规则**：本工作流所有步骤中涉及用户决策的问题（步骤 0 三次询问、步骤 2 失败询问、步骤 3.1 变基选择/冲突失败、步骤 3.2 失败、步骤 3.4 同步选择/失败、步骤 4 是否继续、步骤 5 各失败点、步骤 6 各失败点、步骤 7 合并选择等）**都必须使用 `AskUserQuestion` 工具给出结构化选项**，不得用纯文本提问中断会话。
+> **全局会话规则**：本工作流所有步骤中涉及用户决策的问题（步骤 0 三次询问、步骤 2 失败询问、步骤 3.1 变基选择/冲突失败、步骤 3.2 失败、步骤 3.4 同步选择/失败、步骤 4 是否继续、步骤 5 各失败点、步骤 6 各失败点、步骤 7 合并选择等）**都必须使用当前环境可用的结构化询问工具给出选项**。在 Trae 中使用 `AskUserQuestion`；在 Codex 中使用 `request_user_input`（如可用）或带清晰选项的简短文本问题。不得用无选项的纯文本提问中断会话。
 
 ---
 
@@ -448,16 +448,20 @@ FIX_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 # AI-test 工作树路径
 AI_TEST_PATH="$worktree_dir/AI-test"
 
-# 不存在则创建
+# 不存在则创建；已存在则先检查是否有未提交变更
 if [ ! -d "$AI_TEST_PATH" ]; then
     git worktree add "$AI_TEST_PATH" -b AI/test "$FIX_BRANCH"
 else
-    # 已存在则同步
+    if [ -n "$(git -C "$AI_TEST_PATH" status --porcelain)" ]; then
+        echo "AI-test 工作树存在未提交变更，必须先询问用户：保留并跳过 / 用户自行处理后重试 / 明确丢弃后同步"
+        exit 1
+    fi
     git -C "$AI_TEST_PATH" reset --hard "$FIX_BRANCH"
 fi
 ```
 
 - **成功标准**：AI-test 工作树 HEAD 等于当前修复分支最新 commit，工作区干净
+- **安全规则**：AI-test 工作树干净时直接同步；只有检测到未提交变更、同步会覆盖内容时才询问用户确认，不做无意义确认
 - **失败** → **AskUserQuestion 问 5**：
   - 选项 1（推荐）：重试
   - 选项 2：跳过继续
@@ -541,7 +545,7 @@ git log --oneline "$BASE_BRANCH"..HEAD
 1. **设计规范**：`F{N}_*_设计规范.md`
 2. **测试用例表**：`F{N}_*_测试用例表.md`
 
-使用 Glob 工具搜索 `docs/planning/P0/{功能编号}/*设计规范*.md` 和 `docs/planning/P0/{功能编号}/*测试用例表*.md` 确认实际路径。
+使用 `rg --files docs/planning/P0/{功能编号}` 搜索 `*设计规范*.md` 和 `*测试用例表*.md` 确认实际路径；如果 `rg` 不可用，使用 `find docs/planning/P0/{功能编号} -name '*设计规范*.md' -o -name '*测试用例表*.md'`。
 
 - **成功**：至少定位到一份目标文档 → 进入 5.4
 - **失败**：功能编号对应目录不存在 → **AskUserQuestion 问 2**：
@@ -686,11 +690,16 @@ AI_TEST_PATH="$worktree_dir/AI-test"
 if [ ! -d "$AI_TEST_PATH" ]; then
     git worktree add "$AI_TEST_PATH" -b AI/test "$FIX_BRANCH"
 else
+    if [ -n "$(git -C "$AI_TEST_PATH" status --porcelain)" ]; then
+        echo "AI-test 工作树存在未提交变更，必须先询问用户：保留并跳过 / 用户自行处理后重试 / 明确丢弃后同步"
+        exit 1
+    fi
     git -C "$AI_TEST_PATH" reset --hard "$FIX_BRANCH"
 fi
 ```
 
 - **成功标准**：AI-test 工作树 HEAD 等于当前修复分支最新 commit，工作区干净
+- **安全规则**：AI-test 工作树干净时直接同步；只有检测到未提交变更、同步会覆盖内容时才询问用户确认，不做无意义确认
 - **失败** → **AskUserQuestion 问 3**：
   - 选项 1（推荐）：重试
   - 选项 2：跳过继续
@@ -711,6 +720,9 @@ fi
 ### 7.1 选"合并到原分支"
 
 ```bash
+# 以下命令必须在主仓库路径执行，不在修复 worktree 内执行
+cd "$main_root"
+
 # 变基到原分支最新
 git rebase "$BASE_BRANCH" <工作树分支>
 
