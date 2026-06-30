@@ -39,17 +39,21 @@ digraph feature_development_workflow {
 
 ## 上下文恢复机制
 
-会话压缩后可能遗忘当前特性、设计规范路径、计划目录、已完成阶段和提交 SHA。每个步骤开始前，如不确定当前上下文，先检查状态文件。
+会话压缩后可能遗忘当前特性、工作树路径、设计规范路径、计划目录、已完成阶段和提交 SHA。每个步骤开始前，如不确定当前上下文，先检查状态文件；若状态文件记录了 `worktree_path`，必须先 `cd` 到该路径再继续。
 
 ### 状态文件位置
 
-`$(git rev-parse --git-common-dir)/feature-development-state.json`
+`$(git rev-parse --git-dir)/feature-development-state.json`
+
+存放在 git dir（worktree 私有目录）下，不被 `git status` 检测。每个 worktree 拥有独立状态文件，支持多会话并行开发。
 
 ### 状态文件内容
 
 ```json
 {
   "feature_name": "short feature name",
+  "worktree_path": "/path/to/project-worktrees/feature-name",
+  "worktree_branch": "feature/feature-name",
   "spec_path": "docs/.../feature-design-spec.md",
   "review_path": "docs/.../feature-design-review.md",
   "plan_dir": "docs/.../plans/feature-name",
@@ -66,7 +70,7 @@ digraph feature_development_workflow {
 
 ### 写入时机
 
-- 步骤 1 确认设计规范路径后创建状态文件
+- 步骤 0.4 建立工作树后创建状态文件，记录 `worktree_path` 和 `worktree_branch`
 - 每完成一个步骤，更新 `current_step` 和对应 commit SHA
 - 每完成一个子计划，更新 `current_phase`
 
@@ -132,9 +136,95 @@ digraph feature_development_workflow {
 
 输出需求摘要并要求用户确认。
 
-- 确认正确 → 进入步骤 1
+- 确认正确 → 进入 0.4 建立工作树隔离
 - 需要补充 → 继续 grill-me，直到确认
 - 理解有误 → 重述需求，重新执行 0.2
+
+---
+
+### 0.4 建立工作树隔离
+
+需求确认后，必须使用 `using-git-worktrees` 技能建立隔离工作区，再进入步骤 1。后续所有设计规范、计划、代码、测试和提交均在该工作树内完成，不得切换回主仓库目录。
+
+**默认约束（除非用户明确说明，否则必须遵守）：**
+
+- **必须新建 worktree**：不得复用已有工作树。即使存在同名或相关分支的 worktree，也必须创建新的工作树，保证隔离环境干净。
+- **仅参考当前 worktree**：设计规范、计划和实现只能参考当前 worktree 上的文档和代码，不得引用主仓库或其他工作树的内容。前置读取（步骤 1.1）的规则文件也以当前 worktree 内的为准。
+
+开始时宣布：
+
+```
+我正在使用 using-git-worktrees 技能来建立一个隔离的工作区。
+```
+
+#### 0.4.1 计算工作树路径
+
+基于**主仓库**位置计算工作树目录（非当前工作树），避免在 worktree 内调用时项目名识别错误：
+
+```bash
+common_dir=$(git rev-parse --git-common-dir)
+main_root=$(cd "$(dirname "$common_dir")" && pwd)
+project=$(basename "$main_root")
+worktree_dir=$(dirname "$main_root")/${project}-worktrees
+```
+
+工作树目录固定位于主仓库的**上级目录**，命名为 `<project-name>-worktrees`，与主仓库同级。工作树目录位于项目之外，无需 `.gitignore` 验证，不会污染 git status。
+
+#### 0.4.2 创建工作树
+
+分支名基于特性名命名，例如 `feature/<feature-name>`，每个分支作为工作树目录的子目录：
+
+```bash
+BRANCH_NAME="feature/<feature-name>"
+path="$worktree_dir/$BRANCH_NAME"
+git worktree add "$path" -b "$BRANCH_NAME"
+cd "$path"
+```
+
+#### 0.4.3 运行项目设置
+
+自动检测并运行项目对应的依赖安装命令：
+
+```bash
+# Node.js
+[ -f package.json ] && npm install
+# Rust
+[ -f Cargo.toml ] && cargo build
+# Python
+[ -f requirements.txt ] && pip install -r requirements.txt
+[ -f pyproject.toml ] && poetry install
+# Go
+[ -f go.mod ] && go mod download
+```
+
+#### 0.4.4 验证基线
+
+运行项目测试确保工作树初始状态干净：
+
+```bash
+# 使用项目对应的测试命令，如 npm test / cargo test / pytest / go test ./...
+```
+
+- **基线测试失败**：报告失败情况，询问是否继续或排查；不得带着失败测试继续
+- **基线测试通过**：报告就绪
+
+#### 0.4.5 报告与状态记录
+
+```
+工作树已就绪：<full-path>
+分支：<branch-name>
+测试通过（<N> 个测试，0 个失败）
+准备实现 <feature-name>
+```
+
+将工作树路径和分支名写入状态文件（见「上下文恢复机制」）。
+
+#### 0.4.6 出口判定
+
+- 工作树就绪、基线通过 → 进入步骤 1
+- 基线失败且无法排查 → 停止并向用户报告，不得继续
+
+**重要：** 调用 `using-git-worktrees` 后，当前会话的工作目录必须始终位于该工作树路径下。后续每次会话开始时必须宣布当前所在工作树和分支。
 
 ---
 
@@ -390,6 +480,9 @@ git commit -m "feat: complete <feature-name> phase <N>"
 ## 红线
 
 - 没有执行 grill-me 就写设计规范
+- 需求确认后未建立 worktree 隔离就进入步骤 1
+- 未经用户明确同意，复用已有 worktree 而非新建
+- 设计规范参考了主仓库或其他 worktree 的文档和代码（用户未明确说明）
 - 用户未确认设计规范就提交或进入评审
 - 未经子代理审核就进入 writing-plans
 - 没有主计划和 Phase 子计划就开始实现

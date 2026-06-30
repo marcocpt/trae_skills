@@ -46,9 +46,9 @@ digraph bug_fix_workflow {
 
 ### 状态文件位置
 
-`$(git rev-parse --git-common-dir)/bug-fix-state.json`
+`$(git rev-parse --git-dir)/bug-fix-state.json`
 
-存放在 git common dir 下，不被 `git status` 检测，任何工作树均可通过该命令定位。
+存放在 git dir（worktree 私有目录）下，不被 `git status` 检测。每个 worktree 拥有独立状态文件，支持多会话并行开发。
 
 ### 状态文件内容
 
@@ -69,8 +69,8 @@ digraph bug_fix_workflow {
 每个步骤开始前，若不确定当前工作上下文，执行以下恢复：
 
 ```bash
-common_dir=$(git rev-parse --git-common-dir)
-state_file="$common_dir/bug-fix-state.json"
+git_dir=$(git rev-parse --git-dir)
+state_file="$git_dir/bug-fix-state.json"
 
 if [ -f "$state_file" ]; then
     # 读取并恢复关键变量
@@ -91,7 +91,7 @@ fi
 
 - **写入**：步骤 1（工作树创建/验证成功后）
 - **更新 `current_step`**：每完成一个步骤，更新此字段
-- **删除**：步骤 7 清理工作树时一并删除
+- **删除**：步骤 7 清理工作树前先删除（须在离开 worktree 前执行，此时 `git-dir` 指向 worktree 私有目录）
 
 > **全局会话规则**：本工作流所有步骤中涉及用户决策的问题（步骤 0 三次询问、步骤 2 失败询问、步骤 3.1 变基选择/冲突失败、步骤 3.2 失败、步骤 3.4 同步选择/失败、步骤 4 是否继续、步骤 5 各失败点、步骤 6 各失败点、步骤 7 合并选择等）**都必须使用当前环境可用的结构化询问工具给出选项**。在 Trae 中使用 `AskUserQuestion`；在 Codex 中使用 `request_user_input`（如可用）或带清晰选项的简短文本问题。不得用无选项的纯文本提问中断会话。
 
@@ -181,8 +181,9 @@ common_dir=$(git rev-parse --git-common-dir)
 main_root=$(cd "$(dirname "$common_dir")" && pwd)
 project=$(basename "$main_root")
 worktree_dir=$(dirname "$main_root")/${project}-worktrees
+git_dir=$(git rev-parse --git-dir)
 
-cat > "$common_dir/bug-fix-state.json" <<EOF
+cat > "$git_dir/bug-fix-state.json" <<EOF
 {
   "worktree_path": "$(pwd)",
   "base_branch": "$BASE_BRANCH",
@@ -276,9 +277,9 @@ cd "$path"
 工作树创建并验证成功后，持久化关键状态供上下文恢复：
 
 ```bash
-common_dir=$(git rev-parse --git-common-dir)
+git_dir=$(git rev-parse --git-dir)
 
-cat > "$common_dir/bug-fix-state.json" <<EOF
+cat > "$git_dir/bug-fix-state.json" <<EOF
 {
   "worktree_path": "$(pwd)",
   "base_branch": "$BASE_BRANCH",
@@ -814,6 +815,13 @@ fi
 
 ### 7.1 选"合并到原分支"
 
+**先删除状态文件**（在离开工作树前，此时 `git-dir` 指向 worktree 私有目录）：
+
+```bash
+git_dir=$(git rev-parse --git-dir)
+rm -f "$git_dir/bug-fix-state.json"
+```
+
 ```bash
 # 以下命令必须在主仓库路径执行，不在修复 worktree 内执行
 cd "$main_root"
@@ -828,26 +836,19 @@ git merge --no-ff <工作树分支>
 
 清理工作树：删除工作树目录。
 
-**删除状态文件**：
-
-```bash
-common_dir=$(git rev-parse --git-common-dir)
-rm -f "$common_dir/bug-fix-state.json"
-```
-
 工作流结束。
 
 ### 7.2 选"不合并，仅清理工作树"
 
-- 保留原分支不变
-- 清理工作树：删除工作树目录
-
-**删除状态文件**：
+**先删除状态文件**（在离开工作树前）：
 
 ```bash
-common_dir=$(git rev-parse --git-common-dir)
-rm -f "$common_dir/bug-fix-state.json"
+git_dir=$(git rev-parse --git-dir)
+rm -f "$git_dir/bug-fix-state.json"
 ```
+
+- 保留原分支不变
+- 清理工作树：删除工作树目录
 
 工作流结束。
 

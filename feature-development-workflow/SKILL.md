@@ -52,9 +52,9 @@ digraph feature_development_workflow {
 
 ### 状态文件位置
 
-`$(git rev-parse --git-common-dir)/feature-development-state.json`
+`$(git rev-parse --git-dir)/feature-development-state.json`
 
-存放在 git common dir 下，不被 `git status` 检测，任何工作树均可通过该命令定位。
+存放在 git dir（worktree 私有目录）下，不被 `git status` 检测。每个 worktree 拥有独立状态文件，支持多会话并行开发。
 
 ### 状态文件内容
 
@@ -87,8 +87,8 @@ digraph feature_development_workflow {
 每个步骤开始前，若不确定当前工作上下文，执行以下恢复：
 
 ```bash
-common_dir=$(git rev-parse --git-common-dir)
-state_file="$common_dir/feature-development-state.json"
+git_dir=$(git rev-parse --git-dir)
+state_file="$git_dir/feature-development-state.json"
 
 if [ -f "$state_file" ]; then
     # 一次读取所有关键变量
@@ -109,7 +109,7 @@ fi
 - **写入**：步骤 1（工作树创建/验证成功后）
 - **更新 `current_step`**：每完成一个步骤，更新此字段
 - **更新 `current_phase`**：每完成一个子计划，更新此字段
-- **删除**：步骤 9 清理工作树时一并删除
+- **删除**：步骤 9 清理工作树前先删除（须在离开 worktree 前执行，此时 `git-dir` 指向 worktree 私有目录）
 
 ## 全局规则
 
@@ -164,10 +164,10 @@ fi
 4. **用户流程**：入口、主要路径、失败路径、退出条件是什么？
 5. **数据和接口**：新增或修改哪些模型、配置、协议、API、持久化格式？
 6. **兼容和迁移**：是否影响旧行为、旧数据、旧快捷键、旧配置？
-7. **验收标准**：可测试的 AC 列表。
+7. **验收标准**：可测试的 AC 列表（场景+预期+验证方式，必须有 XCTest/XCUITest 或对应测试框架）。
 8. **阶段拆分**：按功能需求分成哪些 Phase，每个 Phase 的可交付结果是什么？
 9. **UI 证据**（涉及 UI 时）：哪些 AC 需要真实 UI 交互验证？用 E2E/XCUITest/Playwright、截图、日志 marker、手动录屏还是组合证据？
-10. **文档位置**：按项目规则写在哪里；若无规则，使用 `docs/superpowers/specs/` 和 `docs/superpowers/plans/`。
+10. **文档位置与编号**：按项目 `.trae/rules/docs.md` 规则，文档存放于 `docs/planning/P{n}/F{m}/`，需确认功能编号 `F{m}` 和优先级 `P{n}`；编写顺序为设计规范 → 视觉原型（涉及 UI 时）→ 测试用例表；涉及 docs/、功能设计或关键架构决策的 commit 必须在 `historys/` 写日志（`YYYY-MM-DD-修改摘要.md`）。若无项目规则，使用 `docs/superpowers/specs/` 和 `docs/superpowers/plans/`。
 
 ### 0.3 出口判定
 
@@ -296,8 +296,9 @@ common_dir=$(git rev-parse --git-common-dir)
 main_root=$(cd "$(dirname "$common_dir")" && pwd)
 project=$(basename "$main_root")
 worktree_dir=$(dirname "$main_root")/${project}-worktrees
+git_dir=$(git rev-parse --git-dir)
 
-cat > "$common_dir/feature-development-state.json" <<EOF
+cat > "$git_dir/feature-development-state.json" <<EOF
 {
   "feature_name": "<简短特性名>",
   "worktree_path": "$(pwd)",
@@ -328,13 +329,14 @@ EOF
 
 ### 2.1 前置读取
 
+**约束**：设计规范只能参考当前 worktree 上的文档和代码，不得引用主仓库或其他工作树的内容。用户未明确说明时，以此约束为准。
+
 按项目存在情况读取：
 
 ```bash
 test -f .trae/rules/docs.md && cat .trae/rules/docs.md
 test -f docs/CODING_STANDARDS.md && cat docs/CODING_STANDARDS.md
 test -f docs/AI/trae-xctest-rules.md && cat docs/AI/trae-xctest-rules.md
-test -f docs/ai/trae-xctest-rules.md && cat docs/ai/trae-xctest-rules.md
 ```
 
 如规则文件很长，必须完整阅读与设计规范、验收标准、测试和回归相关的章节。
@@ -975,6 +977,13 @@ fi
 
 ### 9.1 选"合并到原分支"
 
+**先删除状态文件**（在离开工作树前，此时 `git-dir` 指向 worktree 私有目录）：
+
+```bash
+git_dir=$(git rev-parse --git-dir)
+rm -f "$git_dir/feature-development-state.json"
+```
+
 ```bash
 # 以下命令必须在主仓库路径执行
 cd "$main_root"
@@ -989,26 +998,19 @@ git merge --no-ff <工作树分支>
 
 清理工作树：删除工作树目录。
 
-**删除状态文件**：
-
-```bash
-common_dir=$(git rev-parse --git-common-dir)
-rm -f "$common_dir/feature-development-state.json"
-```
-
 工作流结束。
 
 ### 9.2 选"不合并，仅清理工作树"
 
-- 保留原分支不变
-- 清理工作树：删除工作树目录
-
-**删除状态文件**：
+**先删除状态文件**（在离开工作树前）：
 
 ```bash
-common_dir=$(git rev-parse --git-common-dir)
-rm -f "$common_dir/feature-development-state.json"
+git_dir=$(git rev-parse --git-dir)
+rm -f "$git_dir/feature-development-state.json"
 ```
+
+- 保留原分支不变
+- 清理工作树：删除工作树目录
 
 工作流结束。
 
