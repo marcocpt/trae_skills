@@ -245,6 +245,8 @@ test -f docs/ai/trae-xctest-rules.md && sed -n '1,240p' docs/ai/trae-xctest-rule
 
 ### 1.2 设计规范必须包含
 
+**通过子代理编写**：设计规范是全文最长文档，直接在主线程编写会消耗大量 context。调度子代理，传入步骤 0 的需求摘要、步骤 1.1 读取的规则文件和以下章节要求，由子代理生成设计规范文件。
+
 设计规范按项目模板优先；无模板时包含以下章节：
 
 - 背景与目标
@@ -322,6 +324,8 @@ git commit -m "docs: review <feature-name> design spec"
 
 ### 3.1 调用 writing-plans
 
+**通过子代理编写**：主计划 + 多个 Phase 子计划是 token 量最大的文档产出。调度子代理（使用 `writing-plans` 技能），传入设计规范、设计评审摘要和测试用例表路径，由子代理生成全部计划文件。
+
 开始时宣布：
 
 ```
@@ -390,6 +394,8 @@ git commit -m "docs: add <feature-name> implementation plans"
 
 ### 4.1 调用 check-plan
 
+**通过独立子代理核对**：计划检查需要 fresh context 避免编写者自审偏见。调度独立子代理（非编写计划的子代理），传入计划目录、设计规范和评审摘要路径，由子代理执行核对并返回结论。
+
 必须使用 `check-plan` 核对实施计划，重点检查：
 
 - 是否遵循设计规范和设计评审摘要
@@ -445,6 +451,8 @@ git commit -m "docs: refine <feature-name> implementation plans"
 11. 进入下一个子计划
 
 ### 5.3 check-code 要求
+
+**通过独立子代理核对**：代码检查需要 fresh context 避免实现者偏见。调度独立子代理（非实现该子计划的子代理），传入设计规范、当前 Phase 子计划和代码变更路径，由子代理执行核对并返回结论。
 
 每个子计划完成后必须使用 `check-code`，核对：
 
