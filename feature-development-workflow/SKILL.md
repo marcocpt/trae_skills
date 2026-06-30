@@ -7,7 +7,7 @@ description: Use when implementing a new feature through a design-spec-first wor
 
 ## 概述
 
-10 步严格顺序工作流：需求确认 → 设计规范 → 计划编写 → 创建工作树 → TDD 实现 → 代码同步(含提交) → 确认是否继续 → 文档检查 → Lint与Push → 合并清理。每步必须在前一步成功后才能继续。
+10 步严格顺序工作流：需求确认 → 创建工作树 → 设计规范 → 计划编写 → TDD 实现 → 代码同步(含提交) → 确认是否继续 → 文档检查 → Lint与Push → 合并清理。每步必须在前一步成功后才能继续。
 
 ## 何时使用
 
@@ -23,17 +23,17 @@ description: Use when implementing a new feature through a design-spec-first wor
 digraph feature_development_workflow {
     rankdir=TB;
     node [shape=box];
-    "0. 需求确认" -> "1. 设计规范";
-    "1. 设计规范" -> "2. 计划编写";
-    "2. 计划编写" -> "3. 创建工作树";
-    "3. 创建工作树" -> "4. TDD 实现";
+    "0. 需求确认" -> "1. 创建工作树";
+    "1. 创建工作树" -> "2. 设计规范";
+    "2. 设计规范" -> "3. 计划编写";
+    "3. 计划编写" -> "4. TDD 实现";
     "4. TDD 实现" -> "5. 代码同步";
     "5. 代码同步" -> "6. 确认是否继续";
     "6. 确认是否继续" -> "7. 文档检查" [label="继续"];
     "6. 确认是否继续" -> "0. 需求确认" [label="回退到0", style=dashed];
-    "6. 确认是否继续" -> "1. 设计规范" [label="回退到1", style=dashed];
-    "6. 确认是否继续" -> "2. 计划编写" [label="回退到2", style=dashed];
-    "6. 确认是否继续" -> "3. 创建工作树" [label="回退到3", style=dashed];
+    "6. 确认是否继续" -> "1. 创建工作树" [label="回退到1", style=dashed];
+    "6. 确认是否继续" -> "2. 设计规范" [label="回退到2", style=dashed];
+    "6. 确认是否继续" -> "3. 计划编写" [label="回退到3", style=dashed];
     "6. 确认是否继续" -> "4. TDD 实现" [label="回退到4", style=dashed];
     "6. 确认是否继续" -> "5. 代码同步" [label="回退到5", style=dashed];
     "7. 文档检查" -> "8. Lint 与 Push";
@@ -106,7 +106,7 @@ fi
 
 ### 写入时机
 
-- **写入**：步骤 3（工作树创建/验证成功后）
+- **写入**：步骤 1（工作树创建/验证成功后）
 - **更新 `current_step`**：每完成一个步骤，更新此字段
 - **更新 `current_phase`**：每完成一个子计划，更新此字段
 - **删除**：步骤 9 清理工作树时一并删除
@@ -181,9 +181,152 @@ fi
 
 ---
 
-## 步骤 1：设计规范
+## 步骤 1：创建工作树
 
-### 1.1 前置读取
+### 1.1 询问工作环境
+
+**AskUserQuestion**：
+
+- 选项 1（推荐）：新建隔离工作树
+- 选项 2：在当前 worktree 工作
+
+- 用户选"新建" → 走 1.2 完整创建流程
+- 用户选"当前 worktree" → 走 1.3 仅验证
+
+### 1.2 新建工作树
+
+#### 1.2.1 记录基线分支
+
+```bash
+BASE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+```
+
+#### 1.2.2 计算工作树路径
+
+基于主仓库位置计算（避免在 worktree 内调用时项目名识别错误）：
+
+```bash
+common_dir=$(git rev-parse --git-common-dir)
+main_root=$(cd "$(dirname "$common_dir")" && pwd)
+project=$(basename "$main_root")
+worktree_dir=$(dirname "$main_root")/${project}-worktrees
+```
+
+**关键**：必须基于主仓库，而非当前工作树——否则项目名会被误识别为分支名，导致工作树目录嵌套。
+
+#### 1.2.3 创建工作树
+
+```bash
+BRANCH="feature/<简短描述>"
+path="$worktree_dir/$BRANCH"
+git worktree add "$path" -b "$BRANCH"
+cd "$path"
+```
+
+#### 1.2.4 运行项目设置
+
+自动检测并运行相应设置命令：
+
+```bash
+# Node.js
+[ -f package.json ] && npm install
+
+# Rust
+[ -f Cargo.toml ] && cargo build
+
+# Python
+[ -f requirements.txt ] && pip install -r requirements.txt
+[ -f pyproject.toml ] && poetry install
+
+# Go
+[ -f go.mod ] && go mod download
+
+# Swift (Xcode 项目)
+[ -f Package.swift ] && swift build
+```
+
+#### 1.2.5 验证基线测试干净
+
+运行项目对应的测试命令，确保工作树初始状态干净。
+
+- 测试失败：报告失败情况，询问是否继续或排查
+- 测试通过：报告就绪
+
+#### 1.2.6 报告位置
+
+```
+工作树已就绪：<full-path>
+测试通过（<N> 个测试，0 个失败）
+准备实现 <feature-name>
+```
+
+**重要**：调用后会话工作目录必须始终位于该工作树路径下，不得切换回主仓库目录。
+
+#### 1.2.7 红线
+
+**绝不：**
+- 跳过基线测试验证
+- 不询问就带着失败的测试继续
+- 在项目内部创建工作树目录（污染 git status）
+
+### 1.3 当前 worktree 验证
+
+跳过创建，仅做验证：
+
+```bash
+# 记录基线分支
+BASE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+# 验证工作区状态
+git status  # 必须干净，有未提交变更需先处理
+
+# 验证基线测试干净
+# 运行项目对应的测试命令
+```
+
+- 成功标准：工作区干净 + 基线测试通过
+- 失败：报错并停止
+
+### 1.4 写入状态文件
+
+工作树创建/验证成功后，持久化关键状态供上下文恢复：
+
+```bash
+common_dir=$(git rev-parse --git-common-dir)
+main_root=$(cd "$(dirname "$common_dir")" && pwd)
+project=$(basename "$main_root")
+worktree_dir=$(dirname "$main_root")/${project}-worktrees
+
+cat > "$common_dir/feature-development-state.json" <<EOF
+{
+  "feature_name": "<简短特性名>",
+  "worktree_path": "$(pwd)",
+  "base_branch": "$BASE_BRANCH",
+  "feature_branch": "$(git rev-parse --abbrev-ref HEAD)",
+  "main_root": "$main_root",
+  "worktree_dir": "$worktree_dir",
+  "spec_path": "<设计规范路径>",
+  "review_path": "<设计评审摘要路径>",
+  "test_case_path": "<测试用例表路径>",
+  "plan_dir": "<计划目录路径>",
+  "current_step": "1",
+  "current_phase": "",
+  "total_phases": "<Phase总数>",
+  "commits": {
+    "design_spec": "<commit-sha>",
+    "design_review": "<commit-sha>",
+    "plans": "<commit-sha>"
+  },
+  "created_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+```
+
+---
+
+## 步骤 2：设计规范
+
+### 2.1 前置读取
 
 按项目存在情况读取：
 
@@ -196,7 +339,7 @@ test -f docs/ai/trae-xctest-rules.md && cat docs/ai/trae-xctest-rules.md
 
 如规则文件很长，必须完整阅读与设计规范、验收标准、测试和回归相关的章节。
 
-### 1.2 设计规范
+### 2.2 设计规范
 
 按项目模板优先；无模板时按 `.trae/rules/docs.md` 规定的格式编写。设计规范文件命名：`F{N}_{功能名}_设计规范.md`。
 
@@ -219,7 +362,7 @@ test -f docs/ai/trae-xctest-rules.md && cat docs/ai/trae-xctest-rules.md
 
 每次修改同步更新版本号和最后更新日期，最后添加列表格式版本记录。
 
-### 1.3 视觉原型（涉及 UI 时）
+### 2.3 视觉原型（涉及 UI 时）
 
 **仅当特性涉及 UI 时执行**，不涉及 UI 时跳过本子步。
 
@@ -230,7 +373,7 @@ test -f docs/ai/trae-xctest-rules.md && cat docs/ai/trae-xctest-rules.md
 
 涉及 UI 行为变化时，必须同步更新视觉原型。
 
-### 1.4 测试用例表
+### 2.4 测试用例表
 
 基于设计规范验收标准按功能分类生成测试用例矩阵。
 
@@ -240,7 +383,7 @@ test -f docs/ai/trae-xctest-rules.md && cat docs/ai/trae-xctest-rules.md
 
 修改设计规范中的目标、范围、流程、接口、验收标准时，必须同步更新测试用例表。
 
-### 1.5 子代理审核 + 自动修复
+### 2.5 子代理审核 + 自动修复
 
 调度独立子代理审核设计规范。审核检查项：
 
@@ -264,7 +407,7 @@ test -f docs/ai/trae-xctest-rules.md && cat docs/ai/trae-xctest-rules.md
 
 设计评审摘要保存到设计规范同目录的 `<feature-name>_设计评审摘要.md`。
 
-### 1.6 用户确认
+### 2.6 用户确认
 
 展示设计规范路径、视觉原型路径（如有）、测试用例表路径、审核结论和修改摘要，询问用户确认：
 
@@ -272,7 +415,7 @@ test -f docs/ai/trae-xctest-rules.md && cat docs/ai/trae-xctest-rules.md
 - 选项 2：需要补充或修改
 - 选项 3：方向不对，回到步骤 0
 
-### 1.7 提交
+### 2.7 提交
 
 确认后只暂存设计规范相关文件：
 
@@ -303,21 +446,21 @@ EOF
 - 禁止 force push 到 main/master
 - hooks 失败 → 修复后新建 commit，不 amend
 
-提交成功后进入步骤 2。
+提交成功后进入步骤 3。
 
 ---
 
-## 步骤 2：计划编写
+## 步骤 3：计划编写
 
-### 2.1 读取设计规范和评审摘要
+### 3.1 读取设计规范和评审摘要
 
 必须读取已提交的设计规范、设计评审摘要和测试用例表，再编写实现计划。
 
-### 2.2 按功能需求划分阶段
+### 3.2 按功能需求划分阶段
 
 设计规范中已按功能需求划分 Phase。计划按 Phase 拆分为子计划。
 
-### 2.3 先写总计划，动态拆子计划
+### 3.3 先写总计划，动态拆子计划
 
 **先写一个总实现计划**，定义整体目标、架构、Phase 列表和依赖关系。然后根据复杂度动态决定是否拆分子计划：
 
@@ -325,7 +468,7 @@ EOF
 - **中等特性**（2-3 个 Phase，任务数 > 5）：按 Phase 拆子计划，每个 Phase 一个子计划文件
 - **复杂特性**（4+ Phase 或有跨 Phase 依赖）：按 Phase 拆子计划，额外补充跨 Phase 依赖和集成验证计划
 
-### 2.4 计划结构
+### 3.4 计划结构
 
 按项目文档规则优先；无规则时使用：
 
@@ -394,7 +537,7 @@ docs/superpowers/plans/YYYY-MM-DD-<feature-name>/
 - 只描述做什么而不展示怎么做的步骤（代码步骤必须有代码块）
 - 引用了未在任何任务中定义的类型、函数或方法
 
-### 2.5 check-plan
+### 3.5 check-plan
 
 计划写完后，必须核对实施计划：
 
@@ -417,16 +560,16 @@ docs/superpowers/plans/YYYY-MM-DD-<feature-name>/
 
 **处理结果**：
 
-- 通过 → 进入 2.6
+- 通过 → 进入 3.6
 - 有问题 → 修正计划，重新执行 check-plan，直到通过
 
-### 2.6 用户确认并提交
+### 3.6 用户确认并提交
 
 展示主计划路径、子计划列表和自检结论，询问用户确认：
 
 - 选项 1（推荐）：确认计划，可以提交
 - 选项 2：需要调整计划
-- 选项 3：计划方向不对，回到步骤 1
+- 选项 3：计划方向不对，回到步骤 2
 
 确认后提交：
 
@@ -441,150 +584,7 @@ EOF
 )"
 ```
 
-提交成功后进入步骤 3。
-
----
-
-## 步骤 3：创建工作树
-
-### 3.1 询问工作环境
-
-**AskUserQuestion**：
-
-- 选项 1（推荐）：新建隔离工作树
-- 选项 2：在当前 worktree 工作
-
-- 用户选"新建" → 走 3.2 完整创建流程
-- 用户选"当前 worktree" → 走 3.3 仅验证
-
-### 3.2 新建工作树
-
-#### 3.2.1 记录基线分支
-
-```bash
-BASE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-```
-
-#### 3.2.2 计算工作树路径
-
-基于主仓库位置计算（避免在 worktree 内调用时项目名识别错误）：
-
-```bash
-common_dir=$(git rev-parse --git-common-dir)
-main_root=$(cd "$(dirname "$common_dir")" && pwd)
-project=$(basename "$main_root")
-worktree_dir=$(dirname "$main_root")/${project}-worktrees
-```
-
-**关键**：必须基于主仓库，而非当前工作树——否则项目名会被误识别为分支名，导致工作树目录嵌套。
-
-#### 3.2.3 创建工作树
-
-```bash
-BRANCH="feature/<简短描述>"
-path="$worktree_dir/$BRANCH"
-git worktree add "$path" -b "$BRANCH"
-cd "$path"
-```
-
-#### 3.2.4 运行项目设置
-
-自动检测并运行相应设置命令：
-
-```bash
-# Node.js
-[ -f package.json ] && npm install
-
-# Rust
-[ -f Cargo.toml ] && cargo build
-
-# Python
-[ -f requirements.txt ] && pip install -r requirements.txt
-[ -f pyproject.toml ] && poetry install
-
-# Go
-[ -f go.mod ] && go mod download
-
-# Swift (Xcode 项目)
-[ -f Package.swift ] && swift build
-```
-
-#### 3.2.5 验证基线测试干净
-
-运行项目对应的测试命令，确保工作树初始状态干净。
-
-- 测试失败：报告失败情况，询问是否继续或排查
-- 测试通过：报告就绪
-
-#### 3.2.6 报告位置
-
-```
-工作树已就绪：<full-path>
-测试通过（<N> 个测试，0 个失败）
-准备实现 <feature-name>
-```
-
-**重要**：调用后会话工作目录必须始终位于该工作树路径下，不得切换回主仓库目录。
-
-#### 3.2.7 红线
-
-**绝不：**
-- 跳过基线测试验证
-- 不询问就带着失败的测试继续
-- 在项目内部创建工作树目录（污染 git status）
-
-### 3.3 当前 worktree 验证
-
-跳过创建，仅做验证：
-
-```bash
-# 记录基线分支
-BASE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-
-# 验证工作区状态
-git status  # 必须干净，有未提交变更需先处理
-
-# 验证基线测试干净
-# 运行项目对应的测试命令
-```
-
-- 成功标准：工作区干净 + 基线测试通过
-- 失败：报错并停止
-
-### 3.4 写入状态文件
-
-工作树创建/验证成功后，持久化关键状态供上下文恢复：
-
-```bash
-common_dir=$(git rev-parse --git-common-dir)
-main_root=$(cd "$(dirname "$common_dir")" && pwd)
-project=$(basename "$main_root")
-worktree_dir=$(dirname "$main_root")/${project}-worktrees
-
-cat > "$common_dir/feature-development-state.json" <<EOF
-{
-  "feature_name": "<简短特性名>",
-  "worktree_path": "$(pwd)",
-  "base_branch": "$BASE_BRANCH",
-  "feature_branch": "$(git rev-parse --abbrev-ref HEAD)",
-  "main_root": "$main_root",
-  "worktree_dir": "$worktree_dir",
-  "spec_path": "<设计规范路径>",
-  "review_path": "<设计评审摘要路径>",
-  "test_case_path": "<测试用例表路径>",
-  "plan_dir": "<计划目录路径>",
-  "current_step": "3",
-  "current_phase": "",
-  "total_phases": "<Phase总数>",
-  "commits": {
-    "design_spec": "<commit-sha>",
-    "design_review": "<commit-sha>",
-    "plans": "<commit-sha>"
-  },
-  "created_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-}
-EOF
-```
+提交成功后进入步骤 4。
 
 ---
 
@@ -636,7 +636,7 @@ EOF
   - 少于 3 次：回到第二步，用新信息重新分析
   - 3 次或以上：停下来质疑设计 → **AskUserQuestion**：
     - 选项 1（推荐）：继续实现（回到第二步）
-    - 选项 2：回到步骤 2 重新编写计划
+    - 选项 2：回到步骤 3 重新编写计划
     - 选项 3：放弃并清理工作树
 
 #### 第三步：重构
@@ -705,7 +705,7 @@ EOF
 
 - 所有子计划完成、check-code 通过、工作区干净 → 进入步骤 5
 - 任一子计划阻塞 → 停止并报告阻塞点、已验证事实和建议选项
-- 设计或计划在实现中被证明错误 → 回到步骤 1 或步骤 2，按顺序重新推进
+- 设计或计划在实现中被证明错误 → 回到步骤 2 或步骤 3，按顺序重新推进
 
 ---
 
@@ -790,7 +790,7 @@ git rebase <目标分支>
 
 ### 5.4 提交变更
 
-无论是否变基，均提交当前变更（含代码 + 日志 + 文档）。提交流程同步骤 1.7（分析 diff → 智能暂存 → Conventional Commits → Git 安全协议）。
+无论是否变基，均提交当前变更（含代码 + 日志 + 文档）。提交流程同步骤 2.7（分析 diff → 智能暂存 → Conventional Commits → Git 安全协议）。
 
 ```bash
 git add <files-for-current-sync>
@@ -811,9 +811,9 @@ git commit -m "<type>[scope]: <description>"
 
 - 选项 1（推荐）：继续进入步骤 7 检查文档
 - 选项 2：回到步骤 0 重新确认需求
-- 选项 3：回到步骤 1 重新设计
-- 选项 4：回到步骤 2 重新编写计划
-- 选项 5：回到步骤 3 重新创建工作树
+- 选项 3：回到步骤 2 重新设计
+- 选项 4：回到步骤 3 重新编写计划
+- 选项 5：回到步骤 1 重新创建工作树
 - 选项 6：回到步骤 4 重新实现
 - 选项 7：回到步骤 5 重新代码同步
 
@@ -1030,7 +1030,7 @@ rm -f "$common_dir/feature-development-state.json"
 - 选项 1（推荐）：保留工作树（便于后续继续）
 - 选项 2：立即清理工作树
 
-### 9.6 步骤 3 选"当前 worktree"时的特殊处理
+### 9.6 步骤 1 选"当前 worktree"时的特殊处理
 
 - 选"合并" → 执行 rebase + merge --no-ff
 - 选"不合并"/"暂不处理" → **不删除工作树**（因工作树非本流程创建）
