@@ -534,33 +534,19 @@ EOF
 确保 AI-test 测试工作树复位到最新修复分支，便于测试验证最新代码。
 
 **AskUserQuestion 问 4**：是否同步 AI-test 工作树
-- 选项 1（推荐）：同步
+- 选项 1（推荐）：同步（使用 `reset --hard` 复位到最新修复分支）
 - 选项 2：不同步，结束 3.4
 
 选择同步时：
 
 ```bash
-# 获取当前修复分支名
 FIX_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-
-# AI-test 工作树路径
-AI_TEST_PATH="$worktree_dir/AI-test"
-
-# 不存在则创建；已存在则先检查是否有未提交变更
-if [ ! -d "$AI_TEST_PATH" ]; then
-    git worktree add "$AI_TEST_PATH" -b AI/test "$FIX_BRANCH"
-else
-    if [ -n "$(git -C "$AI_TEST_PATH" status --porcelain)" ]; then
-        echo "AI-test 工作树存在未提交变更，必须先询问用户：保留并跳过 / 用户自行处理后重试 / 明确丢弃后同步"
-        exit 1
-    fi
-    git -C "$AI_TEST_PATH" reset --hard "$FIX_BRANCH"
-fi
+bash "$HOME/.trae-cn/skills/shared/scripts/sync-ai-test-worktree.sh" "$FIX_BRANCH" "$worktree_dir"
 ```
 
-- **成功标准**：AI-test 工作树 HEAD 等于当前修复分支最新 commit，工作区干净
-- **安全规则**：AI-test 工作树干净时直接同步；只有检测到未提交变更、同步会覆盖内容时才询问用户确认，不做无意义确认
-- **失败** → **AskUserQuestion 问 5**：
+- **返回码 0**（成功）：AI-test 工作树 HEAD 等于当前修复分支最新 commit，工作区干净
+- **返回码 2**（未提交变更）：AI-test 工作树存在未提交变更，询问用户处理方式
+- **其他失败** → **AskUserQuestion 问 5**：
   - 选项 1（推荐）：重试
   - 选项 2：跳过继续
   - 选项 3：停止工作流
@@ -789,29 +775,19 @@ git push
 push 完成后再次同步 AI-test 工作树，确保其复位到最新修复分支（含远端 push 后的最终状态）。
 
 **AskUserQuestion 问 2**：是否同步 AI-test 工作树
-- 选项 1（推荐）：同步
+- 选项 1（推荐）：同步（使用 `reset --hard` 复位到最新修复分支）
 - 选项 2：不同步，结束 6.3
 
 选择同步时：
 
 ```bash
 FIX_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-AI_TEST_PATH="$worktree_dir/AI-test"
-
-if [ ! -d "$AI_TEST_PATH" ]; then
-    git worktree add "$AI_TEST_PATH" -b AI/test "$FIX_BRANCH"
-else
-    if [ -n "$(git -C "$AI_TEST_PATH" status --porcelain)" ]; then
-        echo "AI-test 工作树存在未提交变更，必须先询问用户：保留并跳过 / 用户自行处理后重试 / 明确丢弃后同步"
-        exit 1
-    fi
-    git -C "$AI_TEST_PATH" reset --hard "$FIX_BRANCH"
-fi
+bash "$HOME/.trae-cn/skills/shared/scripts/sync-ai-test-worktree.sh" "$FIX_BRANCH" "$worktree_dir"
 ```
 
-- **成功标准**：AI-test 工作树 HEAD 等于当前修复分支最新 commit，工作区干净
-- **安全规则**：AI-test 工作树干净时直接同步；只有检测到未提交变更、同步会覆盖内容时才询问用户确认，不做无意义确认
-- **失败** → **AskUserQuestion 问 3**：
+- **返回码 0**（成功）：AI-test 工作树 HEAD 等于当前修复分支最新 commit，工作区干净
+- **返回码 2**（未提交变更）：AI-test 工作树存在未提交变更，询问用户处理方式
+- **其他失败** → **AskUserQuestion 问 3**：
   - 选项 1（推荐）：重试
   - 选项 2：跳过继续
   - 选项 3：停止工作流
