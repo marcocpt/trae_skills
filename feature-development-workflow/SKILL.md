@@ -797,9 +797,43 @@ git add <files-for-current-sync>
 git commit -m "<type>[scope]: <description>"
 ```
 
-**成功** → 进入步骤 6
+**成功** → 进入 5.5 同步 AI-test 工作树
 
 **失败** → 回到步骤 4 修复问题，不跳过
+
+### 5.5 同步 AI-test 测试工作树
+
+提交变更后同步 AI-test 工作树，确保其复位到最新特性分支。
+
+**AskUserQuestion**：是否同步 AI-test 工作树
+
+- 选项 1（推荐）：同步
+- 选项 2：不同步，结束步骤 5
+
+选择同步时：
+
+```bash
+FEATURE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+AI_TEST_PATH="$worktree_dir/AI-test"
+
+if [ ! -d "$AI_TEST_PATH" ]; then
+    git worktree add "$AI_TEST_PATH" -b AI/test "$FEATURE_BRANCH"
+else
+    if [ -n "$(git -C "$AI_TEST_PATH" status --porcelain)" ]; then
+        echo "AI-test 工作树存在未提交变更，必须先询问用户"
+    fi
+    git -C "$AI_TEST_PATH" reset --hard "$FEATURE_BRANCH"
+fi
+```
+
+- **成功标准**：AI-test 工作树 HEAD 等于当前特性分支最新 commit，工作区干净
+- **安全规则**：AI-test 工作树干净时直接同步；只有检测到未提交变更时才询问用户确认
+- **失败** → **AskUserQuestion**：
+  - 选项 1（推荐）：重试
+  - 选项 2：跳过继续
+  - 选项 3：停止工作流
+
+选择不同步 → 直接进入步骤 6
 
 ---
 
@@ -894,7 +928,7 @@ git log --oneline "$BASE_BRANCH"..HEAD
 
 ## 步骤 8：Lint 与 Push
 
-**流程顺序：lint → push → 同步 AI-test，缺一不可。**
+**流程顺序：lint → push，缺一不可。**
 
 ### 8.1 代码质量检查
 
@@ -920,7 +954,7 @@ git push -u origin <当前分支>
 git push
 ```
 
-- **成功** → 进入 8.3
+- **成功** → 进入步骤 9
 - **失败** → **AskUserQuestion**：
   - 选项 1（推荐）：重试
   - 选项 2：跳过 push 继续
@@ -929,40 +963,6 @@ git push
 **禁止**：
 - 使用 `git push --force` / `git push -f`（除非用户明确要求）
 - 推送到 main/master（除非用户明确要求）
-
-### 8.3 同步 AI-test 测试工作树
-
-push 完成后同步 AI-test 工作树，确保其复位到最新特性分支。
-
-**AskUserQuestion**：是否同步 AI-test 工作树
-
-- 选项 1（推荐）：同步
-- 选项 2：不同步，结束步骤 8
-
-选择同步时：
-
-```bash
-FEATURE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-AI_TEST_PATH="$worktree_dir/AI-test"
-
-if [ ! -d "$AI_TEST_PATH" ]; then
-    git worktree add "$AI_TEST_PATH" -b AI/test "$FEATURE_BRANCH"
-else
-    if [ -n "$(git -C "$AI_TEST_PATH" status --porcelain)" ]; then
-        echo "AI-test 工作树存在未提交变更，必须先询问用户"
-    fi
-    git -C "$AI_TEST_PATH" reset --hard "$FEATURE_BRANCH"
-fi
-```
-
-- **成功标准**：AI-test 工作树 HEAD 等于当前特性分支最新 commit，工作区干净
-- **安全规则**：AI-test 工作树干净时直接同步；只有检测到未提交变更时才询问用户确认
-- **失败** → **AskUserQuestion**：
-  - 选项 1（推荐）：重试
-  - 选项 2：跳过继续
-  - 选项 3：停止工作流
-
-选择不同步 → 直接进入步骤 9
 
 ---
 
