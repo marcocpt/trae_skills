@@ -167,7 +167,7 @@ BASE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 # 验证工作区状态
 git status  # 必须干净，有未提交变更需先处理
 
-# 验证基线测试干净
+# 验证基线测试（按 test-location-strategy skill 选择测试位置：自建服务器优先，无自建服务器才本地）
 # 运行项目对应的测试命令
 ```
 
@@ -250,7 +250,7 @@ cd "$path"
 
 #### 1.2.5 验证基线测试干净
 
-运行项目对应的测试命令（npm test / cargo test / pytest / go test / swift test），确保工作树初始状态干净。
+按 test-location-strategy skill 选择测试位置。默认顺序：先检查自建服务器是否已有可用结果 → 尝试触发自建服务器 → 本地测试（运行项目对应的测试命令，如 npm test / cargo test / pytest / go test / swift test），确保工作树初始状态干净。
 
 - 测试失败：报告失败情况，询问是否继续或排查
 - 测试通过：报告就绪
@@ -323,7 +323,7 @@ EOF
 **目标：修复根本原因，让测试通过。**
 
 - 实施单一修复（每次只改一处，不做"顺便改改"的优化，不捆绑重构）
-- 验证测试通过 + 其他测试未被破坏 + 输出干净（无错误警告）
+- 验证测试通过 + 其他测试未被破坏 + 输出干净（无错误警告）（按 test-location-strategy skill 选择测试位置：自建服务器优先，无自建服务器才本地）
 - **回归测试失败需修改时**：必须使用 `AskUserQuestion` 说明失败原因和修改理由，获得用户确认后方可修改。禁止未经确认直接修改回归测试
 - 如果修复不起作用：
   - 少于 3 次：回到根因调查，用新信息重新分析
@@ -635,6 +635,8 @@ git log --oneline "$BASE_BRANCH"..HEAD
 | 可暂缓自动化 | ... |
 ```
 
+表中「必须执行的测试」按 test-location-strategy skill 选择测试位置：自建服务器优先，无自建服务器才本地。
+
 - **成功**：已获取变更并输出影响分析表
 - **失败**：`git diff` 为空 → 提示"无代码变更，无需更新文档"，结束步骤 5
 
@@ -737,17 +739,26 @@ git log --oneline "$BASE_BRANCH"..HEAD
 
 ## 步骤 6：Lint 与 Push
 
-**流程顺序：lint → push → 同步 AI-test，缺一不可。**
+**流程顺序：lint → 测试验证 → push → 同步 AI-test，缺一不可。测试验证的测试位置按 test-location-strategy skill 选择。**
 
 ### 6.1 代码质量检查
+
+**lint 部分**（本地执行，不使用自建服务器）：
 
 按项目类型执行：
 
 - **Swift 项目**：`swiftlint lint --strict`
 - **其他项目**：项目对应的 lint / typecheck 命令
 
-- **成功** → 进入 6.2
+- **成功** → 进入 lint 后的测试验证
 - **失败** → 修复 lint 错误后重新检查，不得跳过（循环直到通过）
+
+**测试验证部分**（按 test-location-strategy skill 选择测试位置）：
+
+lint 通过后，运行项目测试套件验证整体回归。按 test-location-strategy skill 决策：自建服务器有可用结果 → 复用；否则触发自建服务器 → 无自建服务器才本地测试。
+
+- **成功** → 进入 6.2
+- **失败** → 修复后重新执行 lint + 测试
 
 ### 6.2 Push 到远端
 
