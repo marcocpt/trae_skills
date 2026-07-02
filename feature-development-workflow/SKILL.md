@@ -243,7 +243,13 @@ cd "$path"
 
 #### 1.2.5 验证基线测试干净
 
-按 test-location-strategy skill 选择测试位置。默认顺序：先检查自建服务器是否已有可用结果 → 尝试触发自建服务器 → 本地测试。
+按 test-location-strategy skill 决策测试位置：
+
+1. **检查 CI 已有结果**：`gh run list --workflow macos-ci.yml --branch <当前分支> --limit 1`
+   - `conclusion=success` 且 `headSha` 等于当前 HEAD → 复用 CI 结果，跳过本地测试
+   - `status=in_progress` → 等待 CI 完成，不重复触发
+2. **触发 CI**（无可用结果时）：`gh workflow run macos-ci.yml --ref <当前分支>` + `gh run watch <run-id> --exit-status`
+3. **本地测试**（CI 不可用或用户明确要求）：`bash scripts/ci/test-macos.sh`（与 CI 同脚本，基于 xcodebuild test + Macim.xcworkspace + MacimApp scheme）。禁止用 `swift test` 替代——本项目是 Xcode 工程，`swift test` 只覆盖 SwiftPM 子集。
 
 - 测试失败：报告失败情况，询问是否继续或排查
 - 测试通过：报告就绪
@@ -276,8 +282,13 @@ BASE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 # 验证工作区状态
 git status  # 必须干净，有未提交变更需先处理
 
-# 验证基线测试干净
-# 运行项目对应的测试命令
+# 验证基线测试（按 test-location-strategy skill 决策测试位置）
+# 1. 先检查 CI：gh run list --workflow macos-ci.yml --branch <当前分支> --limit 1
+#    - conclusion=success 且 headSha==当前 HEAD → 复用 CI 结果，跳过本地测试
+#    - status=in_progress → 等待 CI 完成，不重复触发
+# 2. 触发 CI（无可用结果时）：gh workflow run macos-ci.yml --ref <当前分支> && gh run watch <run-id> --exit-status
+# 3. 本地测试（CI 不可用或用户明确要求）：bash scripts/ci/test-macos.sh（与 CI 同脚本）
+#    禁止用 swift test 替代——本项目是 Xcode 工程
 ```
 
 - 成功标准：工作区干净 + 基线测试通过
@@ -605,7 +616,12 @@ EOF
 3. 当前子计划全部任务完成后，执行 check-code
 4. 根据 check-code 结果修复问题，直到通过
 5. 对 UI 子计划执行真实路径验证或手动验收，保存截图/录屏/日志/测试输出
-6. 运行子计划要求的验证命令（按 test-location-strategy skill 选择测试位置：自建服务器优先，无自建服务器才本地）
+6. 运行子计划要求的验证命令（按 test-location-strategy skill 决策测试位置）：
+   1. **检查 CI 已有结果**：`gh run list --workflow macos-ci.yml --branch <当前分支> --limit 1`
+      - `conclusion=success` 且 `headSha` 等于当前 HEAD → 复用 CI 结果，跳过本地测试
+      - `status=in_progress` → 等待 CI 完成，不重复触发
+   2. **触发 CI**（无可用结果时）：`gh workflow run macos-ci.yml --ref <当前分支>` + `gh run watch <run-id> --exit-status`
+   3. **本地测试**（CI 不可用或用户明确要求）：`bash scripts/ci/test-macos.sh`（与 CI 同脚本，基于 xcodebuild test）。禁止用 `swift test` 替代——本项目是 Xcode 工程，`swift test` 只覆盖 SwiftPM 子集。
 7. 提交当前子计划相关代码、测试、文档、证据记录
 8. 更新状态文件的 `current_phase`
 9. 进入下一个子计划
@@ -628,7 +644,12 @@ EOF
 **目标：实现设计规范定义的行为，让测试通过。**
 
 - 严格按子计划步骤实现（不做"顺便改改"的优化，不捆绑重构）
-- 验证测试通过 + 其他测试未被破坏 + 输出干净（按 test-location-strategy skill 选择测试位置：自建服务器优先，无自建服务器才本地）
+- 验证测试通过 + 其他测试未被破坏 + 输出干净，按 test-location-strategy skill 决策测试位置：
+  1. **检查 CI 已有结果**：`gh run list --workflow macos-ci.yml --branch <当前分支> --limit 1`
+     - `conclusion=success` 且 `headSha` 等于当前 HEAD → 复用 CI 结果，跳过本地测试
+     - `status=in_progress` → 等待 CI 完成，不重复触发
+  2. **触发 CI**（无可用结果时）：`gh workflow run macos-ci.yml --ref <当前分支>` + `gh run watch <run-id> --exit-status`
+  3. **本地测试**（CI 不可用或用户明确要求）：`bash scripts/ci/test-macos.sh`（与 CI 同脚本，基于 xcodebuild test）。禁止用 `swift test` 替代。
 - **回归测试失败需修改时**：必须使用 `AskUserQuestion` 说明失败原因和修改理由，获得用户确认后方可修改
 - 如果实现不起作用：
   - 少于 3 次：回到第二步，用新信息重新分析
@@ -921,7 +942,7 @@ git log --oneline "$BASE_BRANCH"..HEAD
 
 ## 步骤 8：Lint 与 Push
 
-**流程顺序：lint → 测试验证 → push，缺一不可。测试验证的测试位置按 test-location-strategy skill 选择。**
+**流程顺序：lint → 测试验证 → push → 等待 CI 结果，缺一不可。测试验证的测试位置按 test-location-strategy skill 决策。**
 
 ### 8.1 代码质量检查
 
@@ -935,9 +956,15 @@ git log --oneline "$BASE_BRANCH"..HEAD
 - **成功** → 进入 lint 后的测试验证
 - **失败** → 修复 lint 错误后重新检查，不得跳过（循环直到通过）
 
-**测试验证部分**（按 test-location-strategy skill 选择测试位置）：
+**测试验证部分**（按 test-location-strategy skill 决策测试位置）：
 
-lint 通过后，运行项目测试套件验证整体回归。按 test-location-strategy skill 决策：自建服务器有可用结果 → 复用；否则触发自建服务器 → 无自建服务器才本地测试。
+lint 通过后，运行项目测试套件验证整体回归：
+
+1. **检查 CI 已有结果**：`gh run list --workflow macos-ci.yml --branch <当前分支> --limit 1`
+   - `conclusion=success` 且 `headSha` 等于当前 HEAD → 复用 CI 结果，跳过本地测试
+   - `status=in_progress` → 等待 CI 完成，不重复触发
+2. **触发 CI**（无可用结果时）：`gh workflow run macos-ci.yml --ref <当前分支>` + `gh run watch <run-id> --exit-status`
+3. **本地测试**（CI 不可用或用户明确要求）：`bash scripts/ci/test-macos.sh`（与 CI 同脚本，基于 xcodebuild test + Macim.xcworkspace + MacimApp scheme）。禁止用 `swift test` 替代——本项目是 Xcode 工程，`swift test` 只覆盖 SwiftPM 子集。
 
 - **成功** → 进入 8.2
 - **失败** → 修复后重新执行 lint + 测试
@@ -956,7 +983,7 @@ git push -u origin <当前分支>
 git push
 ```
 
-- **成功** → 进入步骤 9
+- **成功** → 进入 8.2.1
 - **失败** → **AskUserQuestion**：
   - 选项 1（推荐）：重试
   - 选项 2：跳过 push 继续
@@ -965,6 +992,44 @@ git push
 **禁止**：
 - 使用 `git push --force` / `git push -f`（除非用户明确要求）
 - 推送到 main/master（除非用户明确要求）
+
+### 8.2.1 等待 CI 结果（push 后强制执行）
+
+push 完成后必须等待 CI 运行完成，不得直接结束工作流或宣称完成。本步是新流程的核心：让远端 self-hosted runner 验证代码，避免本地环境差异掩盖问题。
+
+```bash
+# 等 GitHub 注册新 push
+sleep 5
+
+# 查找当前 SHA 对应的最新 run
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+CURRENT_SHA=$(git rev-parse HEAD)
+
+RUN_ID=$(gh run list \
+  --workflow "macos-ci.yml" \
+  --branch "$CURRENT_BRANCH" \
+  --limit 5 \
+  --json databaseId,headSha \
+  --jq ".[] | select(.headSha == \"${CURRENT_SHA}\") | .databaseId" \
+  | head -1)
+
+if [ -n "$RUN_ID" ]; then
+  echo "Watching run ${RUN_ID}..."
+  gh run watch "$RUN_ID" --exit-status
+else
+  echo "⚠️ 未找到对应 SHA 的 run，可能 CI 未触发或 workflow 文件不存在"
+fi
+```
+
+- **成功** → 进入步骤 9
+- **CI 失败** → **AskUserQuestion**：
+  - 选项 1（推荐）：拉取 CI 日志（`gh run view <run-id> --log-failed`）分析失败原因，回到步骤 4 修复
+  - 选项 2：本地复现验证（`bash scripts/ci/test-macos.sh`）确认是代码问题还是 CI 环境问题
+  - 选项 3：跳过继续（不推荐，会引入未验证代码到远端）
+- **未找到 run** → **AskUserQuestion**：
+  - 选项 1（推荐）：手动触发 `gh workflow run macos-ci.yml --ref <当前分支>` 后重新等待
+  - 选项 2：本地测试 `bash scripts/ci/test-macos.sh` 作为替代验证
+  - 选项 3：跳过继续
 
 ---
 
