@@ -54,6 +54,7 @@ digraph bug_fix_workflow {
 
 ```json
 {
+  "workflow_type": "bug-fix",
   "worktree_path": "/absolute/path/to/worktree",
   "base_branch": "main",
   "fix_branch": "fix/xxx",
@@ -163,6 +164,16 @@ ls -t "$(pwd)/logs/" 2>/dev/null | head -5
 跳过创建，仅做验证：
 
 ```bash
+# 并发检查：禁止同一 worktree 上同时运行多个工作流
+git_dir=$(git rev-parse --git-dir)
+for f in "$git_dir"/bug-fix-state.json "$git_dir"/feature-development-state.json; do
+  if [ -f "$f" ]; then
+    existing_type=$(python3 -c "import json; print(json.load(open('$f')).get('workflow_type','unknown'))")
+    echo "❌ 当前 worktree 已有活跃的 ${existing_type} 工作流，禁止并发"
+    exit 1
+  fi
+done
+
 # 记录基线分支
 BASE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
@@ -191,6 +202,7 @@ git_dir=$(git rev-parse --git-dir)
 
 cat > "$git_dir/bug-fix-state.json" <<EOF
 {
+  "workflow_type": "bug-fix",
   "worktree_path": "$(pwd)",
   "base_branch": "$BASE_BRANCH",
   "fix_branch": "$(git rev-parse --abbrev-ref HEAD)",
@@ -293,6 +305,7 @@ git_dir=$(git rev-parse --git-dir)
 
 cat > "$git_dir/bug-fix-state.json" <<EOF
 {
+  "workflow_type": "bug-fix",
   "worktree_path": "$(pwd)",
   "base_branch": "$BASE_BRANCH",
   "fix_branch": "$(git rev-parse --abbrev-ref HEAD)",

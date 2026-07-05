@@ -60,6 +60,7 @@ digraph feature_development_workflow {
 
 ```json
 {
+  "workflow_type": "feature-development",
   "feature_name": "short feature name",
   "worktree_path": "/absolute/path/to/worktree",
   "base_branch": "main",
@@ -329,6 +330,16 @@ cd "$path"
 跳过创建，仅做验证：
 
 ```bash
+# 并发检查：禁止同一 worktree 上同时运行多个工作流
+git_dir=$(git rev-parse --git-dir)
+for f in "$git_dir"/bug-fix-state.json "$git_dir"/feature-development-state.json; do
+  if [ -f "$f" ]; then
+    existing_type=$(python3 -c "import json; print(json.load(open('$f')).get('workflow_type','unknown'))")
+    echo "❌ 当前 worktree 已有活跃的 ${existing_type} 工作流，禁止并发"
+    exit 1
+  fi
+done
+
 # 记录基线分支
 BASE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
@@ -360,6 +371,7 @@ git_dir=$(git rev-parse --git-dir)
 
 cat > "$git_dir/feature-development-state.json" <<EOF
 {
+  "workflow_type": "feature-development",
   "feature_name": "<简短特性名>",
   "worktree_path": "$(pwd)",
   "base_branch": "$BASE_BRANCH",
