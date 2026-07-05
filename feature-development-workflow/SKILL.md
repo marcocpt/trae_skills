@@ -27,7 +27,8 @@ digraph feature_development_workflow {
     "1. 创建工作树" -> "2. 设计规范";
     "2. 设计规范" -> "3. 计划编写" [label="确认后自动"];
     "3. 计划编写" -> "4. TDD 实现" [label="自动"];
-    "4. TDD 实现" -> "5. 代码同步" [label="自动"];
+    "4. TDD 实现" -> "4.5 CI 回归验证" [label="提交后"];
+    "4.5 CI 回归验证" -> "5. 代码同步";
     "5. 代码同步" -> "6. 确认是否继续";
     "6. 确认是否继续" -> "7. 文档检查" [label="继续"];
     "6. 确认是否继续" -> "0. 需求确认" [label="回退到0", style=dashed];
@@ -38,7 +39,8 @@ digraph feature_development_workflow {
     "6. 确认是否继续" -> "5. 代码同步" [label="回退到5", style=dashed];
     "7. 文档检查" -> "8. Lint 与 Push";
     "8. Lint 与 Push" -> "9. 合并清理";
-    "9. 合并清理" -> "0. 需求确认" [label="还有其他特性", style=dashed];
+    "9. 合并清理" -> "9.1 合并后CI验证";
+    "9.1 合并后CI验证" -> "0. 需求确认" [label="还有其他特性", style=dashed];
 }
 ```
 
@@ -729,12 +731,14 @@ EOF
 **目标：实现设计规范定义的行为，让测试通过。**
 
 - 严格按子计划步骤实现（不做"顺便改改"的优化，不捆绑重构）
-- 验证测试通过 + 其他测试未被破坏 + 输出干净，按 test-location-strategy skill 决策测试位置：
-  1. **检查 CI 已有结果**：`gh run list --workflow macos-ci.yml --branch <当前分支> --limit 1`
-     - `conclusion=success` 且 `headSha` 等于当前 HEAD → 复用 CI 结果，跳过本地测试
-     - `status=in_progress` → 等待 CI 完成，不重复触发
-  2. **触发 CI**（无可用结果时）：`gh workflow run macos-ci.yml --ref <当前分支>` + `gh run watch <run-id> --exit-status`
-  3. **本地测试**（CI 不可用或用户明确要求）：`bash scripts/ci/test-macos.sh`（与 CI 同脚本，基于 xcodebuild test）。禁止用 `swift test` 替代。
+
+**验证分两层，必须严格区分：**
+
+1. **单测试文件绿灯验证**（本地执行，TDD 快速反馈）：仅运行当前任务编写的新测试，确认因实现而通过。此时代码未提交，无法触发 CI，本地执行是唯一选项
+2. **全量回归验证**（**步骤 4.5 提交后**按 `test-location-strategy` skill 走 CI 优先）：运行项目完整测试套件，确认实现未破坏其他测试。**禁止在步骤 4.3 中直接本地跑全量回归——必须延迟到步骤 4.5 提交后走 CI 验证**
+
+> **为什么不能在步骤 4.3 本地跑全量回归？** 与 bug-fix-workflow 相同：代码未提交无法 push 触发 CI。即使本地通过，CI 环境差异可能掩盖问题。
+
 - **回归测试失败需修改时**：必须使用 `AskUserQuestion` 说明失败原因和修改理由，获得用户确认后方可修改
 - 如果实现不起作用：
   - 少于 3 次：回到第二步，用新信息重新分析
@@ -813,6 +817,22 @@ EOF
 ```
 
 如果实现任务已经按计划产生了多个 commit，确保当前子计划结束时没有未提交变更；如 check-code 后没有新增变更，记录最后一个属于该子计划的 commit SHA 作为完成点，不创建空提交。
+
+**提交后全量回归验证（CI 优先）**：代码已提交，可以 push 触发 CI。按 `test-location-strategy` skill 决策测试位置：
+
+1. **检查 CI 已有结果**：`gh run list --workflow macos-ci.yml --branch <当前分支> --limit 1`
+   - `conclusion=success` 且 `headSha` 等于当前 HEAD → 复用 CI 结果，跳过本地测试
+   - `status=in_progress` → 等待 CI 完成，不重复触发
+2. **触发 CI**（无可用结果时）：`gh workflow run macos-ci.yml --ref <当前分支>` + `gh run watch <run-id> --exit-status`
+3. **本地测试**（**仅当** CI 不可用或用户明确要求）：`bash scripts/ci/test-macos.sh`
+
+- **CI 通过** → 更新状态文件，进入下一个子计划
+- **CI 失败** → **AskUserQuestion**：
+  - 选项 1（推荐）：回到步骤 4 修复
+  - 选项 2：本地复现排查
+  - 选项 3：跳过继续（不推荐）
+
+> **红线**：不得跳过本验证。步骤 4.3 的全量回归已延迟到此处，跳过等于放弃回归验证。
 
 更新状态文件的 `current_phase`。
 
@@ -1163,6 +1183,22 @@ git checkout "$BASE_BRANCH"
 git merge --no-ff <工作树分支>
 ```
 
+**合并后全量回归验证（CI 优先）**：合并产生新的 commit，必须验证合并后代码在 CI 中通过。按 `test-location-strategy` skill 决策测试位置：
+
+1. **本地快速冒烟**（可选，快速检测合并冲突遗留）：仅编译检查（如 `swift build --package-path MacimCore`），**不替代全量测试**
+2. **CI 全量验证**（**必需**）：
+   - **已 push**：`gh run list --workflow macos-ci.yml --branch "$BASE_BRANCH" --limit 1` 查找对应 SHA 的 run，`gh run watch` 等待结果
+   - **未 push**：先 `git push`，再等待 CI 结果（与步骤 8.2.1 相同流程）
+3. **本地全量测试**（**仅当** CI 不可用或用户明确要求）
+
+- **CI 通过** → 继续清理工作树
+- **CI 失败** → **AskUserQuestion**：
+  - 选项 1（推荐）：拉取 CI 日志分析，回到步骤 4 修复
+  - 选项 2：`git merge --abort` 撤销合并，回到步骤 4
+  - 选项 3：本地复现排查
+
+> **红线**：合并后不得跳过 CI 验证直接清理工作树。合并可能引入基线变更冲突，CI 是唯一的跨环境验证。
+
 清理工作树：删除工作树目录。
 
 工作流结束。
@@ -1221,5 +1257,20 @@ rm -f "$git_dir/feature-development-state.json"
 - 没有启动真实 app/浏览器或没有手动验收证据，却声称 UI 已验证
 - 审查发现问题但继续下一个子计划
 - 将多个阶段的无关变更混在同一个 commit
+- **在步骤 4.3 中直接本地跑全量回归**（必须延迟到步骤 4.5 提交后走 CI）
+- **跳过步骤 4.5 提交后全量回归验证**
+- **合并后跳过 CI 验证直接清理工作树**
+- **用"本地合并"作为跳过 CI 的理由**（合并方式不影响验证质量）
 
 **以上任一情况发生时，停止当前步骤，回到违规步骤重新执行。**
+
+## 测试位置 — 合理化借口表
+
+| 借口 | 现实 |
+|------|------|
+| "TDD 循环中代码未提交，无法触发 CI" | **步骤 4.3 的单测试文件绿灯可本地执行**（快速反馈），但**全量回归必须延迟到步骤 4.5**（代码已提交，可触发 CI）。未提交 ≠ 放弃 CI 验证。 |
+| "本地跑全量测试更快" | 快不等于可靠。CI 验证本地环境差异（签名、SDK、runner 配置），是工作流核心价值。快速反馈靠步骤 4.3 单测试文件本地验证，全量靠 CI。 |
+| "用户选了本地合并所以跳过 CI" | 合并方式（本地 merge vs PR）不影响验证质量。合并产生新 commit，必须验证。步骤 9.1 明确要求合并后走 CI。 |
+| "只是小特性，全量 CI 没必要" | 小特性的回归风险不一定小。CI 正是捕获意外回归。 |
+| "CI 太慢，影响效率" | 步骤 4.3 已提供快速本地绿灯反馈。步骤 4.5 的 CI 等待可与下一个子计划准备并行，不阻塞。 |
+| "本地测试通过了，CI 肯定也通过" | 本地环境 ≠ CI 环境。签名配置、SDK 版本、runner 权限差异都可能掩盖问题。 |
