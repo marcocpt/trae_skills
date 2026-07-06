@@ -563,25 +563,59 @@ EOF
 
 **失败** → 回到步骤 2 修复问题，不跳过
 
-#### 3.3.5 提交后全量回归验证（CI 优先）
+#### 3.3.5 提交后全量回归验证（CI 优先，必须 push）
 
-**本步是步骤 2.3 延迟的全量回归验证的唯一执行点。代码已提交，可以 push 触发 CI。**
+**本步是步骤 2.3 延迟的全量回归验证的唯一执行点。代码已提交，必须 push 到远端触发 CI 验证。**
 
-按 `test-location-strategy` skill 决策测试位置（CI 优先）：
+**核心原则**：本步的验证必须由远端 CI 完成。**禁止在本地执行测试作为 CI 的替代**——本地环境差异（签名、SDK、runner 配置）会掩盖问题，CI 是工作流核心价值。
 
-1. **检查 CI 已有结果**：`gh run list --workflow macos-ci.yml --branch <当前分支> --limit 1`
-   - `conclusion=success` 且 `headSha` 等于当前 HEAD → 复用 CI 结果，跳过本地测试
+按以下顺序执行（不得跳步、不得跳过本地测试兜底）：
+
+1. **检查分支是否已 push 到远端**：
+   ```bash
+   CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+   git ls-remote --exit-code --heads origin "$CURRENT_BRANCH" >/dev/null 2>&1
+   ```
+   - **退出码 0**（远端已有此分支）→ 进入步骤 2 检查 CI 已有结果
+   - **退出码非 0**（远端无此分支，新建分支未 push）→ **必须先 push**：
+     ```bash
+     git push -u origin "$CURRENT_BRANCH"
+     ```
+     - push 成功 → 进入步骤 2
+     - push 失败 → **AskUserQuestion**：
+       - 选项 1（推荐）：重试 push（排查网络/权限问题）
+       - 选项 2：停止工作流，排查 push 权限
+     - **禁止**：以 push 失败为由落到本地测试
+
+2. **检查 CI 已有结果**（分支已 push 到远端后）：`gh run list --workflow macos-ci.yml --branch <当前分支> --limit 1`
+   - `conclusion=success` 且 `headSha` 等于当前 HEAD → 复用 CI 结果，进入 3.4
    - `status=in_progress` → 等待 CI 完成，不重复触发
-2. **触发 CI**（无可用结果时）：`gh workflow run macos-ci.yml --ref <当前分支>` + `gh run watch <run-id> --exit-status`
-3. **本地测试**（**仅当** CI 不可用或用户明确要求）：`bash scripts/ci/test-macos.sh`
 
-- **成功** → 进入 3.4
-- **失败** → **AskUserQuestion**：
-  - 选项 1（推荐）：回到步骤 2 修复
-  - 选项 2：本地复现排查（`bash scripts/ci/test-macos.sh`）
+3. **触发 CI 并等待结果**（无可用 CI 结果时）：
+   ```bash
+   gh workflow run macos-ci.yml --ref <当前分支>
+   # 等 GitHub 注册新触发的 run
+   sleep 5
+   RUN_ID=$(gh run list --workflow macos-ci.yml --branch <当前分支> --limit 5 \
+     --json databaseId,headSha \
+     --jq ".[] | select(.headSha == \"$(git rev-parse HEAD)\") | .databaseId" | head -1)
+   gh run watch "$RUN_ID" --exit-status
+   ```
+   - **触发失败** → **AskUserQuestion**：
+     - 选项 1（推荐）：重试触发 CI
+     - 选项 2：停止工作流，排查 CI 配置
+   - **禁止**：以 CI 触发失败为由落到本地测试
+
+- **CI 通过** → 进入 3.4
+- **CI 失败**（测试用例未通过）→ **AskUserQuestion**：
+  - 选项 1（推荐）：拉取 CI 日志（`gh run view <run-id> --log-failed`）分析失败原因，回到步骤 2 修复
+  - 选项 2：本地复现排查（`bash scripts/ci/test-macos.sh`，**仅用于理解失败原因，修复后必须重新走 CI 验证**）
   - 选项 3：跳过继续（不推荐）
 
-> **红线**：不得跳过本步直接进入 3.4。步骤 2.3 的全量回归已延迟到此处，跳过等于放弃回归验证。
+> **红线**：
+> - 不得跳过本步直接进入 3.4。步骤 2.3 的全量回归已延迟到此处，跳过等于放弃回归验证。
+> - **分支未 push 时，必须先 push 再等待 CI，禁止落到本地测试**。本地测试不能作为 CI 的替代。
+> - **CI 触发失败不构成走本地测试的理由**。应排查 CI 配置或重试，而非降级验证。
 
 ### 3.4 同步 AI-test 测试工作树
 
@@ -992,6 +1026,8 @@ rm -f "$git_dir/bug-fix-state.json"
 - 未经用户确认修改回归测试
 - **在步骤 2 中直接本地跑全量回归**（必须延迟到步骤 3.3.5 走 CI）
 - **跳过步骤 3.3.5 提交后全量回归验证**
+- **分支未 push 时落到本地测试**（必须先 push 再等 CI，禁止本地测试兜底）
+- **以 CI 触发失败为由走本地测试**（应排查 CI 配置或重试，而非降级验证）
 - **合并后跳过 CI 验证直接清理工作树**
 - **用"本地合并"作为跳过 CI 的理由**（合并方式不影响验证质量）
 
@@ -1007,3 +1043,7 @@ rm -f "$git_dir/bug-fix-state.json"
 | "只是修个小 bug，全量 CI 没必要" | 小 bug 的回归风险不一定小。CI 正是捕获意外回归。 |
 | "CI 太慢，影响效率" | 步骤 2 已提供快速本地绿灯反馈。步骤 3.3.5 的 CI 等待可与步骤 3.2 文档编写并行，不阻塞。 |
 | "本地测试通过了，CI 肯定也通过" | 本地环境 ≠ CI 环境。签名配置、SDK 版本、runner 权限差异都可能掩盖问题。 |
+| "分支未 push，CI 触发不了，只能本地测" | 分支未 push 时必须先 `git push`，再等待远程 CI 结果。push 是 CI 验证的前置条件，不是跳过 CI 的理由。步骤 3.3.5 已明确要求先 push。 |
+| "gh workflow run 失败了，CI 不可用" | CI 触发失败应排查配置或重试，而非降级到本地测试。本地测试不能替代 CI 的跨环境验证。 |
+| "先本地验证逻辑，等权限好了再补 CI" | 本地测试无论包装成"预验证""逻辑检查"还是"先跑通再说"，都不能作为 3.3.5 的通过条件。3.3.5 必须等 push + CI 完成才能进入 3.4。 |
+| "远端仓库故障（500/维护），CI 物理上跑不了" | 远端不可用时停止工作流并等待恢复，不得降级本地测试。基础设施故障不改变验证标准。 |
