@@ -7,13 +7,13 @@ description: Use when user wants to review a document by asking questions one at
 
 ## 概述
 
-用户就一份文档逐条提问，助理解答后**必须**用 `AskUserQuestion` 工具给出 4 个固定选项让用户决定下一步。用户选「满意并加入 TODO」时**立即**把该条 TODO 追加到文件（及时落盘，避免会话中断丢失）；用户选「结束审核」后仅刷新头部汇总区，生成一份 **Logseq 格式**的 TODO 文档供后续 AI 持续改进；审核成果提交 git 后，可按功能模块归类分批调用 `bug-fix-workflow` 技能修复，每批修复完成 TODO→DONE 原位标记并与修复内容一起提交。
+用户就一份文档逐条提问，助理解答后**必须**用 `AskUserQuestion` 工具给出 4 个固定选项让用户决定下一步。用户选「满意并加入 TODO」时**立即**把该条 TODO 追加到文件（及时落盘，避免会话中断丢失）；用户选「结束审核」后仅刷新头部汇总区，生成一份 **Logseq 格式**的 TODO 文档供后续 AI 持续改进；审核成果提交 git 后，按 TODO 性质（bug 类 vs feature 类）自动判定后**逐条**路由到 `bug-fix-workflow` 或 `feature-development-workflow`，再按功能模块归类分批修复，每批修复完成 TODO→DONE 原位标记并与修复内容一起提交。
 
 支持两种审核模式（启动时询问确定，循环协议共享）：
 - **模式 A：纯文档审核** — 仅审核文档本身（设计是否合理、是否完整、是否有歧义）
 - **模式 B：文档-代码一致性审核** — 审核已有文档，并对照代码验证是否符合文档要求
 
-核心原则：**每轮答完必问、选项固定为 4、TODO 及时落盘、TODO 用 Logseq 语法、保存路径启动时确认、多方案必列必选、场景 B 必验证代码、审核与修复两次提交分离、批量修复按功能模块归类 ≤5 条/批。**
+核心原则：**每轮答完必问、选项固定为 4、TODO 及时落盘、TODO 用 Logseq 语法、保存路径启动时确认、多方案必列必选、场景 B 必验证代码、审核与修复两次提交分离、批量修复先按性质路由（bug 类→bug-fix-workflow / feature 类→feature-development-workflow）再按功能模块归类 ≤5 条/批。**
 
 ## 何时使用
 
@@ -130,22 +130,35 @@ description: Use when user wants to review a document by asking questions one at
 **前提**：第 4 步用户选「是」进入此流程。TODO 文件已提交，含 N 条 `- TODO` 条目。
 
 **5.1 归类分批**：
-- **维度**：按 TODO 的功能模块标签（`#登录`/`#支付流程`…）归类；同功能模块内按优先级（P0→P1→P2→P3）排序
+- **第一步：逐条性质判定**（在功能归类前完成）：对每条 TODO 判定属于 **bug 类** 还是 **feature 类**：
+  - **bug 类**：代码已存在（文件/函数/类齐全），仅行为与文档不符 → 调用 `bug-fix-workflow`。例：缺校验、值错、状态枚举不一致、逻辑分支错。
+  - **feature 类**：文档描述的功能在代码中**完全缺失**（无对应文件/目录）或**仅有空桩**（`pass`/`NotImplementedError`/空函数体），需从零实现或补全实现 → 调用 `feature-development-workflow`。例：整个模块缺失、函数只有 `pass`、类只有声明无方法体。
+  - **边界规则**：空桩一律算 feature 类（即使骨架已就位）；仅改值/加校验/补分支算 bug 类。判定不清时用 `AskUserQuestion` 让用户裁定，不得默认归 bug 类。
+- **第二步：功能模块归类**：按 TODO 的功能模块标签（`#登录`/`#支付流程`…）归类；同功能模块内按优先级（P0→P1→P2→P3）排序
 - **批次大小**：单批次 ≤ 5 条；同功能模块超过 5 条时按优先级拆成多批（P0+P1 优先成批）
 - **跨功能 P0**：即使只有 1 条，也单独成批，避免被埋在大批次里
 - **不跨功能合并**：小批次（1-2 条 P2/P3）也不与其他功能模块合并
-- 归类结果用 `AskUserQuestion` 展示给用户确认批次划分后再开始修复
+- **不跨性质合并**：同一批次内不得混修 bug 类与 feature 类（两个技能内部流程不同，混批会让 `scope` 与提交语义混乱）；同功能模块若同时含两类，按性质拆成两批
+- 归类结果用 `AskUserQuestion` 展示给用户确认批次划分（含每批性质标签 bug/feature）后再开始修复
 
 **5.2 逐批修复**（从 P0 批或功能模块 1 批开始）：
 
 每批修复流程：
-1. **调用 `bug-fix-workflow` 技能**，传 3 个必传项：
-   - 本批 TODO 编号列表（如 [1, 3, 5]）
-   - TODO 文件绝对路径
-   - 被审核文档路径 / 代码库根目录（模式 B 时）
-2. **不干预 `bug-fix-workflow` 内部**：TDD、验证、提交消息格式由其按自身规范执行；本技能仅提供 scope 建议（= 功能标签）
+1. **按批次性质路由技能**（性质已在 5.1 判定，本步不得重新判定或偷懒一律走 bug-fix-workflow）：
+   - 批次性质 = **bug 类** → 调用 `bug-fix-workflow` 技能
+   - 批次性质 = **feature 类** → 调用 `feature-development-workflow` 技能
+   - **降级规则**（feature 类 → bug-fix-workflow 的唯一可选路径，须同时满足全部条件）：
+     - ✅ 纯后端逻辑（无 UI / 无可见行为 / 无 E2E 证据需求）
+     - ✅ 规模极小：**单函数补全实现**，不跨文件、不跨模块
+     - ✅ 不涉及状态流转 / 回调处理 / 外部系统交互 / 多函数协作
+     - 须在 commit message body 注明降级原因（如"降级使用 bug-fix-workflow：纯后端单函数补全，符合降级条件"）
+   - **禁止降级**的情形（任一命中即必须走 `feature-development-workflow`）：涉及 UI/可见行为/E2E 证据；跨文件或多函数；状态流转/回调/外部系统交互；整个模块/目录缺失；类有多方法需实现
+   - 传 3 个必传项：本批 TODO 编号列表（如 [1, 3, 5]）、TODO 文件绝对路径、被审核文档路径 / 代码库根目录（模式 B 时）
+2. **不干预被调用技能内部**：TDD/设计规范/验证/提交消息格式由其按自身规范执行；本技能仅提供 scope 建议（= 功能标签）
 3. **修复完成后更新 TODO 文件**：把本批条目的 `- TODO N.` 改为 `- DONE N.`，其他属性行不动，条目留原位
-4. **提交修复成果**：`git add <修复的文件> <TODO 文件>` + `git commit`，commit message 格式 `fix(<scope>): 修复 <doc-name> 审核的第 X 批 N 个问题`（`<scope>` = 功能标签）
+4. **提交修复成果**：`git add <修复的文件> <TODO 文件>` + `git commit`，commit message 格式：
+   - bug 类批次：`fix(<scope>): 修复 <doc-name> 审核的第 X 批 N 个问题`（`<scope>` = 功能标签）
+   - feature 类批次：`feat(<scope>): 实现 <doc-name> 审核的第 X 批 N 个缺失功能`（`<scope>` = 功能标签）
 
 **5.3 询问是否继续下一批**（每批提交后，用 `AskUserQuestion`，4 选项）：
 
@@ -173,9 +186,12 @@ description: Use when user wants to review a document by asking questions one at
 - **TODO 积压到结束才写**（用户选「满意并加入 TODO」后未立即追加到文件）→ 必须每次标记立即追加，禁止积压
 - **多方案问题未列方案就解答**（或未让用户用 `AskUserQuestion` 选定方案）→ 必须列全部候选方案 + 推荐方案 + 理由，并让用户选定
 - **TODO 改进建议字段堆砌多方案** → 只写用户选定的方案，多方案讨论留在会话记录里
-- **批量修复未归类就开修** → 必须先按功能模块标签归类分批，且用 `AskUserQuestion` 让用户确认批次划分
+- **批量修复未归类就开修** → 必须先按性质判定（bug/feature）再按功能模块标签归类分批，且用 `AskUserQuestion` 让用户确认批次划分（含性质标签）
+- **跳过 5.1 性质判定直接调 bug-fix-workflow** → 5.1 第一步逐条性质判定是必经步骤；不得跳过判定、不得在 5.2 重新判定、不得偷懒一律走 bug-fix-workflow
+- **对 feature 类 TODO（空桩/模块缺失/函数体只有 pass）硬套 bug-fix-workflow** → feature 类必须走 `feature-development-workflow`；仅当同时满足「纯后端 + 单函数补全 + 不跨文件 + 无状态流转/回调/外部系统交互」时可降级，且须在 commit message body 注明降级原因；命中任一禁止降级情形（UI/可见行为/E2E/跨文件/多函数/状态流转/回调/外部系统/整个模块缺失/类多方法）时强制走 feature-development-workflow
+- **同批次混修 bug 类与 feature 类** → 两技能内部流程不同，不得混批；同功能模块若同时含两类按性质拆成两批
 - **批次超 5 条** → 必须按优先级拆分；跨功能 P0 必须单独成批
-- **未提交就改 TODO 为 DONE** → 必须先由 `bug-fix-workflow` 完成修复并提交，再改 `- TODO` 为 `- DONE` 并随修复内容一起提交
+- **未提交就改 TODO 为 DONE** → 必须先由被调用技能（bug-fix-workflow / feature-development-workflow）完成修复并提交，再改 `- TODO` 为 `- DONE` 并随修复内容一起提交
 - **批次未完成就询问是否继续** → 必须本批完全修复 + 提交后才能询问；批次中不引入 DOING 半成品状态
 - **未询问就自动修下一批** → 除用户选「全部自动修复」外，每批提交后必须用 `AskUserQuestion` 询问
 
@@ -200,9 +216,13 @@ description: Use when user wants to review a document by asking questions one at
 | 多方案问题未列方案/未让用户选 | 必须列全部候选 + 推荐方案 + 理由，用 `AskUserQuestion` 让用户选定 |
 | TODO 改进建议字段堆砌多方案 | 只写用户选定的方案，多方案讨论留在会话记录里 |
 | 结束审核后不汇总 | 必须输出优先级分布 |
-| 批量修复未归类就开修 | 必须先按功能模块标签归类分批，`AskUserQuestion` 让用户确认 |
+| 批量修复未归类就开修 | 必须先按性质判定（bug/feature）再按功能模块标签归类分批，`AskUserQuestion` 让用户确认（含性质标签） |
+| 跳过 5.1 性质判定直接调 bug-fix-workflow | 5.1 第一步逐条性质判定是必经步骤；不得跳过、不得在 5.2 重新判定、不得偷懒一律走 bug-fix-workflow |
+| feature 类 TODO（空桩/模块缺失/pass）硬套 bug-fix-workflow | feature 类必须走 `feature-development-workflow`；仅当同时满足「纯后端 + 单函数补全 + 不跨文件 + 无状态流转/回调/外部系统交互」时可降级，且须在 commit message body 注明降级原因；命中禁止降级情形（UI/可见行为/E2E/跨文件/多函数/状态流转/回调/外部系统/整个模块缺失/类多方法）时强制走 feature-development-workflow |
+| 滥用降级（跨文件/状态流转/整个模块缺失也降级到 bug-fix-workflow） | 降级须同时满足全部 3 条件；任一禁止降级情形命中即必须走 feature-development-workflow |
+| 同批次混修 bug 类与 feature 类 | 两技能流程不同不得混批；同功能模块含两类时按性质拆成两批 |
 | 批次超 5 条 | 必须按优先级拆分；跨功能 P0 单独成批 |
-| 未提交就改 TODO 为 DONE | 必须先由 bug-fix-workflow 完成修复并提交，再改 TODO→DONE 一起提交 |
+| 未提交就改 TODO 为 DONE | 必须先由被调用技能（bug-fix-workflow / feature-development-workflow）完成修复并提交，再改 TODO→DONE 一起提交 |
 | 批次中用 DOING 标记半成品 | 不引入 DOING；本批完全修复+提交后才改 DONE |
 | 未询问就自动修下一批 | 除「全部自动修复」外，每批提交后必须 `AskUserQuestion` 询问 |
 
@@ -225,6 +245,12 @@ description: Use when user wants to review a document by asking questions one at
 | "批次中用 DOING 标记进度更清晰" | 半成品状态会混乱；必须本批完全修复+提交后一次性改 TODO→DONE |
 | "审核完不提交 TODO，等修完一起提交" | 审核成果与修复成果混在一个 commit 不可回溯；必须两次提交分离 |
 | "归类太麻烦，按编号顺序修就行" | 同功能模块一起修上下文连贯、效率高；必须按功能标签归类分批 |
+| "TDD 仍可适用，feature 类用 bug-fix-workflow 也行" | TDD 通用性不等于技能匹配；feature 类涉及设计规范/可见行为/E2E 证据，`feature-development-workflow` 才是正确流程，硬套 bug-fix-workflow 会跳过设计阶段 |
+| "技能文档写死了 bug-fix-workflow，我没权换" | 5.1 已要求逐条性质判定，5.2 已按性质路由；不判定就一律走 bug-fix-workflow 才是违反文档 |
+| "判定 bug/feature 太麻烦，统一走 bug-fix-workflow 更省事" | 性质判定是 5.1 必经步骤；省事不等于正确，错配技能会让 feature 类跳过设计规范阶段 |
+| "空桩也算 bug，补全实现就是修 bug" | 空桩（pass/NotImplementedError/空函数体）一律算 feature 类；"补全实现"本质是实现新功能，非修 bug |
+| "降级用 bug-fix-workflow 不用注明原因" | 降级必须在 commit message body 注明原因，否则无法回溯为何跳过 feature-development-workflow |
+| "跨文件/状态流转/整个模块缺失也可降级，反正都是补实现" | 降级须同时满足「纯后端 + 单函数补全 + 不跨文件 + 无状态流转/回调/外部系统交互」全部条件；任一禁止降级情形命中即必须走 feature-development-workflow，不得扩大降级范围 |
 
 ## 实际效果
 
@@ -234,5 +260,6 @@ description: Use when user wants to review a document by asking questions one at
 - Logseq 格式可在知识库中直接渲染为待办追踪
 - 每条 TODO 含文档位置锚点，AI 改进时可精确定位
 - 审核成果与修复成果分两次提交，git log 可回溯
-- 批量修复按功能模块归类，同模块上下文连贯，每批 ≤5 条可控
-- 修复完成后 TODO→DONE 原位标记，状态与代码提交同步
+- 批量修复按性质路由（bug 类→bug-fix-workflow / feature 类→feature-development-workflow），避免 feature 类错配 TDD 修 bug 流程而跳过设计规范阶段
+- 批量修复按功能模块归类，同模块上下文连贯，每批 ≤5 条可控，同批次不混性质
+- 修复完成后 TODO→DONE 原位标记，状态与代码提交同步，bug 类用 `fix()` / feature 类用 `feat()` 提交语义清晰
