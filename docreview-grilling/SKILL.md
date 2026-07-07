@@ -7,13 +7,13 @@ description: Use when user wants to review a document by asking questions one at
 
 ## 概述
 
-用户就一份文档逐条提问，助理解答后**必须**用 `AskUserQuestion` 工具给出 4 个固定选项让用户决定下一步。用户选「满意并加入 TODO」时**立即**把该条 TODO 追加到文件（及时落盘，避免会话中断丢失）；用户选「结束审核」后仅刷新头部汇总区，生成一份 **Logseq 格式**的 TODO 文档供后续 AI 持续改进；审核成果提交 git 后，按 TODO 性质（bug 类 vs feature 类）自动判定后**逐条**路由到 `bug-fix-workflow` 或 `feature-development-workflow`，再按功能模块归类分批修复，每批修复完成 TODO→DONE 原位标记并与修复内容一起提交。
+用户就一份文档逐条提问，助理解答后**必须**用 `AskUserQuestion` 工具给出 4 个固定选项让用户决定下一步。用户选「满意并加入 TODO」时**立即**把该条 TODO 追加到文件（及时落盘，避免会话中断丢失）；用户选「结束审核」后仅刷新头部汇总区，生成一份 **Logseq 格式**的 TODO 文档供后续 AI 持续改进；收尾时按「文件级冲突最小化」创建并行分组并写入 TODO 文件、给出并行开发建议；审核成果提交 git 后，按 TODO 性质（bug 类 vs feature 类）自动判定后**逐条**路由到 `bug-fix-workflow` 或 `feature-development-workflow`，再按功能模块归类分批修复，每批修复完成 TODO→DONE 原位标记并与修复内容一起提交。
 
 支持两种审核模式（启动时询问确定，循环协议共享）：
 - **模式 A：纯文档审核** — 仅审核文档本身（设计是否合理、是否完整、是否有歧义）
 - **模式 B：文档-代码一致性审核** — 审核已有文档，并对照代码验证是否符合文档要求
 
-核心原则：**每轮答完必问、选项固定为 4、TODO 及时落盘、TODO 用 Logseq 语法、保存路径启动时确认、多方案必列必选、场景 B 必验证代码、审核与修复两次提交分离、批量修复先按性质路由（bug 类→bug-fix-workflow / feature 类→feature-development-workflow）再按功能模块归类 ≤5 条/批。**
+核心原则：**每轮答完必问、选项固定为 4、TODO 及时落盘、TODO 用 Logseq 语法、保存路径启动时确认、多方案必列必选、场景 B 必验证代码、收尾必创建并行分组写入 TODO、审核与修复两次提交分离、批量修复先按性质路由（bug 类→bug-fix-workflow / feature 类→feature-development-workflow）再按功能模块归类 ≤5 条/批。**
 
 ## 何时使用
 
@@ -75,7 +75,7 @@ description: Use when user wants to review a document by asking questions one at
 
 **后续每次追加**：用户每选一次「满意并加入 TODO，继续」，**立即**把该条 TODO 追加到文件末尾，编号 = 已追加条数 + 1，即时分配。不重写头部，不重写已有 TODO 行。
 
-**结束审核时**：用户选「结束审核并生成 TODO」后，仅刷新头部汇总区（问题总数 = 已追加条数，优先级分布按实际统计）。TODO 行已在过程中落盘，不重写。
+**结束审核时**：用户选「结束审核并生成 TODO」后，刷新头部汇总区（问题总数 = 已追加条数，优先级分布按实际统计），并在头部汇总区与首条 TODO 之间**插入「并行分组」区块**（详见第 4 步第 3 项）。TODO 行已在过程中落盘，不重写；并行分组区块为新增插入，不重写已有内容。
 
 **空场景**：若用户从未选过「满意并加入 TODO」就直接结束，文件未创建，**直接不写文件，不询问**。
 
@@ -89,6 +89,15 @@ description: Use when user wants to review a document by asking questions one at
 - 审核时间:: YYYY-MM-DD HH:MM
 - 问题总数:: N
 - P0:: x | P1:: x | P2:: x | P3:: x
+
+- 并行分组（按冲突最小化，供并行开发参考）   ← 收尾时生成，详见第 4 步第 3 项
+  - 可并行批次（互不冲突文件，可同时分派多个开发者/代理）
+    - 批次 P1:: T2(src/payment/callback.ts) | T5(src/user/list.ts) | T6(src/auth/permission.ts) | T7(src/report/export.ts)
+    - 批次 P2:: T4(src/payment/order.ts)   ← 与 T2 同 #支付流程 但不同文件，可与 P1 并行
+  - 需串行批次（共享文件，必须串行）
+    - 串行组 S1:: T1 → T3 → T8（均触 src/auth/login.ts，建议按 P0→P1→P3 顺序）
+  - 分组依据:: 模式 B 按「代码位置」文件路径；模式 A 或无代码位置条目按功能标签（同标签串行、不同标签并行）
+  - 并行建议:: P1+P2 共 5 条可由 2+ 开发者/代理同时进行；S1 内 3 条需串行
 
 - TODO 1. [P1] 问题简述 #登录
   - 文档位置:: [file.md#L10-20](file:///absolute/path/to/file.md#L10-20)
@@ -120,10 +129,28 @@ description: Use when user wants to review a document by asking questions one at
 ### 4. 收尾
 
 结束审核（已刷新头部汇总区）后：
-1. 若文件已创建：输出文件路径（用 markdown 链接 `[文件名](file:///绝对路径)`）；若未创建（空场景）：告知用户本次未记录 TODO，流程结束
+1. 若文件已创建：输出文件路径（用 markdown 链接 `[文件名](file:///绝对路径)`）；若未创建（空场景）：告知用户本次未记录 TODO，流程结束（后续步骤全部跳过）
 2. 简要汇总：N 个问题，按优先级分布（如 P0:1 / P1:3 / P2:2）
-3. **提交 TODO 文件**（审核成果落库）：`git add <TODO 文件>` + `git commit`，commit message 格式 `docs(docreview-grilling): 记录 <doc-name> 审核发现的 N 个 TODO`。与后续修复提交解耦。
-4. 用 `AskUserQuestion` 询问是否立即进入批量修复流程（第 5 步）：是 → 进入第 5 步；否 → 流程结束，保留 TODO 供后续处理
+3. **创建并行分组并写入 TODO 文件**（按冲突最小化，供并行开发参考；空场景跳过）：
+   - **分组依据**：
+     - 模式 B：按各 TODO「代码位置」字段的文件路径做**文件级冲突分析**。文件集合有交集的 TODO 归为同一「串行组」；无交集的归为「可并行批次」。**仅看文件路径，不看功能标签**（同功能标签但不同文件 = 可并行；同文件不同行 = 仍归串行组，因共享文件需串行修改）
+     - 模式 A（无代码位置）或模式 B 中无代码位置的条目：按功能标签分组（同标签 = 潜在冲突归串行组；不同标签 = 可并行）
+     - 既无代码位置又无功能标签：默认归"无冲突可并行"
+   - **写入位置**：TODO 文件中头部汇总区之后、首条 TODO 之前（插入新区块，不重写头部、不重写已有 TODO 行）
+   - **区块结构**（Logseq 缩进列表）：
+     ```
+     - 并行分组（按冲突最小化，供并行开发参考）
+       - 可并行批次（互不冲突文件，可同时分派多个开发者/代理）
+         - 批次 P1:: T2(src/payment/callback.ts) | T5(src/user/list.ts) | T6(src/auth/permission.ts) | T7(src/report/export.ts)
+         - 批次 P2:: T4(src/payment/order.ts)   ← 与 T2 同 #支付流程 但不同文件，可与 P1 并行
+       - 需串行批次（共享文件，必须串行）
+         - 串行组 S1:: T1 → T3 → T8（均触 src/auth/login.ts，建议按 P0→P1→P3 顺序）
+       - 分组依据:: 模式 B 按「代码位置」文件路径；模式 A 或无代码位置条目按功能标签（同标签串行、不同标签并行）
+       - 并行建议:: P1+P2 共 5 条可由 2+ 开发者/代理同时进行；S1 内 3 条需串行
+     ```
+   - **建议内容必须包含**：哪些批次可同时启动、哪些必须串行、串行组内的建议顺序（按 P0→P1→P2→P3）
+4. **提交 TODO 文件**（含并行分组，审核成果落库）：`git add <TODO 文件>` + `git commit`，commit message 格式 `docs(docreview-grilling): 记录 <doc-name> 审核发现的 N 个 TODO`。与后续修复提交解耦。
+5. 用 `AskUserQuestion` 询问是否立即进入批量修复流程（第 5 步）：是 → 进入第 5 步；否 → 流程结束，保留 TODO 供后续处理
 
 ### 5. 批量修复流程
 
@@ -186,6 +213,11 @@ description: Use when user wants to review a document by asking questions one at
 - **TODO 积压到结束才写**（用户选「满意并加入 TODO」后未立即追加到文件）→ 必须每次标记立即追加，禁止积压
 - **多方案问题未列方案就解答**（或未让用户用 `AskUserQuestion` 选定方案）→ 必须列全部候选方案 + 推荐方案 + 理由，并让用户选定
 - **TODO 改进建议字段堆砌多方案** → 只写用户选定的方案，多方案讨论留在会话记录里
+- **收尾未创建并行分组就提交 TODO** → 必须在第 4 步第 3 项创建并行分组并写入 TODO 文件后再提交（第 4 步第 4 项）
+- **模式 B 并行分组按功能标签而非文件路径**（有代码位置却按标签分组）→ 模式 B 必须按「代码位置」文件路径做文件级冲突分析；同标签不同文件 = 可并行；仅模式 A 或无代码位置条目才按功能标签
+- **并行分组写入位置错误**（重写头部或重写已有 TODO 行）→ 必须插入头部汇总区之后、首条 TODO 之前；不重写已有内容
+- **并行分组不给建议**（只列批次不给并行/串行建议）→ 建议内容必须包含：哪些可同时启动、哪些必须串行、串行顺序（P0→P1→P2→P3）
+- **空场景仍创建并行分组** → TODO 文件未创建时跳过此步（与收尾第 1 项空场景一致）
 - **批量修复未归类就开修** → 必须先按性质判定（bug/feature）再按功能模块标签归类分批，且用 `AskUserQuestion` 让用户确认批次划分（含性质标签）
 - **跳过 5.1 性质判定直接调 bug-fix-workflow** → 5.1 第一步逐条性质判定是必经步骤；不得跳过判定、不得在 5.2 重新判定、不得偷懒一律走 bug-fix-workflow
 - **对 feature 类 TODO（空桩/模块缺失/函数体只有 pass）硬套 bug-fix-workflow** → feature 类必须走 `feature-development-workflow`；仅当同时满足「纯后端 + 单函数补全 + 不跨文件 + 无状态流转/回调/外部系统交互」时可降级，且须在 commit message body 注明降级原因；命中任一禁止降级情形（UI/可见行为/E2E/跨文件/多函数/状态流转/回调/外部系统/整个模块缺失/类多方法）时强制走 feature-development-workflow
@@ -216,6 +248,11 @@ description: Use when user wants to review a document by asking questions one at
 | 多方案问题未列方案/未让用户选 | 必须列全部候选 + 推荐方案 + 理由，用 `AskUserQuestion` 让用户选定 |
 | TODO 改进建议字段堆砌多方案 | 只写用户选定的方案，多方案讨论留在会话记录里 |
 | 结束审核后不汇总 | 必须输出优先级分布 |
+| 收尾未创建并行分组就提交 | 必须在第 4 步第 3 项创建并行分组并写入 TODO 文件后再提交（第 4 步第 4 项） |
+| 模式 B 并行分组按功能标签而非文件 | 模式 B 必须按「代码位置」文件路径做文件级冲突分析；同标签不同文件 = 可并行；模式 A 或无代码位置条目才按功能标签 |
+| 并行分组重写头部/已有 TODO 行 | 必须插入头部汇总区之后、首条 TODO 之前，不重写已有内容 |
+| 并行分组只列批次不给建议 | 建议必须含：哪些可同时启动、哪些必须串行、串行顺序（P0→P1→P2→P3） |
+| 空场景仍创建并行分组 | TODO 文件未创建时跳过此步 |
 | 批量修复未归类就开修 | 必须先按性质判定（bug/feature）再按功能模块标签归类分批，`AskUserQuestion` 让用户确认（含性质标签） |
 | 跳过 5.1 性质判定直接调 bug-fix-workflow | 5.1 第一步逐条性质判定是必经步骤；不得跳过、不得在 5.2 重新判定、不得偷懒一律走 bug-fix-workflow |
 | feature 类 TODO（空桩/模块缺失/pass）硬套 bug-fix-workflow | feature 类必须走 `feature-development-workflow`；仅当同时满足「纯后端 + 单函数补全 + 不跨文件 + 无状态流转/回调/外部系统交互」时可降级，且须在 commit message body 注明降级原因；命中禁止降级情形（UI/可见行为/E2E/跨文件/多函数/状态流转/回调/外部系统/整个模块缺失/类多方法）时强制走 feature-development-workflow |
@@ -245,6 +282,10 @@ description: Use when user wants to review a document by asking questions one at
 | "批次中用 DOING 标记进度更清晰" | 半成品状态会混乱；必须本批完全修复+提交后一次性改 TODO→DONE |
 | "审核完不提交 TODO，等修完一起提交" | 审核成果与修复成果混在一个 commit 不可回溯；必须两次提交分离 |
 | "归类太麻烦，按编号顺序修就行" | 同功能模块一起修上下文连贯、效率高；必须按功能标签归类分批 |
+| "5.1 已有归类分批，收尾再分组重复" | 5.1 按"性质+功能模块+优先级"为串行批次修复；收尾并行分组按"文件冲突"为并行开发参考，维度不同，不重复 |
+| "按功能标签分组就够了，何必看文件" | 模式 B 有代码位置时必须按文件路径；同标签不同文件可并行，标签分组会误判为串行 |
+| "分组信息不必写入 TODO 文件" | 用户要求写入；不写入则并行开发者/代理拿不到分组，分组沦为口头建议 |
+| "并行建议可选，列批次即可" | 必须给出哪些可同时启动、哪些必须串行、串行顺序；不给建议则分组无操作性 |
 | "TDD 仍可适用，feature 类用 bug-fix-workflow 也行" | TDD 通用性不等于技能匹配；feature 类涉及设计规范/可见行为/E2E 证据，`feature-development-workflow` 才是正确流程，硬套 bug-fix-workflow 会跳过设计阶段 |
 | "技能文档写死了 bug-fix-workflow，我没权换" | 5.1 已要求逐条性质判定，5.2 已按性质路由；不判定就一律走 bug-fix-workflow 才是违反文档 |
 | "判定 bug/feature 太麻烦，统一走 bug-fix-workflow 更省事" | 性质判定是 5.1 必经步骤；省事不等于正确，错配技能会让 feature 类跳过设计规范阶段 |
@@ -260,6 +301,7 @@ description: Use when user wants to review a document by asking questions one at
 - Logseq 格式可在知识库中直接渲染为待办追踪
 - 每条 TODO 含文档位置锚点，AI 改进时可精确定位
 - 审核成果与修复成果分两次提交，git log 可回溯
+- 收尾时按文件级冲突最小化创建并行分组并写入 TODO 文件，并行开发者/代理可直接读取分组同时启动互不冲突的批次，串行组内按优先级排队
 - 批量修复按性质路由（bug 类→bug-fix-workflow / feature 类→feature-development-workflow），避免 feature 类错配 TDD 修 bug 流程而跳过设计规范阶段
 - 批量修复按功能模块归类，同模块上下文连贯，每批 ≤5 条可控，同批次不混性质
 - 修复完成后 TODO→DONE 原位标记，状态与代码提交同步，bug 类用 `fix()` / feature 类用 `feat()` 提交语义清晰
