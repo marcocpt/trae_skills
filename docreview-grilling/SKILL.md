@@ -7,13 +7,13 @@ description: Use when user wants to review a document by asking questions one at
 
 ## 概述
 
-用户就一份文档逐条提问，助理解答后**必须**用 `AskUserQuestion` 工具给出 4 个固定选项让用户决定下一步。用户选「满意并加入 TODO」时**立即**把该条 TODO 追加到文件（及时落盘，避免会话中断丢失）；用户选「结束审核」后仅刷新头部汇总区，生成一份 **Logseq 格式**的 TODO 文档供后续 AI 持续改进；收尾时按「文件级冲突最小化」创建并行分组并写入 TODO 文件、给出并行开发建议；审核成果提交 git 后，按 TODO 性质（bug 类 vs feature 类）自动判定后**逐条**路由到 `bug-fix-workflow` 或 `feature-development-workflow`，再按功能模块归类分批修复，每批修复完成 TODO→DONE 原位标记并与修复内容一起提交。
+用户就一份文档逐条提问，助理解答后**必须**用 `AskUserQuestion` 工具给出 4 个固定选项让用户决定下一步。用户选「满意并加入 TODO」时**立即**把该条 TODO 追加到文件（及时落盘，避免会话中断丢失）；用户选「结束审核」后仅刷新头部汇总区，生成一份 **Logseq 格式**的 TODO 文档供后续 AI 持续改进；收尾时按「文件级冲突最小化」创建并行分组并写入 TODO 文件、给出并行开发建议；审核成果提交 git 后，按 TODO 性质（bug 类 vs feature 类）自动判定后**逐条**路由到 `bug-fix-workflow` 或 `feature-development-workflow`，再按功能模块归类分批修复，每批修复完成 TODO→DONE 原位标记并追加 `修复SHA:: <短SHA>`（指向本批修复 commit tip）后提交。
 
 支持两种审核模式（启动时询问确定，循环协议共享）：
 - **模式 A：纯文档审核** — 仅审核文档本身（设计是否合理、是否完整、是否有歧义）
 - **模式 B：文档-代码一致性审核** — 审核已有文档，并对照代码验证是否符合文档要求
 
-核心原则：**每轮答完必问、选项固定为 4、TODO 及时落盘、TODO 用 Logseq 语法、保存路径启动时确认、多方案必列必选、场景 B 必验证代码、收尾必创建并行分组写入 TODO、审核与修复两次提交分离、批量修复先按性质路由（bug 类→bug-fix-workflow / feature 类→feature-development-workflow）再按功能模块归类 ≤5 条/批。**
+核心原则：**每轮答完必问、选项固定为 4、TODO 及时落盘、TODO 用 Logseq 语法、保存路径启动时确认、多方案必列必选、场景 B 必验证代码、收尾必创建并行分组写入 TODO、审核与修复两次提交分离、批量修复先按性质路由（bug 类→bug-fix-workflow / feature 类→feature-development-workflow）再按功能模块归类 ≤5 条/批、标记 DONE 必随附修复SHA。**
 
 ## 何时使用
 
@@ -108,6 +108,8 @@ description: Use when user wants to review a document by asking questions one at
 
 > 代码位置属性行**按需添加**：仅当该问题实际通过 `Task` 工具分派 `search` 子代理验证过代码并需要引用代码锚点时才写；未引用代码时**完全省略该属性行**（不留空值）。模式 A 通常全部省略，模式 B 也只在真正引用了代码时才写。
 
+> 修复SHA 属性行**仅 DONE 时追加**：条目在 5.2 第 3 步标记为 `- DONE` 时，于该条目末尾追加 `修复SHA:: <短SHA>`（值 = 本批修复 commit tip 的短 SHA，由 `git log -1 --format=%h` 取得）。TODO 状态下**不写**该属性行；标记 DONE 时作为该条目**最后一个**属性行追加（在代码位置属性行之后，若存在）。
+
 **第一行要求**：简洁、准确、可独立理解问题（脱离上下文也能看懂）。分类标签用产品功能（如 `#登录`、`#支付流程`），无法归类到具体功能时用 `#通用`。
 - ✅ `- TODO 1. [P1] 登录模块缺少双因素认证说明 #登录 #权限控制`
 - ❌ `- TODO 1. [P1] description 有问题 #内容`（标签用了已废弃的性质标签，且描述笼统）
@@ -122,6 +124,7 @@ description: Use when user wants to review a document by asking questions one at
 | 现状 | 文档当前怎么写的 |
 | 改进建议 | 应该怎么改（含改文档/改代码的指向）。若审核过程中该问题经多方案选择，**只写用户选定的方案**，不堆砌多方案 |
 | 代码位置 | 可选。可点击链接 `[文本](file:///绝对路径#L行号)`。**仅在实际引用代码锚点时添加；未引用则完全省略该属性行（不留空值）** |
+| 修复SHA | 仅 DONE 时追加。`修复SHA:: <短SHA>`，值为本批修复 commit tip 的短 SHA（`git log -1 --format=%h`）。TODO 状态下不写该属性行；标记 DONE 时作为该条目**最后一个**属性行追加（在代码位置属性行之后，若存在） |
 
 分类标签取值：**按产品功能动态生成**（如 `#登录`、`#支付流程`、`#权限控制`、`#导出报告`），由 AI 审核时根据问题涉及的功能模块命名；无法归类到具体功能时用 `#通用`；可多标签，至少 1 个。
 优先级取值：P0(阻塞) / P1(重要) / P2(一般) / P3(优化)
@@ -182,8 +185,8 @@ description: Use when user wants to review a document by asking questions one at
    - **禁止降级**的情形（任一命中即必须走 `feature-development-workflow`）：涉及 UI/可见行为/E2E 证据；跨文件或多函数；状态流转/回调/外部系统交互；整个模块/目录缺失；类有多方法需实现
    - 传 3 个必传项：本批 TODO 编号列表（如 [1, 3, 5]）、TODO 文件绝对路径、被审核文档路径 / 代码库根目录（模式 B 时）
 2. **不干预被调用技能内部**：TDD/设计规范/验证/提交消息格式由其按自身规范执行；本技能仅提供 scope 建议（= 功能标签）
-3. **修复完成后更新 TODO 文件**：把本批条目的 `- TODO N.` 改为 `- DONE N.`，其他属性行不动，条目留原位
-4. **提交修复成果**：`git add <修复的文件> <TODO 文件>` + `git commit`，commit message 格式：
+3. **获取修复提交 SHA 并更新 TODO 文件**：被调用技能（bug-fix-workflow / feature-development-workflow）已在内部完成代码修复并提交（其工作流含提交+push）。先用 `git log -1 --format=%h` 取最新提交的短 SHA（= 本批修复 commit 的 tip）；再把本批条目的 `- TODO N.` 改为 `- DONE N.`，**并在每条条目末尾追加一行 `修复SHA:: <短SHA>`**（作为该条目最后一个缩进属性行，紧跟在原有属性行之后），其他属性行不动，条目留原位。若被调用技能产出多个 commit（如修复+lint+合并），取最后一个（tip）的短 SHA；完整范围可由上一批次 tip 或审核提交（第 4 步第 4 项）起 `git log` 追溯。**若工作区仍有未提交的修复变更**（被调用技能未完成提交），须先让其完成提交再取 SHA，不得在未提交状态下取 SHA。
+4. **提交修复成果**：`git add <修复的文件> <TODO 文件>` + `git commit`（修复的文件已由被调用技能提交，此处 `git add` 对其为空操作，仅 TODO 文件含 DONE+修复SHA 的新变更），commit message 格式：
    - bug 类批次：`fix(<scope>): 修复 <doc-name> 审核的第 X 批 N 个问题`（`<scope>` = 功能标签）
    - feature 类批次：`feat(<scope>): 实现 <doc-name> 审核的第 X 批 N 个缺失功能`（`<scope>` = 功能标签）
 
@@ -226,6 +229,7 @@ description: Use when user wants to review a document by asking questions one at
 - **未提交就改 TODO 为 DONE** → 必须先由被调用技能（bug-fix-workflow / feature-development-workflow）完成修复并提交，再改 `- TODO` 为 `- DONE` 并随修复内容一起提交
 - **批次未完成就询问是否继续** → 必须本批完全修复 + 提交后才能询问；批次中不引入 DOING 半成品状态
 - **未询问就自动修下一批** → 除用户选「全部自动修复」外，每批提交后必须用 `AskUserQuestion` 询问
+- **标记 DONE 时未追加修复SHA**（或漏取、或用错 SHA 来源）→ 必须先用 `git log -1 --format=%h` 取本批修复 commit tip 的短 SHA，再随 TODO→DONE 一起追加 `修复SHA:: <短SHA>` 属性行；不得跳过、不得用 TODO 状态更新提交自身的 SHA、不得在修复未提交时取 SHA
 
 **违反以上任一条 = 违反本技能的精神。**
 
@@ -262,6 +266,9 @@ description: Use when user wants to review a document by asking questions one at
 | 未提交就改 TODO 为 DONE | 必须先由被调用技能（bug-fix-workflow / feature-development-workflow）完成修复并提交，再改 TODO→DONE 一起提交 |
 | 批次中用 DOING 标记半成品 | 不引入 DOING；本批完全修复+提交后才改 DONE |
 | 未询问就自动修下一批 | 除「全部自动修复」外，每批提交后必须 `AskUserQuestion` 询问 |
+| 标记 DONE 时未记录修复SHA | 必须先 `git log -1 --format=%h` 取本批修复 commit tip 短 SHA，随 TODO→DONE 追加 `修复SHA:: <短SHA>` |
+| 修复SHA 写成了 TODO 更新提交自身的 SHA | 修复SHA 须指向代码修复 commit（被调用技能产出 tip），不是 TODO 状态更新提交的 SHA |
+| 修复未提交就取 SHA | 被调用技能须先完成提交；未提交时 `git log -1` 取到旧 SHA，须等其提交后再取 |
 
 ## 合理化借口表
 
@@ -292,6 +299,10 @@ description: Use when user wants to review a document by asking questions one at
 | "空桩也算 bug，补全实现就是修 bug" | 空桩（pass/NotImplementedError/空函数体）一律算 feature 类；"补全实现"本质是实现新功能，非修 bug |
 | "降级用 bug-fix-workflow 不用注明原因" | 降级必须在 commit message body 注明原因，否则无法回溯为何跳过 feature-development-workflow |
 | "跨文件/状态流转/整个模块缺失也可降级，反正都是补实现" | 降级须同时满足「纯后端 + 单函数补全 + 不跨文件 + 无状态流转/回调/外部系统交互」全部条件；任一禁止降级情形命中即必须走 feature-development-workflow，不得扩大降级范围 |
+| "SHA 没必要记，git log 能查到" | 用户明确要求记录到 TODO 末尾以便逐条追溯；不记则 TODO 文件失去自包含可追溯性 |
+| "用 TODO 更新提交的 SHA 就行" | 修复SHA 须指向代码修复 commit（被调用技能产出 tip），非 TODO 状态更新提交；两者不同 |
+| "被调用技能多个 commit，记哪个都行" | 取最后一个（tip）的短 SHA；完整范围由 git log 追溯，TODO 必须记 tip |
+| "修复还没提交，先占位写空/写伪 SHA" | 修复未提交时不得取 SHA；须先让被调用技能完成提交再取真实 SHA，不得占位 |
 
 ## 实际效果
 
@@ -305,3 +316,4 @@ description: Use when user wants to review a document by asking questions one at
 - 批量修复按性质路由（bug 类→bug-fix-workflow / feature 类→feature-development-workflow），避免 feature 类错配 TDD 修 bug 流程而跳过设计规范阶段
 - 批量修复按功能模块归类，同模块上下文连贯，每批 ≤5 条可控，同批次不混性质
 - 修复完成后 TODO→DONE 原位标记，状态与代码提交同步，bug 类用 `fix()` / feature 类用 `feat()` 提交语义清晰
+- 标记 DONE 时同步追加 `修复SHA:: <短SHA>`（指向本批修复 commit tip），每条 TODO 可独立追溯其修复提交，TODO 文件自包含可追溯
