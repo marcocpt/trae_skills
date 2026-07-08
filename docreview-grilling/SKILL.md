@@ -7,13 +7,13 @@ description: Use when user wants to review a document by asking questions one at
 
 ## 概述
 
-用户就一份文档逐条提问，助理解答后**必须**用 `AskUserQuestion` 工具给出 4 个固定选项让用户决定下一步。用户选「满意并加入 TODO」时**立即**把该条 TODO 追加到文件（及时落盘，避免会话中断丢失）；用户选「结束审核」后仅刷新头部汇总区，生成一份 **Logseq 格式**的 TODO 文档供后续 AI 持续改进；收尾时按「文件级冲突最小化」创建并行分组并写入 TODO 文件、给出并行开发建议；审核成果提交 git 后，按 TODO 性质（bug 类 vs feature 类）自动判定后**逐条**路由到 `bug-fix-workflow` 或 `feature-development-workflow`，再按功能模块归类分批修复，每批修复完成 TODO→DONE 原位标记并追加 `修复SHA:: <短SHA>`（指向本批修复 commit tip）后提交。
+用户就一份文档逐条提问，助理解答后**必须**用 `AskUserQuestion` 工具给出 4 个固定选项让用户决定下一步。用户选「满意并加入 TODO」时**立即**把该条 TODO 追加到文件（及时落盘，避免会话中断丢失）；用户选「结束审核」后仅刷新头部汇总区，生成一份 **Logseq 格式**的 TODO 文档供后续 AI 持续改进；收尾时按「文件级冲突最小化」创建并行分组并写入 TODO 文件、给出并行开发建议；审核成果提交 git 后，按 TODO 性质（bug 类 vs feature 类）自动判定后**逐条**路由到 `bug-fix-workflow` 或 `feature-development-workflow`，再按功能模块归类分批修复，每批修复完成 TODO→DONE 原位标记并追加 `修复SHA:: <短SHA>`（指向本批修复 commit tip）后提交，并生成可手动验证的摘要文档（`<doc-name>_批次<N>_验证摘要.md`，含逐条操作步骤与预期结果）随批提交。
 
 支持两种审核模式（启动时询问确定，循环协议共享）：
 - **模式 A：纯文档审核** — 仅审核文档本身（设计是否合理、是否完整、是否有歧义）
 - **模式 B：文档-代码一致性审核** — 审核已有文档，并对照代码验证是否符合文档要求
 
-核心原则：**每轮答完必问、选项固定为 4、TODO 及时落盘、TODO 用 Logseq 语法、保存路径启动时确认、多方案必列必选、场景 B 必验证代码、收尾必创建并行分组写入 TODO、审核与修复两次提交分离、批量修复先按性质路由（bug 类→bug-fix-workflow / feature 类→feature-development-workflow）再按功能模块归类 ≤5 条/批、标记 DONE 必随附修复SHA。**
+核心原则：**每轮答完必问、选项固定为 4、TODO 及时落盘、TODO 用 Logseq 语法、保存路径启动时确认、多方案必列必选、场景 B 必验证代码、收尾必创建并行分组写入 TODO、审核与修复两次提交分离、批量修复先按性质路由（bug 类→bug-fix-workflow / feature 类→feature-development-workflow）再按功能模块归类 ≤5 条/批、标记 DONE 必随附修复SHA、每批必生成验证摘要文档（含可操作验证步骤）。**
 
 ## 何时使用
 
@@ -186,9 +186,42 @@ description: Use when user wants to review a document by asking questions one at
    - 传 3 个必传项：本批 TODO 编号列表（如 [1, 3, 5]）、TODO 文件绝对路径、被审核文档路径 / 代码库根目录（模式 B 时）
 2. **不干预被调用技能内部**：TDD/设计规范/验证/提交消息格式由其按自身规范执行；本技能仅提供 scope 建议（= 功能标签）
 3. **获取修复提交 SHA 并更新 TODO 文件**：被调用技能（bug-fix-workflow / feature-development-workflow）已在内部完成代码修复并提交（其工作流含提交+push）。先用 `git log -1 --format=%h` 取最新提交的短 SHA（= 本批修复 commit 的 tip）；再把本批条目的 `- TODO N.` 改为 `- DONE N.`，**并在每条条目末尾追加一行 `修复SHA:: <短SHA>`**（作为该条目最后一个缩进属性行，紧跟在原有属性行之后），其他属性行不动，条目留原位。若被调用技能产出多个 commit（如修复+lint+合并），取最后一个（tip）的短 SHA；完整范围可由上一批次 tip 或审核提交（第 4 步第 4 项）起 `git log` 追溯。**若工作区仍有未提交的修复变更**（被调用技能未完成提交），须先让其完成提交再取 SHA，不得在未提交状态下取 SHA。
-4. **提交修复成果**：`git add <修复的文件> <TODO 文件>` + `git commit`（修复的文件已由被调用技能提交，此处 `git add` 对其为空操作，仅 TODO 文件含 DONE+修复SHA 的新变更），commit message 格式：
+4. **生成验证摘要文档**：为本批生成一份可手动验证的摘要文档，供用户按操作步骤逐条验证修复效果。
+   - **查看实际改动**：用 `git show <修复SHA>` 查看本批修复 commit 的 diff（多 commit 时用 `git diff <上批tip>..<本批tip>` 看完整范围），据此编写可操作的验证步骤。
+   - **命名**：`<doc-name>_批次<N>_验证摘要.md`（`<doc-name>` = 被审核文档 basename 去扩展名；`<N>` = 本批次序号，与 commit message 中「第 X 批」的 X 一致，如 `批次1`）。
+   - **位置**：与 TODO 文件同目录（TODO 文件所在文件夹，如 `./docs/AI/doc-review-todo/`）。
+   - **格式**（markdown）：
+     ```
+     # <doc-name> 审核第 N 批修复验证摘要
+
+     - 被审核文档:: path/to/reviewed-doc.md
+     - TODO 文件:: path/to/TODO.md
+     - 批次:: 第 N 批（bug 类 / feature 类，#功能标签）
+     - 修复 commit SHA:: <短SHA>
+     - 生成时间:: YYYY-MM-DD HH:MM
+     - 本批条目数:: M
+
+     ## 验证步骤
+
+     ### TODO X. [Pn] 问题简述 #标签
+     - 文档位置:: [doc.md#L行](file:///...)
+     - 修复内容:: <基于 git show 看到的实际改动，简述改了什么>
+     - 代码位置:: [file.ts#L行](file:///...)   ← 可选，沿用 TODO 条目中的代码位置
+     - 修复SHA:: <短SHA>
+     - 验证步骤::
+       1. <具体可执行的操作步骤1>
+       2. <操作步骤2>
+     - 预期结果:: <验证通过应观察到的具体可判定现象>
+     - 验证结果:: 待验证（用户手动验证后改为「通过」或「未通过 + 说明」）
+     ```
+   - **验证步骤要求**：必须具体可执行（用户照做即可验证），禁止笼统。
+     - ❌ "测试登录功能"
+     - ✅ "启动应用 → 进入登录页 → 输入正确用户名+错误密码 → 点击登录 → 观察是否弹出双因素认证提示"
+     - 每条 TODO 至少 2 步；预期结果必须可观察判定（不是"应该没问题"，而是"应显示 XXX 提示 / 应跳转到 XXX 页"）。
+5. **提交修复成果**：`git add <修复的文件> <TODO 文件> <验证摘要文档>` + `git commit`（修复的文件已由被调用技能提交，此处 `git add` 对其为空操作；TODO 文件含 DONE+修复SHA、验证摘要文档为本批新增），commit message 格式：
    - bug 类批次：`fix(<scope>): 修复 <doc-name> 审核的第 X 批 N 个问题`（`<scope>` = 功能标签）
    - feature 类批次：`feat(<scope>): 实现 <doc-name> 审核的第 X 批 N 个缺失功能`（`<scope>` = 功能标签）
+   - 提交后用 markdown 链接 `[文件名](file:///绝对路径)` 输出验证摘要文档路径给用户，提示可按其逐条手动验证本批修复。
 
 **5.3 询问是否继续下一批**（每批提交后，用 `AskUserQuestion`，4 选项）：
 
@@ -230,6 +263,10 @@ description: Use when user wants to review a document by asking questions one at
 - **批次未完成就询问是否继续** → 必须本批完全修复 + 提交后才能询问；批次中不引入 DOING 半成品状态
 - **未询问就自动修下一批** → 除用户选「全部自动修复」外，每批提交后必须用 `AskUserQuestion` 询问
 - **标记 DONE 时未追加修复SHA**（或漏取、或用错 SHA 来源）→ 必须先用 `git log -1 --format=%h` 取本批修复 commit tip 的短 SHA，再随 TODO→DONE 一起追加 `修复SHA:: <短SHA>` 属性行；不得跳过、不得用 TODO 状态更新提交自身的 SHA、不得在修复未提交时取 SHA
+- **每批未生成验证摘要文档就提交/询问下一批** → 必须在第 4 步为本批生成 `<doc-name>_批次<N>_验证摘要.md`（含逐条可操作验证步骤+预期结果），并在第 5 步随 TODO 文件一起 `git add` 提交；不得跳过、不得用会话回复代替文档
+- **验证步骤笼统不可执行**（如"测试 XX 功能""检查是否正常"）→ 必须具体到用户照做即可验证（启动应用→进入某页→输入某值→观察某现象）；每条至少 2 步，预期结果必须可观察判定
+- **验证摘要文档命名/位置错误**（如放到其他目录、命名不含批次号、用英文后缀）→ 命名必须 `<doc-name>_批次<N>_验证摘要.md`，位置必须与 TODO 文件同目录
+- **验证摘要文档漏提交**（生成后不 `git add`）→ 必须在第 5 步 `git add <验证摘要文档>` 随批提交，保证可追溯
 
 **违反以上任一条 = 违反本技能的精神。**
 
@@ -269,6 +306,11 @@ description: Use when user wants to review a document by asking questions one at
 | 标记 DONE 时未记录修复SHA | 必须先 `git log -1 --format=%h` 取本批修复 commit tip 短 SHA，随 TODO→DONE 追加 `修复SHA:: <短SHA>` |
 | 修复SHA 写成了 TODO 更新提交自身的 SHA | 修复SHA 须指向代码修复 commit（被调用技能产出 tip），不是 TODO 状态更新提交的 SHA |
 | 修复未提交就取 SHA | 被调用技能须先完成提交；未提交时 `git log -1` 取到旧 SHA，须等其提交后再取 |
+| 每批未生成验证摘要文档 | 必须在第 4 步生成 `<doc-name>_批次<N>_验证摘要.md`（含逐条验证步骤+预期结果），第 5 步随批 `git add` 提交 |
+| 验证步骤笼统（"测试 XX""检查是否正常"） | 必须具体可执行：启动应用→进入某页→输入某值→观察某现象；每条 ≥2 步，预期结果可观察判定 |
+| 验证摘要文档命名/位置错 | 命名 `<doc-name>_批次<N>_验证摘要.md`，位置与 TODO 文件同目录 |
+| 验证摘要文档漏提交 | 第 5 步 `git add <验证摘要文档>` 随批提交，不得只生成不提交 |
+| 验证摘要文档用会话回复代替 | 必须落盘为独立 .md 文件并提交；会话回复不持久、不可追溯 |
 
 ## 合理化借口表
 
@@ -303,6 +345,12 @@ description: Use when user wants to review a document by asking questions one at
 | "用 TODO 更新提交的 SHA 就行" | 修复SHA 须指向代码修复 commit（被调用技能产出 tip），非 TODO 状态更新提交；两者不同 |
 | "被调用技能多个 commit，记哪个都行" | 取最后一个（tip）的短 SHA；完整范围由 git log 追溯，TODO 必须记 tip |
 | "修复还没提交，先占位写空/写伪 SHA" | 修复未提交时不得取 SHA；须先让被调用技能完成提交再取真实 SHA，不得占位 |
+| "验证摘要没必要，用户自己跑应用就行" | 用户明确要求文档化操作步骤以便逐条验证；不生成则用户无从下手，TODO 文件失去可验证性 |
+| "验证步骤写'测试登录'就够了，用户知道怎么做" | 笼统步骤不可执行；必须具体到启动应用→进入某页→输入某值→观察某现象，用户照做即可判定 |
+| "摘要放会话里回复就行，不必落盘" | 会话回复不持久、不可追溯；必须落盘为 `<doc-name>_批次<N>_验证摘要.md` 并随批提交 |
+| "摘要文档放项目根目录更方便找" | 位置必须与 TODO 文件同目录（集中管理审核产物）；不得散落到其他目录 |
+| "批次号记不清，文件名省略批次号" | 命名必须含批次号 `<doc-name>_批次<N>_验证摘要.md`；省略则多批摘要会冲突、无法对应批次 |
+| "预期结果写'应该没问题'" | 不可判定；必须写可观察现象（"应显示 XXX 提示""应跳转 XXX 页""应返回 401 状态码"） |
 
 ## 实际效果
 
@@ -317,3 +365,4 @@ description: Use when user wants to review a document by asking questions one at
 - 批量修复按功能模块归类，同模块上下文连贯，每批 ≤5 条可控，同批次不混性质
 - 修复完成后 TODO→DONE 原位标记，状态与代码提交同步，bug 类用 `fix()` / feature 类用 `feat()` 提交语义清晰
 - 标记 DONE 时同步追加 `修复SHA:: <短SHA>`（指向本批修复 commit tip），每条 TODO 可独立追溯其修复提交，TODO 文件自包含可追溯
+- 每批修复后生成 `<doc-name>_批次<N>_验证摘要.md`（与 TODO 文件同目录、随批提交），含逐条可操作验证步骤、预期结果、验证结果勾选，用户照做即可手动验证每条修复，验证产物可追溯
