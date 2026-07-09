@@ -81,7 +81,7 @@ description: Use when user wants to review a document by asking questions one at
 
 **保存路径**：启动时已确定（见第 1 步第 5 项），此处不再询问。
 
-**格式**：Logseq 待办语法（`- TODO` + 缩进 `key:: value` 属性）
+**格式**：Markdown 任务列表语法（`- [ ] TODO1.` + 缩进 `key:: value` 属性）
 
 模板：
 ```
@@ -94,12 +94,12 @@ description: Use when user wants to review a document by asking questions one at
     - 串行组 S1:: T1 → T3 → T8（均触 src/auth/login.ts，建议按 P0→P1→P3 顺序）
   - 分组依据:: 模式 B 按「代码位置」文件路径；模式 A 或无代码位置条目按功能标签（同标签串行、不同标签并行）
   - 并行建议:: P1+P2 共 5 条可由 2+ 开发者/代理同时进行；S1 内 3 条需串行
-- TODO 1. [P1] 问题简述 #登录
+- [ ] TODO1. [P1] 问题简述 #登录
   - 文档位置:: [file.md#L10-20](file:///absolute/path/to/file.md#L10-20)
   - 现状:: 文档当前怎么写的
   - 改进建议:: 应该怎么改
   - 代码位置:: [file.ts#L30-45](file:///absolute/path/to/file.ts#L30-45)   ← 可选：仅在实际引用代码锚点时添加，无则省略整行
-- TODO 2. [P2] 另一个问题简述 #通用
+- [ ] TODO2. [P2] 另一个问题简述 #通用
   - 文档位置:: [file.md#L30-40](file:///absolute/path/to/file.md#L30-40)
   - 现状:: 另一个文档当前怎么写的
   - 改进建议:: 另一个应该怎么改
@@ -107,15 +107,15 @@ description: Use when user wants to review a document by asking questions one at
 
 > 代码位置属性行**按需添加**：仅当该问题实际通过 `Task` 工具分派 `search` 子代理验证过代码并需要引用代码锚点时才写；未引用代码时**完全省略该属性行**（不留空值）。模式 A 通常全部省略，模式 B 也只在真正引用了代码时才写。
 
-> 修复SHA 属性行**仅 DONE 时追加**：条目在 5.2 第 3 步标记为 `- DONE` 时，于该条目末尾追加 `修复SHA:: <短SHA>`（值 = 本批修复 commit tip 的短 SHA，由 `git log -1 --format=%h` 取得）。TODO 状态下**不写**该属性行；标记 DONE 时作为该条目**最后一个**属性行追加（在代码位置属性行之后，若存在）。
+> 修复SHA 属性行**仅完成时追加**：条目在 5.2 第 3 步标记为 `- [x] TODO1.` 时，于该条目末尾追加 `修复SHA:: <短SHA>`（值 = 本批修复 commit tip 的短 SHA，由 `git log -1 --format=%h` 取得）。待办状态 `[ ]` 下**不写**该属性行；标记完成 `[x]` 时作为该条目**最后一个**属性行追加（在代码位置属性行之后，若存在）。
 
 **第一行要求**：简洁、准确、可独立理解问题（脱离上下文也能看懂）。分类标签用产品功能（如 `#登录`、`#支付流程`），无法归类到具体功能时用 `#通用`。
-- ✅ `- TODO 1. [P1] 登录模块缺少双因素认证说明 #登录 #权限控制`
-- ❌ `- TODO 1. [P1] description 有问题 #内容`（标签用了已废弃的性质标签，且描述笼统）
+- ✅ `- [ ] TODO1. [P1] 登录模块缺少双因素认证说明 #登录 #权限控制`
+- ❌ `- [ ] TODO1. [P1] description 有问题 #内容`（标签用了已废弃的性质标签，且描述笼统）
 
 **字段说明**：
 
-第一行收敛：序号（`N.`）/ 优先级（`[Pn]`）/ 问题描述 / 分类标签（`#标签`）。状态由 Logseq 的 `TODO`/`DOING`/`DONE` 关键字管理，不另设字段。
+第一行收敛：TODO前缀 + 序号（`TODO1.`）/ 优先级（`[Pn]`）/ 问题描述 / 分类标签（`#标签`）。状态由 Markdown 任务列表复选框（`[ ]`待办 / `[x]`完成）管理，不另设字段。
 
 | 缩进属性 | 取值 |
 |----------|------|
@@ -123,7 +123,7 @@ description: Use when user wants to review a document by asking questions one at
 | 现状 | 文档当前怎么写的 |
 | 改进建议 | 应该怎么改（含改文档/改代码的指向）。若审核过程中该问题经多方案选择，**只写用户选定的方案**，不堆砌多方案 |
 | 代码位置 | 可选。可点击链接 `[文本](file:///绝对路径#L行号)`。**仅在实际引用代码锚点时添加；未引用则完全省略该属性行（不留空值）** |
-| 修复SHA | 仅 DONE 时追加。`修复SHA:: <短SHA>`，值为本批修复 commit tip 的短 SHA（`git log -1 --format=%h`）。TODO 状态下不写该属性行；标记 DONE 时作为该条目**最后一个**属性行追加（在代码位置属性行之后，若存在） |
+| 修复SHA | 仅完成时追加。`修复SHA:: <短SHA>`，值为本批修复 commit tip 的短 SHA（`git log -1 --format=%h`）。待办 `[ ]` 状态下不写该属性行；标记完成 `[x]` 时作为该条目**最后一个**属性行追加（在代码位置属性行之后，若存在） |
 
 分类标签取值：**按产品功能动态生成**（如 `#登录`、`#支付流程`、`#权限控制`、`#导出报告`），由 AI 审核时根据问题涉及的功能模块命名；无法归类到具体功能时用 `#通用`；可多标签，至少 1 个。
 优先级取值：P0(阻塞) / P1(重要) / P2(一般) / P3(优化)
@@ -156,7 +156,7 @@ description: Use when user wants to review a document by asking questions one at
 
 ### 5. 批量修复流程
 
-**前提**：第 4 步用户选「是」进入此流程。TODO 文件已提交，含 N 条 `- TODO` 条目。
+**前提**：第 4 步用户选「是」进入此流程。TODO 文件已提交，含 N 条 `- [ ] TODO1.` 条目。
 
 **5.1 归类分批**：
 - **第一步：逐条性质判定**（在功能归类前完成）：对每条 TODO 判定属于 **bug 类** 还是 **feature 类**：
@@ -182,9 +182,9 @@ description: Use when user wants to review a document by asking questions one at
      - ✅ 不涉及状态流转 / 回调处理 / 外部系统交互 / 多函数协作
      - 须在 commit message body 注明降级原因（如"降级使用 bug-fix-workflow：纯后端单函数补全，符合降级条件"）
    - **禁止降级**的情形（任一命中即必须走 `feature-development-workflow`）：涉及 UI/可见行为/E2E 证据；跨文件或多函数；状态流转/回调/外部系统交互；整个模块/目录缺失；类有多方法需实现
-   - 传 3 个必传项：本批 TODO 编号列表（如 [1, 3, 5]）、TODO 文件绝对路径、被审核文档路径 / 代码库根目录（模式 B 时）
+   - 传 3 个必传项：本批 TODO 序号列表（如 [1, 3, 5]）、TODO 文件绝对路径、被审核文档路径 / 代码库根目录（模式 B 时）
 2. **不干预被调用技能内部**：TDD/设计规范/验证/提交消息格式由其按自身规范执行；本技能仅提供 scope 建议（= 功能标签）
-3. **获取修复提交 SHA 并更新 TODO 文件**：被调用技能（bug-fix-workflow / feature-development-workflow）已在内部完成代码修复并提交（其工作流含提交+push）。先用 `git log -1 --format=%h` 取最新提交的短 SHA（= 本批修复 commit 的 tip）；再把本批条目的 `- TODO N.` 改为 `- DONE N.`，**并在每条条目末尾追加一行 `修复SHA:: <短SHA>`**（作为该条目最后一个缩进属性行，紧跟在原有属性行之后），其他属性行不动，条目留原位。若被调用技能产出多个 commit（如修复+lint+合并），取最后一个（tip）的短 SHA；完整范围可由上一批次 tip 或审核提交（第 4 步第 4 项）起 `git log` 追溯。**若工作区仍有未提交的修复变更**（被调用技能未完成提交），须先让其完成提交再取 SHA，不得在未提交状态下取 SHA。
+3. **获取修复提交 SHA 并更新 TODO 文件**：被调用技能（bug-fix-workflow / feature-development-workflow）已在内部完成代码修复并提交（其工作流含提交+push）。先用 `git log -1 --format=%h` 取最新提交的短 SHA（= 本批修复 commit 的 tip）；再把本批条目的 `- [ ] TODO1.` 改为 `- [x] TODO1.`，**并在每条条目末尾追加一行 `修复SHA:: <短SHA>`**（作为该条目最后一个缩进属性行，紧跟在原有属性行之后），其他属性行不动，条目留原位。若被调用技能产出多个 commit（如修复+lint+合并），取最后一个（tip）的短 SHA；完整范围可由上一批次 tip 或审核提交（第 4 步第 4 项）起 `git log` 追溯。**若工作区仍有未提交的修复变更**（被调用技能未完成提交），须先让其完成提交再取 SHA，不得在未提交状态下取 SHA。
 4. **生成验证摘要文档**：为本批生成一份可手动验证的摘要文档，供用户按操作步骤逐条验证修复效果。
    - **查看实际改动**：用 `git show <修复SHA>` 查看本批修复 commit 的 diff（多 commit 时用 `git diff <上批tip>..<本批tip>` 看完整范围），据此编写可操作的验证步骤。
    - **命名**：`<doc-name>_批次<N>_验证摘要.md`（`<doc-name>` = 被审核文档 basename 去扩展名；`<N>` = 本批次序号，与 commit message 中「第 X 批」的 X 一致，如 `批次1`）。
@@ -202,7 +202,7 @@ description: Use when user wants to review a document by asking questions one at
 
      ## 验证步骤
 
-     ### TODO X. [Pn] 问题简述 #标签
+     ### TODO1. [Pn] 问题简述 #标签
      - 文档位置:: [doc.md#L行](file:///...)
      - 修复内容:: <基于 git show 看到的实际改动，简述改了什么>
      - 代码位置:: [file.ts#L行](file:///...)   ← 可选，沿用 TODO 条目中的代码位置
@@ -217,7 +217,7 @@ description: Use when user wants to review a document by asking questions one at
      - ❌ "测试登录功能"
      - ✅ "启动应用 → 进入登录页 → 输入正确用户名+错误密码 → 点击登录 → 观察是否弹出双因素认证提示"
      - 每条 TODO 至少 2 步；预期结果必须可观察判定（不是"应该没问题"，而是"应显示 XXX 提示 / 应跳转到 XXX 页"）。
-5. **提交修复成果**：`git add <修复的文件> <TODO 文件> 验证摘要/<验证摘要文档>` + `git commit`（修复的文件已由被调用技能提交，此处 `git add` 对其为空操作；TODO 文件含 DONE+修复SHA、验证摘要文档为本批新增），commit message 格式：
+5. **提交修复成果**：`git add <修复的文件> <TODO 文件> 验证摘要/<验证摘要文档>` + `git commit`（修复的文件已由被调用技能提交，此处 `git add` 对其为空操作；TODO 文件含 `- [x] TODO1.` + 修复SHA、验证摘要文档为本批新增），commit message 格式：
    - bug 类批次：`fix(<scope>): 修复 <doc-name> 审核的第 X 批 N 个问题`（`<scope>` = 功能标签）
    - feature 类批次：`feat(<scope>): 实现 <doc-name> 审核的第 X 批 N 个缺失功能`（`<scope>` = 功能标签）
    - 提交后用 markdown 链接 `[文件名](file:///绝对路径)` 输出验证摘要文档路径给用户，提示可按其逐条手动验证本批修复。
@@ -239,7 +239,7 @@ description: Use when user wants to review a document by asking questions one at
 
 - **每轮答完直接等待文本输入** → 必须调 `AskUserQuestion`
 - **选项少于 4 个或更改选项语义** → 固定 4 选项（含「加入 TODO」分支），顺序、语义均不可变
-- **TODO 用普通 markdown `- [ ]` 复选框** → 改用 Logseq `- TODO N. [Pn] 简述 #标签` + `key:: value`
+- **TODO 用 Logseq `- TODO N.` 或普通列表** → 改用 Markdown 任务列表 `- [ ] TODO1. [Pn] 简述 #标签` + `key:: value`
 - **TODO 第一行问题描述过于笼统**（如「有问题」「需改进」）→ 必须简洁准确、可独立理解
 - **位置字段（文档位置/代码位置）未用可点击链接格式** → 必须用 `[文本](file:///绝对路径#L行号)`
 - **TODO 缩进属性不全** → 3 必有（文档位置/现状/改进建议）+ 1 可选（代码位置：仅在实际引用代码锚点时添加，未引用则完全省略属性行）
@@ -260,11 +260,11 @@ description: Use when user wants to review a document by asking questions one at
 - **对 feature 类 TODO（空桩/模块缺失/函数体只有 pass）硬套 bug-fix-workflow** → feature 类必须走 `feature-development-workflow`；仅当同时满足「纯后端 + 单函数补全 + 不跨文件 + 无状态流转/回调/外部系统交互」时可降级，且须在 commit message body 注明降级原因；命中任一禁止降级情形（UI/可见行为/E2E/跨文件/多函数/状态流转/回调/外部系统/整个模块缺失/类多方法）时强制走 feature-development-workflow
 - **同批次混修 bug 类与 feature 类** → 两技能内部流程不同，不得混批；同功能模块若同时含两类按性质拆成两批
 - **批次超 5 条** → 必须按优先级拆分；跨功能 P0 必须单独成批
-- **未提交就改 TODO 为 DONE** → 必须先由被调用技能（bug-fix-workflow / feature-development-workflow）完成修复并提交，再改 `- TODO` 为 `- DONE` 并随修复内容一起提交
+- **未提交就改 TODO 为完成** → 必须先由被调用技能（bug-fix-workflow / feature-development-workflow）完成修复并提交，再改 `- [ ] TODO1.` 为 `- [x] TODO1.` 并随修复内容一起提交
 - **批次未完成就询问是否继续** → 必须本批完全修复 + 提交后才能询问；批次中不引入 DOING 半成品状态
 - **未询问就自动修下一批** → 除用户选「全部自动修复」外，每批提交后必须用 `AskUserQuestion` 询问
 - **5.3 选项少于 4 个**（只给"继续修复下一批"）→ 必须给出全部 4 选项（继续下一批 / 选择特定批次 / 暂停 / 全部自动），即使只剩 1 批也不得减少
-- **标记 DONE 时未追加修复SHA**（或漏取、或用错 SHA 来源）→ 必须先用 `git log -1 --format=%h` 取本批修复 commit tip 的短 SHA，再随 TODO→DONE 一起追加 `修复SHA:: <短SHA>` 属性行；不得跳过、不得用 TODO 状态更新提交自身的 SHA、不得在修复未提交时取 SHA
+- **标记完成时未追加修复SHA**（或漏取、或用错 SHA 来源）→ 必须先用 `git log -1 --format=%h` 取本批修复 commit tip 的短 SHA，再随 `- [ ] TODO1.` → `- [x] TODO1.` 一起追加 `修复SHA:: <短SHA>` 属性行；不得跳过、不得用 TODO 状态更新提交自身的 SHA、不得在修复未提交时取 SHA
 - **每批未生成验证摘要文档就提交/询问下一批** → 必须在第 4 步为本批生成 `<doc-name>_批次<N>_验证摘要.md`（含逐条可操作验证步骤+预期结果），并在第 5 步随 TODO 文件一起 `git add` 提交；不得跳过、不得用会话回复代替文档
 - **验证步骤笼统不可执行**（如"测试 XX 功能""检查是否正常"）→ 必须具体到用户照做即可验证（启动应用→进入某页→输入某值→观察某现象）；每条至少 2 步，预期结果必须可观察判定
 - **验证摘要文档命名/位置错误**（如放到其他目录、命名不含批次号、用英文后缀）→ 命名必须 `<doc-name>_批次<N>_验证摘要.md`，位置必须在 TODO 文件同级的 `验证摘要/` 子目录
@@ -279,7 +279,7 @@ description: Use when user wants to review a document by asking questions one at
 | 答完直接等输入 | 必须立即调 `AskUserQuestion` |
 | 选项只给 2-3 个 | 固定 4 选项，不可增减 |
 | 选项语义偏移（如改成"重新回答"或省略「加入 TODO」分支） | 严格按新模板 4 选项，含「加入 TODO」分支 |
-| TODO 用 `- [ ]` | 改用 Logseq `- TODO N. [Pn] 简述 #标签` + 缩进属性 |
+| TODO 用 Logseq `- TODO N.` 或普通列表 | 改用 Markdown 任务列表 `- [ ] TODO1. [Pn] 简述 #标签` + 缩进属性 |
 | TODO 第一行过于笼统 | 必须简洁准确、可独立理解 |
 | 位置字段用纯文本 | 改用 `[文本](file:///绝对路径#L行号)` 可点击链接 |
 | 未询问保存路径 | 启动时必须 `AskUserQuestion` 确认路径（首次追加时才创建文件） |
@@ -302,11 +302,11 @@ description: Use when user wants to review a document by asking questions one at
 | 滥用降级（跨文件/状态流转/整个模块缺失也降级到 bug-fix-workflow） | 降级须同时满足全部 3 条件；任一禁止降级情形命中即必须走 feature-development-workflow |
 | 同批次混修 bug 类与 feature 类 | 两技能流程不同不得混批；同功能模块含两类时按性质拆成两批 |
 | 批次超 5 条 | 必须按优先级拆分；跨功能 P0 单独成批 |
-| 未提交就改 TODO 为 DONE | 必须先由被调用技能（bug-fix-workflow / feature-development-workflow）完成修复并提交，再改 TODO→DONE 一起提交 |
-| 批次中用 DOING 标记半成品 | 不引入 DOING；本批完全修复+提交后才改 DONE |
+| 未提交就改 TODO 为完成 | 必须先由被调用技能（bug-fix-workflow / feature-development-workflow）完成修复并提交，再改 `- [ ] TODO1.` 为 `- [x] TODO1.` 并随修复内容一起提交 |
+| 批次中用 DOING 标记半成品 | 不引入 DOING；本批完全修复+提交后才改 `- [x] TODO1.` |
 | 未询问就自动修下一批 | 除「全部自动修复」外，每批提交后必须 `AskUserQuestion` 询问 |
 | 5.3 只给"继续修复下一批"1个选项 | 必须给出全部 4 选项（继续下一批 / 选择特定批次 / 暂停 / 全部自动），即使只剩 1 批也不得减少 |
-| 标记 DONE 时未记录修复SHA | 必须先 `git log -1 --format=%h` 取本批修复 commit tip 短 SHA，随 TODO→DONE 追加 `修复SHA:: <短SHA>` |
+| 标记完成时未记录修复SHA | 必须先 `git log -1 --format=%h` 取本批修复 commit tip 短 SHA，随 `- [ ] TODO1.` → `- [x] TODO1.` 追加 `修复SHA:: <短SHA>` |
 | 修复SHA 写成了 TODO 更新提交自身的 SHA | 修复SHA 须指向代码修复 commit（被调用技能产出 tip），不是 TODO 状态更新提交的 SHA |
 | 修复未提交就取 SHA | 被调用技能须先完成提交；未提交时 `git log -1` 取到旧 SHA，须等其提交后再取 |
 | 每批未生成验证摘要文档 | 必须在第 4 步生成 `<doc-name>_批次<N>_验证摘要.md`（含逐条验证步骤+预期结果），第 5 步随批 `git add` 提交 |
@@ -331,7 +331,7 @@ description: Use when user wants to review a document by asking questions one at
 | "TODO 文件没创建就没必要问路径" | 路径必须启动时确认，首次追加时才创建文件，避免临时找路径拖延写入 |
 | "多方案直接给推荐就行，不用让用户选" | 用户决策权不可剥夺；必须列全部候选 + 推荐 + 理由，让用户用 `AskUserQuestion` 选定 |
 | "修一条提交一次更安全" | 单条提交 git 开销高且破坏批次可回溯性；必须按批次提交（≤5 条/批） |
-| "批次中用 DOING 标记进度更清晰" | 半成品状态会混乱；必须本批完全修复+提交后一次性改 TODO→DONE |
+| "批次中用 DOING 标记进度更清晰" | 半成品状态会混乱；必须本批完全修复+提交后一次性改 `- [ ] TODO1.` → `- [x] TODO1.` |
 | "审核完不提交 TODO，等修完一起提交" | 审核成果与修复成果混在一个 commit 不可回溯；必须两次提交分离 |
 | "归类太麻烦，按编号顺序修就行" | 同功能模块一起修上下文连贯、效率高；必须按功能标签归类分批 |
 | "5.1 已有归类分批，收尾再分组重复" | 5.1 按"性质+功能模块+优先级"为串行批次修复；收尾并行分组按"文件冲突"为并行开发参考，维度不同，不重复 |
@@ -369,5 +369,5 @@ description: Use when user wants to review a document by asking questions one at
 - 批量修复按性质路由（bug 类→bug-fix-workflow / feature 类→feature-development-workflow），避免 feature 类错配 TDD 修 bug 流程而跳过设计规范阶段
 - 批量修复按功能模块归类，同模块上下文连贯，每批 ≤5 条可控，同批次不混性质
 - 修复完成后 TODO→DONE 原位标记，状态与代码提交同步，bug 类用 `fix()` / feature 类用 `feat()` 提交语义清晰
-- 标记 DONE 时同步追加 `修复SHA:: <短SHA>`（指向本批修复 commit tip），每条 TODO 可独立追溯其修复提交，TODO 文件自包含可追溯
+- 标记完成 `- [x] TODO1.` 时同步追加 `修复SHA:: <短SHA>`（指向本批修复 commit tip），每条 TODO 可独立追溯其修复提交，TODO 文件自包含可追溯
 - 每批修复后生成 `<doc-name>_批次<N>_验证摘要.md`（存于 TODO 文件同级的 `验证摘要/` 子目录、随批提交），含逐条可操作验证步骤、预期结果、验证结果勾选，用户照做即可手动验证每条修复，验证产物可追溯
