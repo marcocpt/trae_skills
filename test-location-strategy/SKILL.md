@@ -25,12 +25,19 @@ ls .github/workflows/*.yml 2>/dev/null
 
 ### 1. 检查自建服务器是否已有可用结果
 
+复用判定的核心是 **commit 一致**，`--branch` 仅为检索手段。按以下顺序检索：
+
 ```bash
+# 先查当前分支
 gh run list --workflow "<workflow-name>" --branch <当前分支> --limit 1
+# 当前分支无远端或无结果时，查基线分支（如 main/develop）
+gh run list --workflow "<workflow-name>" --branch <BASE_BRANCH> --limit 1
 ```
 
-- 若最近一次运行 `conclusion == "success"` 且对应 commit 等于当前 HEAD → **跳过测试，复用 CI 结果**
+- 任一查询返回 `conclusion == "success"` 且 `headSha` 等于当前工作树 HEAD → **跳过测试，复用 CI 结果**（记录复用来源分支与 run ID）
 - 若运行中（`status == "in_progress"`）→ 等待结果，不重复触发
+
+> **基线验证场景**：在 bug-fix-workflow/feature-development-workflow 步骤 1.2.5 中，新创建的 fix 分支尚未 push，远端无此分支——此时**必须**查 BASE_BRANCH 的 CI 结果，因为工作树 HEAD 等于 BASE_BRANCH HEAD，基线 commit 已有成功 CI 证据即满足复用条件。
 
 ### 2. 尝试自建服务器测试
 
@@ -41,15 +48,24 @@ gh workflow run "<workflow-name>" --ref <当前分支>
 - 等待运行完成（`gh run watch <run-id>` 或轮询 `gh run view <run-id> --json status,conclusion`）
 - 成功 → 使用 CI 结果，跳过本地测试
 - 失败但属于 CI 环境限制（如 XCUITest GUI 权限、钥匙串弹窗）→ 读取 CI 日志区分环境失败与真实代码失败，仅对真实失败部分本地复现
+- **触发本身失败**（`gh workflow run` 报错，如 ref 不存在、权限不足、鉴权失败）→ **不得降级本地测试**。按以下优先级处理：
+  1. ref 不存在（分支未 push）→ 用 AskUserQuestion 询问：先 push 分支再触发 CI / 复用 BASE_BRANCH 已有结果（若 commit 一致）/ 终止
+  2. 鉴权失败 → 用 AskUserQuestion 询问：运行 `gh auth login` 修复鉴权 / 终止
+  3. 其他错误 → 用 AskUserQuestion 询问：重试 / 排查 CI 配置 / 终止
+- **禁止**：把"触发本身失败"等同于"CI 不可用"降级本地——触发失败是步骤 2 的分支，不是步骤 3 的入口
 
 ### 3. 本地测试（无自建服务器或 CI 不可用）
 
-仅当以下任一成立时执行：
+仅当以下任一成立时执行（封闭列表，不得扩展）：
 - 项目无 `.github/workflows/` 自建服务器配置
-- `gh` 命令不可用或鉴权失败
-- 用户明确要求本地测试
+- `gh` 命令不可用且用户在 AskUserQuestion 中选择不修复鉴权
+- **已有 CI 结果不可复用**（commit 不一致）且 CI 触发失败且用户在 AskUserQuestion 中明确选择本地
 
 运行项目对应的测试命令（如 `xcodebuild test`、`swift test`、`npm test`、`cargo test`、`pytest`、`go test`）。
+
+> **"用户明确要求"不凌驾于 CI 优先之上**：当步骤 1 已有可复用的成功 CI 结果时，用户要求本地不构成降级理由。此时应用 AskUserQuestion 给出"复用 CI 结果（推荐）/ 仍要本地仅作参考 / 终止"选项。
+>
+> **"CI 不可用"的严格定义**：仅指上述封闭列表三种情形。分支未 push、`gh workflow run` 报错、CI 触发失败**均不构成"CI 不可用"**——这些是步骤 2 的"触发本身失败"，按步骤 2 的 AskUserQuestion 流程处理。
 
 ## 多工作流项目处理
 
@@ -80,6 +96,8 @@ gh workflow run "<workflow-name>" --ref <当前分支>
 - **不跳过失败验证**：CI 失败时不得直接声明通过，必须分析日志或本地复现
 - **不重复触发**：已有运行中的 workflow 不得再次 `gh workflow run`
 - **记录决策**：选择跳过/复用 CI 结果时，在步骤输出中说明依据（commit SHA、run ID、conclusion）
+- **不降级本地**：CI 触发失败不构成走本地测试的理由；分支未 push 时必须先查 BASE_BRANCH 的 CI 结果或先 push 再触发，不得降级本地
+- **委托关系优先级**：当工作流技能（如 bug-fix-workflow 1.2.5）委托本 skill 决策测试位置时，本 skill 的决策流程语义（commit 一致为核心）优先于工作流技能中的命令示例字面文本；两份文档措辞不一致时，以本 skill 的"CI 优先 + 不降级本地"红线为准
 
 ## 何时使用
 

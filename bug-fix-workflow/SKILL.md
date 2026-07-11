@@ -183,11 +183,14 @@ BASE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 git status  # 必须干净，有未提交变更需先处理
 
 # 验证基线测试（按 test-location-strategy skill 决策测试位置）
-# 1. 先检查 CI：gh run list --workflow macos-ci.yml --branch <当前分支> --limit 1
-#    - conclusion=success 且 headSha==当前 HEAD → 复用 CI 结果，跳过本地测试
+# 1. 检查基线 commit 的 CI 已有结果（commit 一致即可复用）：
+#    - 先查当前分支：gh run list --workflow macos-ci.yml --branch <当前分支> --limit 1
+#    - 当前分支无远端或无结果时，必须再查 BASE_BRANCH：gh run list --workflow macos-ci.yml --branch <BASE_BRANCH> --limit 1
+#    - 任一返回 conclusion=success 且 headSha==当前工作树 HEAD → 复用 CI 结果，跳过本地测试
 #    - status=in_progress → 等待 CI 完成，不重复触发
-# 2. 触发 CI（无可用结果时）：gh workflow run macos-ci.yml --ref <当前分支> && gh run watch <run-id> --exit-status
-# 3. 本地测试（CI 不可用或用户明确要求）：bash scripts/ci/test-macos.sh（与 CI 同脚本）
+# 2. 触发 CI（无可用结果且当前分支已 push 时）：gh workflow run macos-ci.yml --ref <当前分支> && gh run watch <run-id> --exit-status
+#    - 当前分支未 push 时不得降级本地——先查 BASE_BRANCH 已有结果，或 AskUserQuestion 询问是否 push
+# 3. 本地测试（仅在 1.2.7 红线明示条件满足时）：bash scripts/ci/test-macos.sh（与 CI 同脚本）
 ```
 
 - 成功标准：工作区干净 + 基线测试通过
@@ -270,13 +273,17 @@ cd "$path"
 
 #### 1.2.5 验证基线测试干净
 
-按 test-location-strategy skill 决策测试位置：
+按 test-location-strategy skill 决策测试位置。**基线验证的语义是确认起点 commit 干净**——起点 = BASE_BRANCH 的 HEAD（步骤 1.2.1 已记录）。新创建的 fix 分支尚未 push，远端无此分支，此时**必须**查 BASE_BRANCH 的 CI 结果，因为工作树 HEAD 等于 BASE_BRANCH HEAD，基线 commit 已有成功 CI 证据即满足复用条件。
 
-1. **检查 CI 已有结果**：`gh run list --workflow macos-ci.yml --branch <当前分支> --limit 1`
-   - `conclusion=success` 且 `headSha` 等于当前 HEAD → 复用 CI 结果，跳过本地测试
+1. **检查基线 commit 的 CI 已有结果**（按优先级检索，commit 一致即可复用）：
+   - 先查当前分支：`gh run list --workflow macos-ci.yml --branch <当前分支> --limit 1`
+   - 当前分支无远端或无结果时，**必须**再查 BASE_BRANCH：`gh run list --workflow macos-ci.yml --branch <BASE_BRANCH> --limit 1`
+   - 任一查询返回 `conclusion=success` 且 `headSha` 等于当前工作树 HEAD → 复用 CI 结果（记录复用来源分支与 run ID），跳过本地测试
    - `status=in_progress` → 等待 CI 完成，不重复触发
-2. **触发 CI**（无可用结果时）：`gh workflow run macos-ci.yml --ref <当前分支>` + `gh run watch <run-id> --exit-status`
-3. **本地测试**（CI 不可用或用户明确要求）：`bash scripts/ci/test-macos.sh`（与 CI 同脚本，基于 xcodebuild test + Macim.xcworkspace + MacimApp scheme）。禁止用 `swift test` 替代——本项目是 Xcode 工程，`swift test` 只覆盖 SwiftPM 子集。
+2. **触发 CI**（无可用结果且当前分支已 push 时）：`gh workflow run macos-ci.yml --ref <当前分支>` + `gh run watch <run-id> --exit-status`
+   - **当前分支未 push 时不得以此为由降级本地**——按 1.2.7 红线处理（先查 BASE_BRANCH 已有结果，或用 AskUserQuestion 询问是否 push 后触发 CI）
+   - `gh workflow run` 本身报错（ref 不存在、鉴权失败等）→ 按 test-location-strategy 步骤 2 的 AskUserQuestion 流程处理，**不得降级本地**
+3. **本地测试**（仅在满足 1.2.7 红线明示条件时）：`bash scripts/ci/test-macos.sh`（与 CI 同脚本，基于 xcodebuild test + Macim.xcworkspace + MacimApp scheme）。禁止用 `swift test` 替代——本项目是 Xcode 工程，`swift test` 只覆盖 SwiftPM 子集。
 
 - 测试失败：报告失败情况，询问是否继续或排查
 - 测试通过：报告就绪
@@ -297,6 +304,14 @@ cd "$path"
 - 跳过基线测试验证
 - 不询问就带着失败的测试继续
 - 在项目内部创建工作树目录（污染 git status）
+- **以"当前分支未 push 导致 CI 触发失败"为由降级本地测试**——必须先查 BASE_BRANCH 的 CI 结果（基线 commit 与 BASE_BRANCH HEAD 相同）；若 BASE_BRANCH 也无结果，用 AskUserQuestion 询问是否 push 后触发 CI，不得直接降级本地
+- **以"CI 不可用"宽泛措辞降级本地**——"CI 不可用"仅指：项目无 `.github/workflows/` 配置、`gh` 命令不可用且用户选择不修复、用户在**无可用 CI 结果**时明确选择本地。分支未 push、`gh workflow run` 报错、CI 触发失败**均不构成"CI 不可用"**
+- **以"用户明确要求"凌驾于 CI 优先之上**——当已有可复用的成功 CI 结果时，用户要求本地不构成降级理由；应用 AskUserQuestion 给出"复用 CI 结果（推荐）/ 仍要本地仅作参考 / 终止"选项
+  - **触发时机**：若 agent 已按步骤 1 确定复用（commit 一致 + conclusion=success），可直接复用并告知用户，无需 AskUserQuestion；AskUserQuestion 仅在 agent 考虑接受用户本地请求时强制触发（即 agent 在"复用 CI"与"本地执行"之间犹豫时，必须用 AskUserQuestion 让用户显式选择，不得沉默降级本地）
+
+> **与 3.3 红线的关系**：3.3 节"分支未 push 时必须先 push 再等待 CI，禁止落到本地测试""CI 触发失败不构成走本地测试的理由"同样适用于本步骤——基线验证与回归验证在"CI 优先"上标准一致，不得在 1.2.5 阶段降级。
+>
+> **1.2.5 与 3.3 的表面张力说明**：1.2.5"可复用 BASE_BRANCH 的 CI 结果"与 3.3"分支未 push 时必须先 push"并不冲突——3.3 的"必须先 push"针对**回归验证**（步骤 3 提交后的新 commit 需新 CI 运行）；1.2.5 的"可复用 BASE_BRANCH"针对**基线验证**（步骤 1 的起点 commit 已有 CI 证据，无需新运行）。两者场景不同，不得混淆。
 
 #### 1.2.8 写入状态文件
 
