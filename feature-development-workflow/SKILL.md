@@ -1,6 +1,6 @@
 ---
 name: feature-development-workflow
-description: Use when implementing a new feature through a design-spec-first workflow, especially UI-heavy apps where visible behavior, screenshots, E2E/XCUITest/Playwright evidence, or manual acceptance records are needed; or when the user mentions "新特性流程" or "feature development workflow".
+description: 当实现新功能（设计规范优先的工作流）、UI 重的应用需要可见行为/截图/E2E/XCUITest/Playwright 证据或手动验收记录时使用；或当用户提到"新特性流程"或"feature development workflow"时使用。
 ---
 
 # 新特性实现工作流
