@@ -43,14 +43,14 @@ description: "在重构遗留/屎山代码、用户提到 AI 重构/refactoring�
 
 ### 阶段一：理解与文档化（禁止改代码）
 
-- 产出 `Architecture.md`（目录结构、模块职责、依赖方向）+ `Build.md`（编译、测试、度量方法）
+- 产出 `Architecture.md`（目录结构、模块职责、依赖方向）+ `Build.md`（编译、CI 验证方法、度量方法）——测试方法必须以 CI 为准，不得记录「本地 `swift test`/`xcodebuild test`」作为验证手段
 - 盘点已有文档，标注时效性（当前 / 历史 / 过期）
 - 退出标准：两份文档存在且与代码核对一致、缺口清单已列出
 
 ### 阶段二：锁定现有行为（Characterization Test）
 
 - 测试范围 = 本次重构涉及的模块，不给整个项目加测试
-- 按可测性分级：高（AI 直接生成）→ 中（注入 Stub）→ 低（先解依赖）→ 极低（跳过记报告）
+- 按可测性分级：高（AI 直接生成）→ 中（注入 Stub）→ 低（先解依赖）→ 极低（跳过记报告）。AI 生成测试后必须 push 走 CI 验证测试**在 CI 环境中**可运行（「可运行」指 CI 中能跑通且断言通过，**不是本地能编译执行**），不得用本地 `swift test`/`xcodebuild test`/`test-macos.sh` 替代——本地环境 ≠ CI 环境，测试是否能在 CI 中跑通是 CI 说了算
 - 锁定前人类确认：测试描述的是真实行为还是 AI 误解
 - 已有测试不重写，只补缺口。已有测试仍需人类确认「描述的是真实行为」，但确认粒度可粗——可按模块批量确认（如「`OverlayWindowController*Tests.swift` 这批都描述真实行为吗？」），不必逐条确认
 
@@ -139,16 +139,16 @@ description: "在重构遗留/屎山代码、用户提到 AI 重构/refactoring�
 
 ### 一次只解决一种问题
 
-- **第一组（行为保持型）**：Rename、Extract Method、Move Method——测试全绿 + 命名自解释
-- **第二组（结构性）**：Extract Class、Extract Protocol、DI——测试全绿 + 单一职责
-- **第三组（架构演进，可选）**：模块化、状态机——测试全绿 + 依赖方向单向
+- **第一组（行为保持型）**：Rename、Extract Method、Move Method——CI 测试全绿 + 命名自解释
+- **第二组（结构性）**：Extract Class、Extract Protocol、DI——CI 测试全绿 + 单一职责
+- **第三组（架构演进，可选）**：模块化、状态机——CI 测试全绿 + 依赖方向单向
 - 每组内部一次只做一种，不混
 
 ### 行为保持判定标准
 
 「行为是否保持不变」必须同时满足以下三项，三者全过才算行为保持，缺一不可：
 
-1. **Characterization Test 全绿**——阶段二锁定的所有测试在重构后仍通过
+1. **CI 中 Characterization Test 全绿**——阶段二锁定的所有测试在 CI 中（非本地）全绿，重构后仍通过。本地 `swift test`/`xcodebuild test`/`test-macos.sh` 通过不算数——CI 是跨环境验证的唯一保障
 2. **3 子代理 A 方向（行为保持性）通过**——A 方向未发现行为漂移
 3. **CI 通过**——远端 CI 全绿，跨环境验证行为不变
 
@@ -156,7 +156,7 @@ description: "在重构遗留/屎山代码、用户提到 AI 重构/refactoring�
 
 **「行为肯定没变」不成立的情况**：
 - Extract Method 看似纯结构改动，但若被提取方法引用了共享状态、闭包捕获、隐式 self，可能改变执行顺序或可观察行为
-- 解依赖改造可能隐藏行为变化，必须跑测试验证
+- 解依赖改造可能隐藏行为变化，必须走 CI 验证（不得用本地 `swift test`/`test-macos.sh` 替代）
 - 任何「改动很小所以行为肯定不变」的判断都是合理化借口，必须以三项标准验证
 
 ### 小 Commit
@@ -177,7 +177,7 @@ Split VisionManager
 
 | 风险 | 检查手段 |
 |------|---------|
-| 行为变化 | 跑完整测试 + 对比输出 |
+| 行为变化 | 在 CI 中跑完整测试 + 对比输出（不得用本地 `swift test`/`test-macos.sh` 替代） |
 | 幻觉 API | 编译必须通过 |
 | 测试假绿 | 检查是否覆盖边界 |
 | 隐私泄漏 | diff 无密钥/用户数据 |
@@ -216,7 +216,7 @@ Review 通过后，必须执行 CI 验证（见下方「CI 验证规则」）。
 
 #### 红线
 
-- **禁止用 `swift test` 替代 CI**——本项目是 Xcode 工程，`swift test` 只覆盖 SwiftPM 子集
+- **禁止用 `swift test` 替代 CI**——本项目是 Xcode 工程，`swift test` 只覆盖 SwiftPM 子集。「只覆盖子集」是 swift test 的缺陷说明而非禁用前提；`xcodebuild test` 虽覆盖完整 scheme，仍因「本地环境 ≠ CI 环境」被同条红线禁止（见行为保持判定标准第 1 项及红线列表）
 - **禁止跳过 CI 验证**——重构必须验证行为不变，CI 是跨环境验证的唯一保障
 - **本地测试仅用于理解 CI 失败原因**——`bash scripts/ci/test-macos.sh` 可本地复现，但修复后必须重新走 CI
 - **分支未 push 时必须先 push 再等 CI**——禁止以 push 失败为由落到本地测试
@@ -226,9 +226,9 @@ Review 通过后，必须执行 CI 验证（见下方「CI 验证规则」）。
 CI 失败时用 `AskUserQuestion`：
 
 - 拉取 CI 日志分析失败原因（`gh run view <run-id> --log-failed`），修复后重新走 CI（推荐）
-- 本地复现排查（`bash scripts/ci/test-macos.sh`，仅用于理解失败原因，修复后必须重新走 CI）
+- 本地复现排查（`bash scripts/ci/test-macos.sh`，**仅用于复现/理解 CI 报错的具体原因**——修复后再次本地运行即视为「验证修复是否成功」，无论 AI 声称的目的是「确认理解」还是「验证修复」；任何修复都必须重新走 CI 才算验证通过）
 - `git revert` 本次 Commit，回到上一个绿色基线后重新拆分（对应回滚策略一级）
-- 跳过继续（**仅限 CI 临时故障**——如 runner 宕机、GitHub 平台故障；判定依据：CI 日志中失败 step 属于 infra/runner 类，如 `runner cancelled`、`GitHub Actions is temporarily unavailable`。测试断言失败、编译错误属代码失败，不允许跳过，会触发红线「跳过 CI 验证直接合并」）
+- 跳过继续（**仅限 CI 临时故障**——如 runner 宕机、GitHub 平台故障；**「CI 尚未触发」「CI 排队中」「CI 尚未完成运行」均不属于 CI 临时故障，不得以此为跳过理由**。判定依据：CI 日志中失败 step 属于 infra/runner 类，如 `runner cancelled`、`GitHub Actions is temporarily unavailable`。测试断言失败、编译错误、**签名/配置/entitlements/构建脚本/Info.plist 等项目内任何文件修改导致的失败**均属代码失败，不允许跳过，会触发红线「跳过 CI 验证直接合并」）
 
 ### 功能 Commit 与重构 Commit 分开
 
@@ -238,7 +238,7 @@ CI 失败时用 `AskUserQuestion`：
 
 | 级别 | 触发 | 操作 |
 |------|------|------|
-| 一级 | 单 Commit 测试红 | `git revert` |
+| 一级 | 单 Commit CI 红 | `git revert` |
 | 二级 | 跨 Commit 方向错 | 新开修正 Commit，标注修正 #XXX |
 | 三级 | 测试基线锁了 Bug | 行为修正 Commit（人类单独 Review） |
 | 四级 | 红灯信号持续 | 保留分支写失败回顾，主分支回退 |
@@ -252,9 +252,10 @@ CI 失败时用 `AskUserQuestion`：
 | "本地测试通过了，CI 肯定也通过" | 本地环境 ≠ CI 环境。签名、SDK、runner 差异都可能掩盖问题。 |
 | "一次性重写更高效" | 上下文不够、风险不可控，永远不要做。 |
 | "这是 Bug 不是 Feature，我直接修" | AI 不知道是 Bug 还是 Feature，必须人类决策。 |
-| "AI 说已经没问题了" | 跑不过完整测试就不算没问题。 |
-| "解依赖只改了结构，行为肯定不变" | 解依赖可能隐藏行为变化，必须跑测试验证。 |
+| "AI 说已经没问题了" | CI 没全绿就不算没问题——本地跑过不算数。 |
+| "解依赖只改了结构，行为肯定不变" | 解依赖可能隐藏行为变化，必须走 CI 验证——本地测试不算数。 |
 | "swift test 通过了就行" | `swift test` 只覆盖 SwiftPM 子集，本项目是 Xcode 工程，必须走 CI。 |
+| "CI 失败了，我在本地 test-macos.sh 跑过修复后没问题" | 本地复现仅用于理解 CI 报错，**不得在本地验证修复是否成功**。修复必须重新走 CI 才算验证通过——本地跑过 ≠ CI 通过。 |
 | "测试只覆盖 happy path 就够了" | 必须覆盖边界、异常、空数据、非法输入。 |
 | "审查太慢了，跳过 3 子代理直接合并" | 单代理独断会漏掉幻觉 API 和行为漂移。3 子代理是底线。 |
 | "赶时间，跳过测试/CI 直接推进" | 排期紧不代表可以接受行为漂移。重构返工成本远高于测试编写成本，一次行为漂移事故足以抵消所有节省的时间。 |
@@ -265,9 +266,11 @@ CI 失败时用 `AskUserQuestion`：
 - 一次性重写整个项目
 - 跳过 CI 验证直接合并
 - 用 `swift test` 替代完整测试
+- 用本地 `xcodebuild test`/`test-macos.sh` 替代 CI 验证（包括「修复后本地跑过就认为可以合并」）
+- CI 失败后在本地验证修复是否成功（修复必须重新走 CI 才算验证通过）
 - AI 自行判定「这是 Bug 还是 Feature」
 - 测试只覆盖 happy path 就声称通过
-- 解依赖改造不跑测试就合并
+- 解依赖改造不走 CI 验证就合并
 - 跳过 3 子代理并行检查直接进入下一步
 - 用纯文本提问而非 `AskUserQuestion` 中断会话
 - 完成步骤后直接结束对话而不给出后续选项
@@ -280,8 +283,10 @@ CI 失败时用 `AskUserQuestion`：
 
 **不可覆盖的红线**（即使用户书面确认也不允许，必须拒绝并停止——「停止」指按红线章节末尾规则：停止当前步骤，回到违规步骤重新执行；用 `AskUserQuestion` 给出「按规则执行 / 终止本次重构」选项）：
 - 没有锁定行为就开始改代码
-- 跳过 CI 验证直接合并（代码导致的 CI 失败）
+- 跳过 CI 验证直接合并（项目内任何文件——源码、配置、entitlements、Info.plist、构建脚本、签名设置等——修改导致的 CI 失败）
 - 用 `swift test` 替代完整测试
+- 用本地 `xcodebuild test`/`test-macos.sh` 替代 CI 验证（包括「修复后本地跑过就认为可以合并」）
+- CI 失败后在本地验证修复是否成功
 
 **可书面覆盖的红线**（用户明确书面确认 + 记录到 history 后可执行）：
 - 跳过 3 子代理并行检查（仅限低风险纯重命名场景）
@@ -296,7 +301,7 @@ CI 失败时用 `AskUserQuestion`：
 
 满足以下任一即可停（但仍需用 `AskUserQuestion` 确认）：
 
-- 硬性指标全达成：测试通过、无新增 Warning、CI 全绿
+- 硬性指标全达成：CI 全绿（包含所有测试在 CI 中通过）、无新增 Warning
 - 红灯信号出现：改动超 2 倍、测试被迫弱化、推理链断裂
 
 ## 完成步骤后的提问模式
