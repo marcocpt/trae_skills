@@ -1,9 +1,9 @@
 ---
-name: later-tracking
-description: Use when user defers work ("稍后/以后/回头/晚点/先跳过/先不做/下个版本/这次先不弄") or when scope-creep items surface during debugging/review that don't belong to the current task. Also use when user asks to review deferred items, or when Claude discovers a previously-recorded LATER item has been resolved.
+name: dd-later-tracking
+description: 用户延后工作时使用（"稍后/以后/回头/晚点/先跳过/先不做/下个版本/这次先不弄"），或调试/审核中出现不属于当前任务的范围蔓延项时使用。也适用于用户要求回顾延后事项，或发现之前记录的 LATER 项已被解决。
 ---
 
-# later-tracking
+# dd-later-tracking
 
 ## 概述
 

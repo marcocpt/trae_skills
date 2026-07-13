@@ -37,7 +37,7 @@ gh run list --workflow "<workflow-name>" --branch <BASE_BRANCH> --limit 1
 - 任一查询返回 `conclusion == "success"` 且 `headSha` 等于当前工作树 HEAD → **跳过测试，复用 CI 结果**（记录复用来源分支与 run ID）
 - 若运行中（`status == "in_progress"`）→ 等待结果，不重复触发
 
-> **基线验证场景**：在 bug-fix-workflow/feature-development-workflow 步骤 1.2.5 中，新创建的 fix 分支尚未 push，远端无此分支——此时**必须**查 BASE_BRANCH 的 CI 结果，因为工作树 HEAD 等于 BASE_BRANCH HEAD，基线 commit 已有成功 CI 证据即满足复用条件。
+> **基线验证场景**：在 dd-bug-fix-workflow/dd-feature-development-workflow 步骤 1.2.5 中，新创建的 fix 分支尚未 push，远端无此分支——此时**必须**查 BASE_BRANCH 的 CI 结果，因为工作树 HEAD 等于 BASE_BRANCH HEAD，基线 commit 已有成功 CI 证据即满足复用条件。
 
 ### 2. 尝试自建服务器测试
 
@@ -97,7 +97,7 @@ gh workflow run "<workflow-name>" --ref <当前分支>
 - **不重复触发**：已有运行中的 workflow 不得再次 `gh workflow run`
 - **记录决策**：选择跳过/复用 CI 结果时，在步骤输出中说明依据（commit SHA、run ID、conclusion）
 - **不降级本地**：CI 触发失败不构成走本地测试的理由；分支未 push 时必须先查 BASE_BRANCH 的 CI 结果或先 push 再触发，不得降级本地
-- **委托关系优先级**：当工作流技能（如 bug-fix-workflow 1.2.5）委托本 skill 决策测试位置时，本 skill 的决策流程语义（commit 一致为核心）优先于工作流技能中的命令示例字面文本；两份文档措辞不一致时，以本 skill 的"CI 优先 + 不降级本地"红线为准
+- **委托关系优先级**：当工作流技能（如 dd-bug-fix-workflow 1.2.5）委托本 skill 决策测试位置时，本 skill 的决策流程语义（commit 一致为核心）优先于工作流技能中的命令示例字面文本；两份文档措辞不一致时，以本 skill 的"CI 优先 + 不降级本地"红线为准
 
 ## 何时使用
 

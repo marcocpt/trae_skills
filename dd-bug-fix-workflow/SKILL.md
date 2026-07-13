@@ -1,6 +1,6 @@
 ---
-name: bug-fix-workflow
-description: Use when fixing a bug that needs isolated environment and TDD approach, or when user mentions "修bug流程" or "bug fix workflow"
+name: dd-bug-fix-workflow
+description: 修复需要隔离环境和 TDD 方法的 bug 时使用，或用户提到"修bug流程"、"bug fix workflow"时使用。
 ---
 
 # Bug 修复工作流

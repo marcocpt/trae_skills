@@ -1,22 +1,22 @@
 ---
-name: codeqa-grilling
-description: Use when user wants to ask questions about existing code interactively (one at a time, with graphical answers), when user says "代码访谈", "代码 grilling", "code grilling", "codeqa", "/codeqa-grilling", or provides a code path/function/module and starts asking clarifying questions. Covers mixed mode - user asks + AI proactively surfaces suspicious points. Symptoms include user giving a code location and posing a question, or explicitly requesting an interactive Q&A loop over code with flowcharts/state diagrams/sequence diagrams for quick human understanding.
+name: dd-codeqa-grilling
+description: 用户想对既有代码逐条交互式提问（一次一问，图形化解答）时使用。触发词："代码访谈"、"代码 grilling"、"code grilling"、"codeqa"、"/codeqa-grilling"、"/dd-codeqa-grilling"，或用户提供代码路径/函数/模块并开始提问。AI 只聚焦用户的问题，不主动挑刺或发现无关问题。症状包括：用户给出代码位置并提问，或明确要求用流程图/状态图/时序图做交互式 Q&A 快速理解代码。
 ---
 
 # 代码访谈 (Code Q&A Grilling)
 
 ## 概述
 
-用户对既有代码逐条提问，助理解答**必须**用图形化展示（Mermaid 流程图/状态图/时序图/类图为主，复杂架构或 UI 对比场景启动 HTML server），解答末尾**可选**加「⚠️ 顺带发现」区块（仅真实可疑点时，不强行凑），随后**必须**用 `AskUserQuestion` 进行**两阶段提问**：第一阶段问满意度（3 选项），满意时进入第二阶段问落盘方式（TODO / LATER / 不记录）；TODO 写入 `./docs/AI/codeqa-todo/codeqa_TODO.md`，LATER 复用 `/docs/AI/LATER.md` 按 later-tracking 协议；收尾时刷新 TODO 头部汇总 + git add + commit，**不进入批量修复**（如需修复建议调 docreview-grilling 第 5 步或单独 bug-fix-workflow）。
+用户对既有代码逐条提问，助理解答**必须**用图形化展示（Mermaid 流程图/状态图/时序图/类图为主，复杂架构或 UI 对比场景启动 HTML server），**只聚焦用户的问题**——不主动挑刺、不主动发现与用户问题无关的可疑点，随后**必须**用 `AskUserQuestion` 进行**两阶段提问**：第一阶段问满意度（3 选项），满意时进入第二阶段问落盘方式（TODO / LATER / 不记录）；用户无继续提问时**必须**用 `AskUserQuestion` 询问是否继续提问或收尾；TODO 写入 `./docs/AI/codeqa-todo/codeqa_TODO.md`，LATER 复用 `/docs/AI/LATER.md` 按 dd-later-tracking 协议；收尾时刷新 TODO 头部汇总 + git add + commit，**不进入批量修复**（如需修复建议调 dd-docreview-grilling 第 5 步或单独 dd-bug-fix-workflow）。
 
-**核心原则：每轮答完必进两阶段提问、解答必含图形化、代码位置必附锚点、跨文件搜索必用子代理、AI 仅真实可疑点挑刺、TODO 即时落盘、收尾必提交、不修复。**
+**核心原则：每轮答完必进两阶段提问、无继续提问时必问是否继续/收尾、解答必含图形化、代码位置必附锚点、跨文件搜索必用子代理、只聚焦客户问题不主动挑刺、TODO 即时落盘、收尾必提交、不修复。**
 
 ## 何时使用
 
 触发关键词（任一即激活）：
 - "代码访谈" / "代码 grilling"
 - "code grilling" / "codeqa"
-- "/codeqa-grilling"
+- "/codeqa-grilling" / "/dd-codeqa-grilling"
 - 语义触发：用户提供代码路径/函数/模块并开始提问
 
 适用场景：
@@ -26,9 +26,9 @@ description: Use when user wants to ask questions about existing code interactiv
 
 不适用：
 - 一次性问答（直接答完即可）
-- 文档审核（用 docreview-grilling）
+- 文档审核（用 dd-docreview-grilling）
 - 纯代码审查找问题（用 chinese-code-review / TRAE-code-review）
-- 让 AI 生成新代码（用 feature-development-workflow）
+- 让 AI 生成新代码（用 dd-feature-development-workflow）
 
 ## 核心协议
 
@@ -40,31 +40,31 @@ description: Use when user wants to ask questions about existing code interactiv
 3. `AskUserQuestion` 确认 TODO 文件保存路径，默认 `./docs/AI/codeqa-todo/codeqa_TODO.md`（LATER 路径固定 `/docs/AI/LATER.md`，不询问）
 4. 进入问答循环：等待用户第一个问题
 
-**不询问图形化开关与 AI 挑刺开关**（默认启用）。**TODO/LATER 文件此时不创建**，首次有 TODO/LATER 标记时才创建。
+**不询问图形化开关**（默认启用）。**TODO/LATER 文件此时不创建**，首次有 TODO/LATER 标记时才创建。
 
 ### 2. 单轮问答循环（必须严格遵守）
 
 ```mermaid
 flowchart TD
-    A[用户提问] --> B[AI 图形化解答<br/>+ 代码位置锚点]
-    B --> C{发现真实可疑点?}
-    C -->|是| D[解答末尾加<br/>⚠️ 顺带发现 区块]
-    C -->|否| E[无顺带发现区块]
-    D --> F[AskUserQuestion 第一阶段<br/>3 选项]
-    E --> F
+    A[用户提问] --> B[AI 图形化解答<br/>+ 代码位置锚点<br/>只聚焦用户问题]
+    B --> F[AskUserQuestion 第一阶段<br/>3 选项]
     F --> G{用户选择}
     G -->|满意选落盘| H[AskUserQuestion 第二阶段<br/>3 选项]
     G -->|不满意追问| A
     G -->|结束访谈| I[收尾]
     H --> J{用户选择}
     J -->|加入 TODO| K[即时追加到 TODO 文件]
-    J -->|加入 LATER| L[按 later-tracking 协议写 LATER]
-    J -->|不记录| A
-    K --> A
-    L --> A
+    J -->|加入 LATER| L[按 dd-later-tracking 协议写 LATER]
+    J -->|不记录| M{用户继续提问?}
+    K --> M{用户继续提问?}
+    L --> M{用户继续提问?}
+    M -->|是| A
+    M -->|否/沉默| N[AskUserQuestion<br/>是否继续提问/收尾]
+    N -->|继续提问| A
+    N -->|收尾| I
 ```
 
-**每轮解答后必须立即调 `AskUserQuestion`，不得直接等待文本输入。**
+**每轮解答后必须立即调 `AskUserQuestion`，不得直接等待文本输入。用户无继续提问时，必须用 `AskUserQuestion` 询问是否继续提问或收尾，不得直接等待文本输入。**
 
 #### 2.1 图形化解答要求
 
@@ -84,23 +84,20 @@ flowchart TD
 - 解答**必须**附代码位置锚点 `[文件名#L行号](file:///绝对路径#L行号)`
 - 多个代码位置分别附锚点
 
-#### 2.2 AI 主动挑刺（「⚠️ 顺带发现」区块）
+#### 2.2 只聚焦客户问题（不主动挑刺）
 
-**触发条件：** 解答中确实发现真实可疑点（潜在 bug / 性能问题 / 不一致 / 明显技术债）。**不强凑**——没发现就不加。
+**核心规则：只解答用户问的内容，不主动发现或提及与用户问题无关的可疑点。**
 
-**呈现方式：** 解答末尾加区块：
-```
-⚠️ 顺带发现：
-1. [代码位置#L23] 缺少 null 检查，可能 NPE
-2. [代码位置#L45] 循环复杂度 O(n²)，数据量大时可能慢
-```
+**具体要求：**
+- 用户问什么答什么，不扩展到用户未问及的代码区域
+- 不主动发现/提及与当前问题无关的潜在 bug、性能问题、技术债
+- 不加「⚠️ 顺带发现」区块——这不是本技能的职责
+- 如果用户在追问中自行发现了可疑点，则正常解答
 
-**规则：**
-- 不改变两阶段提问选项
-- 用户对可疑点感兴趣 → 选「不满意追问」深入
-- 不感兴趣 → 选「满意选落盘」继续
-- 用户明确说"只问这个别挑刺" → 当前轮不挑刺
-- 可疑点不直接生成 TODO，需用户在追问中确认后才落盘
+**示例：**
+- ✅ 用户问"cache.get 怎么工作"→ 只解答 cache.get 的逻辑
+- ❌ 用户问"cache.get 怎么工作"→ 解答末尾加"cache.set 有个 bug"
+- ✅ 用户追问"cache.set 那里是不是有问题？"→ 正常解答 cache.set 的问题
 
 #### 2.3 HTML server 启动（复杂场景）
 
@@ -133,8 +130,22 @@ flowchart TD
 | 选项 | 行为 |
 |------|------|
 | 加入 TODO | **立即**追加到 TODO 文件（首次创建文件+头部） |
-| 加入 LATER | 按 later-tracking 协议（Grep 去重 + 子代理精判）追加到 LATER 文件 |
+| 加入 LATER | 按 dd-later-tracking 协议（Grep 去重 + 子代理精判）追加到 LATER 文件 |
 | 不记录 | 等待用户下一题 |
+
+#### 2.6 第三阶段提问（无继续提问时，2 选项）
+
+**触发条件：** 第二阶段结束后，用户**没有继续提问**（沉默/未发新消息），**必须**主动调 `AskUserQuestion` 询问。
+
+| 选项 | 行为 |
+|------|------|
+| 继续提问 | 等待用户下一个问题 |
+| 收尾 | 进入收尾流程 |
+
+**规则：**
+- **不得**直接等待文本输入——必须主动询问
+- **不得**假设用户想结束而自动进入收尾
+- **不得**假设用户想继续而无限等待
 
 ### 3. 代码验证纪律（必须严格遵守）
 
@@ -199,11 +210,11 @@ flowchart TD
 - ✅ `- [ ] TODO1. [P1] cache.set 更新分支漏 delete 导致顺序错乱 #bug #缓存`
 - ❌ `- [ ] TODO1. [Pn] 有问题 #通用`（描述笼统，性质标签缺失）
 
-### 5. LATER 文件维护（按 later-tracking 协议）
+### 5. LATER 文件维护（按 dd-later-tracking 协议）
 
 **路径：** `/docs/AI/LATER.md`（项目根目录，固定，不询问）。
 
-**写入协议（严格按 later-tracking）：**
+**写入协议（严格按 dd-later-tracking）：**
 1. `Read` `/docs/AI/LATER.md`
 2. `Grep` 关键词粗筛候选
 3. 有候选 → `Task` 子代理精判是否同一事项
@@ -216,7 +227,7 @@ flowchart TD
 - [ ] LATER1. 简要描述（≤80 中文字符）#模块标签
 ```
 
-**LATER 不在本 skill 收尾时 git 提交**（later-tracking 协议未要求即时提交），统一在收尾时与 TODO 一起提交。
+**LATER 不在本 skill 收尾时 git 提交**（dd-later-tracking 协议未要求即时提交），统一在收尾时与 TODO 一起提交。
 
 ### 6. 多方案处理（完全继承 docreview）
 
@@ -235,12 +246,12 @@ flowchart TD
 2. **若会话启动过 HTML server：** 调 `brainstorming/scripts/stop-server.sh $SCREEN_DIR` 关闭
 3. **git 提交（统一）：**
    - `git add <TODO 文件> <LATER 文件>`（LATER 文件若有变更）
-   - `git commit`，commit message 格式：`docs(codeqa-grilling): 记录 <code-name> 访谈 N 个 TODO + M 个 LATER`
+   - `git commit`，commit message 格式：`docs(dd-codeqa-grilling): 记录 <code-name> 访谈 N 个 TODO + M 个 LATER`
    - 若 TODO 和 LATER 都未创建（双空场景）：跳过 git 提交
 4. **输出文件路径**（markdown 链接 `[文件名](file:///绝对路径)`）
 5. **简要汇总口述：** N 个问题，按类型分布（解读:X / bug:Y / 优化:Z），按落盘分布（TODO:A / LATER:B / 不记录:C）
 6. **提示后续路径：**
-   - 若需批量修复 TODO → 建议"调用 docreview-grilling 第 5 步流程"或"对单条 TODO 调用 bug-fix-workflow / feature-development-workflow"
+   - 若需批量修复 TODO → 建议"调用 dd-docreview-grilling 第 5 步流程"或"对单条 TODO 调用 dd-bug-fix-workflow / dd-feature-development-workflow"
    - LATER 项跨会话留存，后续会话可回顾
 
 ## 红线 - 停下并修正
@@ -251,26 +262,27 @@ flowchart TD
 - **答完直接等输入** → 必须立即调 `AskUserQuestion` 第一阶段
 - **单阶段提问或无提问** → 必须两阶段（满意后必进第二阶段选 TODO/LATER/不记录）
 - **两阶段选项少于 3 个或改语义** → 第一阶段固定 3 选项（满意选落盘/不满意追问/结束），第二阶段固定 3 选项（TODO/LATER/不记录）
+- **用户无继续提问时直接等待文本输入** → 必须调 `AskUserQuestion` 第三阶段询问是否继续/收尾
+- **用户无继续提问时假设结束自动收尾** → 必须先询问用户，不得替用户做决定
 - **TODO 积压到结束才写** → 用户选「加入 TODO」后必须立即追加到文件，禁止积压
-- **LATER 写入不走 later-tracking 协议** → 必须 Grep 去重 + 子代理精判
+- **LATER 写入不走 dd-later-tracking 协议** → 必须 Grep 去重 + 子代理精判
 - **LATER 描述超 80 字符或展开成段落** → LATER 是索引不是文档，必须压缩
 - **多方案问题未列方案就解答** → 必须列全部候选 + 推荐 + 理由，用 `AskUserQuestion` 让用户选定
 - **TODO 改进建议字段堆砌多方案** → 只写用户选定的方案
-- **AI 强凑可疑点**（每轮必加「⚠️ 顺带发现」） → 仅真实可疑点时加，没发现就不加
-- **可疑点直接生成 TODO** → 必须用户在追问中确认后才落盘
-- **用户明确说"别挑刺"仍挑刺** → 当前轮不挑刺
+- **AI 主动挑刺/发现与用户问题无关的可疑点** → 只聚焦客户的问题，不主动挑刺，不加「⚠️ 顺带发现」区块
+- **解答扩展到用户未问及的代码区域** → 只解答用户问的内容
 - **HTML server 询问用户是否启动** → 触发条件满足时直接启动（用户规则：浏览器展示直接执行）
 - **复杂架构图用 Mermaid 硬塞**（5+ 节点挤成一团） → 必须启动 HTML server
 - **未启动 server 就写 HTML 文件** → 必须先调 `start-server.sh` 拿到 `screen_dir`
 - **HTML 文件复用文件名** → 每个屏幕必须新文件名
 - **收尾不刷新 TODO 头部汇总** → 必须在头部之后插入「访谈汇总」区块
 - **收尾不 git 提交** → 必须 `git add <TODO> <LATER>` + `git commit`
-- **收尾自动进入批量修复** → 本 skill 不修复；如需修复建议用户调 docreview-grilling 第 5 步
+- **收尾自动进入批量修复** → 本 skill 不修复；如需修复建议用户调 dd-docreview-grilling 第 5 步
 - **TODO 字段缺代码位置/问题/访谈时间** → 3 必有字段必须齐全
 - **代码位置/图形化预览用纯文本而非可点击链接** → 必须用 `[文本](file:///绝对路径#L行号)`
 - **TODO 第一行过于笼统**（如「有问题」） → 必须简洁准确、可独立理解
 - **标签缺失或仅性质无产品功能** → 至少 1 个标签，性质 + 产品功能双标签
-- **启动询问图形化/AI 挑刺开关** → 默认启用，不询问
+- **启动询问图形化开关** → 默认启用，不询问
 - **启动询问 LATER 路径** → 固定 `/docs/AI/LATER.md`，不询问
 
 **违反以上任一条 = 违反本技能的精神。**
@@ -284,27 +296,28 @@ flowchart TD
 | 解答不附代码位置锚点 | 必须用 `[文本](file:///绝对路径#L行号)` |
 | 答完直接等输入 | 必须立即调 `AskUserQuestion` 第一阶段 |
 | 单阶段提问或不提问 | 必须两阶段：满意后必进第二阶段选 TODO/LATER/不记录 |
+| 用户无继续提问时直接等待 | 必须调 `AskUserQuestion` 第三阶段询问是否继续/收尾 |
+| 用户无继续提问时假设结束自动收尾 | 必须先询问用户，不得替用户做决定 |
 | 选项少于 3 个或改语义 | 第一阶段 3 选项，第二阶段 3 选项，顺序语义不可变 |
 | TODO 积压到结束才写 | 用户选「加入 TODO」必须立即追加到文件 |
 | LATER 不去重直接新增 | 必须 Grep 粗筛 + 子代理精判 |
 | LATER 描述超 80 字符 | LATER 是索引不是文档，必须压缩到单行 |
 | 多方案直接给推荐不问用户 | 必须列全部 + 推荐 + 理由，`AskUserQuestion` 让用户选定 |
 | TODO 改进建议堆砌多方案 | 只写用户选定的方案 |
-| 每轮必凑「⚠️ 顺带发现」 | 仅真实可疑点时加，没发现就不加 |
-| 可疑点直接生成 TODO | 必须用户在追问中确认后才落盘 |
-| 用户说"别挑刺"仍挑 | 当前轮不挑刺 |
+| AI 主动挑刺/加「⚠️ 顺带发现」 | 只聚焦客户的问题，不主动挑刺，不加此区块 |
+| 解答扩展到用户未问及的代码区域 | 只解答用户问的内容 |
 | HTML server 询问用户是否启动 | 触发条件满足直接启动（浏览器展示不询问） |
 | 复杂架构图硬塞 Mermaid | 5+ 节点必须启动 HTML server |
 | 未启动 server 就写 HTML | 必须先调 `start-server.sh` 拿 `screen_dir` |
 | HTML 文件复用文件名 | 每个屏幕必须新文件名 |
 | 收尾不刷新 TODO 头部汇总 | 必须插入「访谈汇总」区块 |
 | 收尾不 git 提交 | 必须 `git add <TODO> <LATER>` + `git commit` |
-| 收尾自动进入批量修复 | 本 skill 不修复；建议用户调 docreview-grilling 第 5 步 |
+| 收尾自动进入批量修复 | 本 skill 不修复；建议用户调 dd-docreview-grilling 第 5 步 |
 | TODO 字段缺 3 必有 | 代码位置/问题/访谈时间必须齐全 |
 | 代码位置用纯文本 | 必须用 `[文本](file:///绝对路径#L行号)` 可点击链接 |
 | TODO 第一行笼统 | 必须简洁准确、可独立理解 |
 | 标签缺失或仅性质 | 性质 + 产品功能双标签，至少 1 个 |
-| 启动询问图形化/AI 挑刺开关 | 默认启用，不询问 |
+| 启动询问图形化开关 | 默认启用，不询问 |
 | 启动询问 LATER 路径 | 固定 `/docs/AI/LATER.md`，不询问 |
 
 ## 合理化借口表
@@ -319,12 +332,16 @@ flowchart TD
 | "前面顺利，节奏要跟上别拖" | 沉没成本压力；每轮纪律必须一致，不能因前面顺利就降标准 |
 | "用户都说不用问满意度了，还问就是烦人" | 协议要求每轮必问；用户说"不用问"是效率压力，不是绕过协议的许可 |
 | "开放式收尾（'还有别的吗'）等价于满意度询问" | 开放式收尾无法捕捉"用户不满意但没明说"的情况；结构化提问是协议 |
-| "bug 是用户发现的，不算顺带发现" | 衍生问题（如"跳过 eviction 检查"）是独立问题，必须结构化标记 |
+| "用户沉默就是默认想结束" | 沉默 ≠ 结束；必须用 AskUserQuestion 第三阶段询问，不得替用户做决定 |
+| "用户沉默就是默认想继续" | 沉默 ≠ 继续；必须用 AskUserQuestion 第三阶段询问，不得无限等待 |
+| "主动问是否继续太烦人" | 协议要求无继续提问时必问；不问 = 用户卡住无法推进 |
+| "真实可疑点不提是失职" | 本技能定位是聚焦客户问题；可疑点留给代码审查技能处理 |
+| "用户可能不知道有 bug，提一下更好" | 用户的意图是理解代码，不是找 bug；主动挑刺改变访谈性质 |
+| "用户说'顺便看看有没有问题'" | 这等价于用户明确要求审查，此时应切换到代码审查技能 |
 | "TODO 文件用户没提就别建" | 协议要求落盘；用户选「加入 TODO」本身就是要求建文件 |
 | "git 提交安全策略不动 git" | 收尾 git 提交是协议要求；不提交等于落盘内容无版本追溯 |
 | "用户说赶紧，目标函数变成尽快结束本轮" | 用户说"赶紧"是效率压力，不是降标准许可；结构化动作是协议必经步骤 |
 | "图示化对简单问题多余" | 每问至少一种图形化是硬约束；简单问题用表格或小型 Mermaid 也算 |
-| "AI 挑刺强凑显得专业" | 强凑降低信任；仅真实可疑点时挑刺，没发现就不加 |
 | "复杂架构图用 Mermaid 硬塞更省事" | 5+ 节点 Mermaid 挤成一团不可读；必须启动 HTML server |
 | "HTML server 询问用户是否启动更礼貌" | 用户规则明确"浏览器展示直接执行"；触发条件满足直接启动 |
 | "LATER 用 TodoWrite 也行" | TodoWrite 会话结束即失效；LATER 跨会话留存必须用文件 |
@@ -333,19 +350,20 @@ flowchart TD
 | "TODO 改进建议字段堆砌多方案更全面" | 只写用户选定的方案；多方案讨论留在会话记录里 |
 | "收尾不刷新头部，反正 TODO 已落盘" | 头部汇总是后续 AI 读取的索引；不刷新则文件无自包含可读性 |
 | "收尾不提交，等用户后续处理" | 协议要求收尾必提交；不提交则落盘内容易丢失 |
-| "自动进入批量修复更高效" | 本 skill 定位是问答+落盘；批量修复是 docreview-grilling 的流程，复制会重叠 |
+| "自动进入批量修复更高效" | 本 skill 定位是问答+落盘；批量修复是 dd-docreview-grilling 的流程，复制会重叠 |
 
 ## 实际效果
 
 - 用户全程只需聚焦"提问 + 选选项"，交互成本最低
 - 解答必含图形化，人脑看流程图/状态图比看 500 行代码快得多
 - 代码位置锚点可点击，用户可快速跳转验证
-- AI 仅真实可疑点时挑刺，不强行凑数降低信任
+- AI 只聚焦客户的问题，不主动挑刺，访谈体验更纯粹
+- 无继续提问时主动询问是否继续/收尾，用户不会卡住
 - 跨文件搜索用子代理隔离上下文，主上下文不爆
 - TODO/LATER 双轨落盘：TODO 结构化便于批量修复，LATER 单行索引跨会话留存
 - TODO 每条标记即落盘，会话中断不丢失已记录内容
 - TODO 文件结构化、可被后续 AI 直接读取并迭代
 - 收尾 git 提交保持原子性，一次访谈一个 commit
-- 与 docreview-grilling 形成对称：文档审核 / 代码解读，覆盖完整
-- 不修复保持定位清晰；如需修复可调 docreview-grilling 第 5 步或单独 bug-fix-workflow
+- 与 dd-docreview-grilling 形成对称：文档审核 / 代码解读，覆盖完整
+- 不修复保持定位清晰；如需修复可调 dd-docreview-grilling 第 5 步或单独 dd-bug-fix-workflow
 - 复杂架构/UI 场景启动 HTML server，视觉最佳；简单场景 Mermaid 内联轻量

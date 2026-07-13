@@ -1,6 +1,6 @@
 ---
-name: writing-design-specs
-description: Use when writing a design spec for a new feature, significant refactor, or API migration, before writing implementation code or plans. Use when user mentions "设计规范", "design spec", "写规格", "规格文档", or when starting feature work that requires design documentation. Also use when about to skip grilling, rush to writing, skip reading project docs.md or app 功能列表.md or existing specs, use a single reviewer instead of parallel multi-dimensional review, batch multiple documents to save interaction rounds, or accumulate changes across steps without per-step git commits.
+name: dd-writing-design-specs
+description: 编写新功能、重大重构或 API 迁移的设计规范时使用，在写实现代码或计划之前。触发词："设计规范"、"design spec"、"写规格"、"规格文档"。也适用于以下症状：跳过拷问直接写规范、跳过阅读项目文档、用单人审查替代并行多维审查、批量处理多文档节省交互轮次、跨步骤累积变更而不逐步提交。
 ---
 
 # 编写设计规范
@@ -15,9 +15,9 @@ description: Use when writing a design spec for a new feature, significant refac
 
 - 新功能、大规模重构、API 迁移、设计驱动变更
 - 用户提到"设计规范"、"design spec"、"写规格"、"规格文档"
-- feature-development-workflow 步骤 2、bug-fix-workflow 之外的设计文档场景
+- dd-feature-development-workflow 步骤 2、dd-bug-fix-workflow 之外的设计文档场景
 
-**不适用：** bug 修复（用 bug-fix-workflow）、纯文档修改、一次性小改动、已有设计规范只需微调
+**不适用：** bug 修复（用 dd-bug-fix-workflow）、纯文档修改、一次性小改动、已有设计规范只需微调
 
 ## 流程
 
@@ -200,7 +200,7 @@ git commit -m "docs(spec): confirm requirements for F{m} via grilling"
 
 ### 2.2 必须包含的章节
 
-按项目模板优先；无模板时使用以下默认 12 章节（参考 feature-development-workflow）：
+按项目模板优先；无模板时使用以下默认 12 章节（参考 dd-feature-development-workflow）：
 
 1. **背景与目标**
 2. **非目标**：明确不做什么

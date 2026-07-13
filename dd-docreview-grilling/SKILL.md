@@ -1,19 +1,19 @@
 ---
-name: docreview-grilling
-description: Use when user wants to review a document by asking questions one at a time, when user says "审核文档", "文档审核", "review doc", "逐条核对文档", "grill this doc", "审核代码是否符合文档", "verify code against doc", "check code matches doc", or wants an interactive Q&A loop over document content with TODO generation at the end. Covers two modes - pure document review and document-code consistency review. Symptoms include user providing a doc path and starting to ask clarifying questions, or explicitly requesting a per-item document review, or wanting to check whether code matches an existing doc.
+name: dd-docreview-grilling
+description: 用户想逐条交互式审核文档时使用。触发词："审核文档"、"文档审核"、"review doc"、"逐条核对文档"、"grill this doc"、"审核代码是否符合文档"、"verify code against doc"、"check code matches doc"。覆盖两种模式——纯文档审核和文档-代码一致性审核。症状包括：用户提供文档路径并开始提问，或明确要求逐条文档审核，或想检查代码是否符合既有文档。
 ---
 
 # 文档审核访谈 (Document Review Grilling)
 
 ## 概述
 
-用户就一份文档逐条提问，助理解答后**必须**用 `AskUserQuestion` 工具给出 4 个固定选项让用户决定下一步。用户选「满意并加入 TODO」时**立即**把该条 TODO 追加到文件（及时落盘，避免会话中断丢失）；用户选「结束审核」后插入并行分组区块，生成一份 **Logseq 格式**的 TODO 文档供后续 AI 持续改进；收尾时按「文件级冲突最小化」创建并行分组并写入 TODO 文件、给出并行开发建议；审核成果提交 git 后，按 TODO 性质（bug 类 vs feature 类）自动判定后**逐条**路由到 `bug-fix-workflow` 或 `feature-development-workflow`，再按功能模块归类分批修复，每批修复完成 TODO→DONE 原位标记并追加 `修复SHA:: <短SHA>`（指向本批修复 commit tip）后提交，并生成可手动验证的摘要文档（`<doc-name>_批次<N>_验证摘要.md`，存于 TODO 文件同级 `验证摘要/` 子目录，含逐条操作步骤与预期结果）随批提交。
+用户就一份文档逐条提问，助理解答后**必须**用 `AskUserQuestion` 工具给出 4 个固定选项让用户决定下一步。用户选「满意并加入 TODO」时**立即**把该条 TODO 追加到文件（及时落盘，避免会话中断丢失）；用户选「结束审核」后插入并行分组区块，生成一份 **Logseq 格式**的 TODO 文档供后续 AI 持续改进；收尾时按「文件级冲突最小化」创建并行分组并写入 TODO 文件、给出并行开发建议；审核成果提交 git 后，按 TODO 性质（bug 类 vs feature 类）自动判定后**逐条**路由到 `dd-bug-fix-workflow` 或 `dd-feature-development-workflow`，再按功能模块归类分批修复，每批修复完成 TODO→DONE 原位标记并追加 `修复SHA:: <短SHA>`（指向本批修复 commit tip）后提交，并生成可手动验证的摘要文档（`<doc-name>_批次<N>_验证摘要.md`，存于 TODO 文件同级 `验证摘要/` 子目录，含逐条操作步骤与预期结果）随批提交。
 
 支持两种审核模式（启动时询问确定，循环协议共享）：
 - **模式 A：纯文档审核** — 仅审核文档本身（设计是否合理、是否完整、是否有歧义）
 - **模式 B：文档-代码一致性审核** — 审核已有文档，并对照代码验证是否符合文档要求
 
-核心原则：**每轮答完必问、选项固定为 4、TODO 及时落盘、TODO 用 Logseq 语法、保存路径启动时确认、多方案必列必选、场景 B 必验证代码、收尾必创建并行分组写入 TODO、审核与修复两次提交分离、批量修复先按性质路由（bug 类→bug-fix-workflow / feature 类→feature-development-workflow）再按功能模块归类 ≤5 条/批、标记 DONE 必随附修复SHA、每批必生成验证摘要文档（存于 `验证摘要/` 子目录，含可操作验证步骤）。**
+核心原则：**每轮答完必问、选项固定为 4、TODO 及时落盘、TODO 用 Logseq 语法、保存路径启动时确认、多方案必列必选、场景 B 必验证代码、收尾必创建并行分组写入 TODO、审核与修复两次提交分离、批量修复先按性质路由（bug 类→dd-bug-fix-workflow / feature 类→dd-feature-development-workflow）再按功能模块归类 ≤5 条/批、标记 DONE 必随附修复SHA、每批必生成验证摘要文档（存于 `验证摘要/` 子目录，含可操作验证步骤）。**
 
 ## 何时使用
 
@@ -21,7 +21,7 @@ description: Use when user wants to review a document by asking questions one at
 - "审核文档" / "文档审核" / "审核这份文档"
 - "review doc" / "document review"
 - "逐条核对文档" / "grill this doc"
-- "/docreview-grilling"
+- "/dd-docreview-grilling"
 
 适用场景：
 - 用户对已有文档做交互式 Q&A 审核
@@ -30,7 +30,7 @@ description: Use when user wants to review a document by asking questions one at
 
 不适用：
 - 一次性问答（直接答完即可）
-- 让 AI 生成新文档（用 writing-design-specs）
+- 让 AI 生成新文档（用 dd-writing-design-specs）
 - 纯代码审查（用 chinese-code-review / TRAE-code-review）
 
 ## 核心协议
@@ -151,7 +151,7 @@ description: Use when user wants to review a document by asking questions one at
        - 并行建议:: P1+P2 共 5 条可由 2+ 开发者/代理同时进行；S1 内 3 条需串行
      ```
    - **建议内容必须包含**：哪些批次可同时启动、哪些必须串行、串行组内的建议顺序（按 P0→P1→P2→P3）
-4. **提交 TODO 文件**（含并行分组，审核成果落库）：`git add <TODO 文件>` + `git commit`，commit message 格式 `docs(docreview-grilling): 记录 <doc-name> 审核发现的 N 个 TODO`。与后续修复提交解耦。
+4. **提交 TODO 文件**（含并行分组，审核成果落库）：`git add <TODO 文件>` + `git commit`，commit message 格式 `docs(dd-docreview-grilling): 记录 <doc-name> 审核发现的 N 个 TODO`。与后续修复提交解耦。
 5. 用 `AskUserQuestion` 询问是否立即进入批量修复流程（第 5 步）：是 → 进入第 5 步；否 → 流程结束，保留 TODO 供后续处理
 
 ### 5. 批量修复流程
@@ -160,8 +160,8 @@ description: Use when user wants to review a document by asking questions one at
 
 **5.1 归类分批**：
 - **第一步：逐条性质判定**（在功能归类前完成）：对每条 TODO 判定属于 **bug 类** 还是 **feature 类**：
-  - **bug 类**：代码已存在（文件/函数/类齐全），仅行为与文档不符 → 调用 `bug-fix-workflow`。例：缺校验、值错、状态枚举不一致、逻辑分支错。
-  - **feature 类**：文档描述的功能在代码中**完全缺失**（无对应文件/目录）或**仅有空桩**（`pass`/`NotImplementedError`/空函数体），需从零实现或补全实现 → 调用 `feature-development-workflow`。例：整个模块缺失、函数只有 `pass`、类只有声明无方法体。
+  - **bug 类**：代码已存在（文件/函数/类齐全），仅行为与文档不符 → 调用 `dd-bug-fix-workflow`。例：缺校验、值错、状态枚举不一致、逻辑分支错。
+  - **feature 类**：文档描述的功能在代码中**完全缺失**（无对应文件/目录）或**仅有空桩**（`pass`/`NotImplementedError`/空函数体），需从零实现或补全实现 → 调用 `dd-feature-development-workflow`。例：整个模块缺失、函数只有 `pass`、类只有声明无方法体。
   - **边界规则**：空桩一律算 feature 类（即使骨架已就位）；仅改值/加校验/补分支算 bug 类。判定不清时用 `AskUserQuestion` 让用户裁定，不得默认归 bug 类。
 - **第二步：功能模块归类**：按 TODO 的功能模块标签（`#登录`/`#支付流程`…）归类；同功能模块内按优先级（P0→P1→P2→P3）排序
 - **批次大小**：单批次 ≤ 5 条；同功能模块超过 5 条时按优先级拆成多批（P0+P1 优先成批）
@@ -173,18 +173,18 @@ description: Use when user wants to review a document by asking questions one at
 **5.2 逐批修复**（从 P0 批或功能模块 1 批开始）：
 
 每批修复流程：
-1. **按批次性质路由技能**（性质已在 5.1 判定，本步不得重新判定或偷懒一律走 bug-fix-workflow）：
-   - 批次性质 = **bug 类** → 调用 `bug-fix-workflow` 技能
-   - 批次性质 = **feature 类** → 调用 `feature-development-workflow` 技能
-   - **降级规则**（feature 类 → bug-fix-workflow 的唯一可选路径，须同时满足全部条件）：
+1. **按批次性质路由技能**（性质已在 5.1 判定，本步不得重新判定或偷懒一律走 dd-bug-fix-workflow）：
+   - 批次性质 = **bug 类** → 调用 `dd-bug-fix-workflow` 技能
+   - 批次性质 = **feature 类** → 调用 `dd-feature-development-workflow` 技能
+   - **降级规则**（feature 类 → dd-bug-fix-workflow 的唯一可选路径，须同时满足全部条件）：
      - ✅ 纯后端逻辑（无 UI / 无可见行为 / 无 E2E 证据需求）
      - ✅ 规模极小：**单函数补全实现**，不跨文件、不跨模块
      - ✅ 不涉及状态流转 / 回调处理 / 外部系统交互 / 多函数协作
-     - 须在 commit message body 注明降级原因（如"降级使用 bug-fix-workflow：纯后端单函数补全，符合降级条件"）
-   - **禁止降级**的情形（任一命中即必须走 `feature-development-workflow`）：涉及 UI/可见行为/E2E 证据；跨文件或多函数；状态流转/回调/外部系统交互；整个模块/目录缺失；类有多方法需实现
+     - 须在 commit message body 注明降级原因（如"降级使用 dd-bug-fix-workflow：纯后端单函数补全，符合降级条件"）
+   - **禁止降级**的情形（任一命中即必须走 `dd-feature-development-workflow`）：涉及 UI/可见行为/E2E 证据；跨文件或多函数；状态流转/回调/外部系统交互；整个模块/目录缺失；类有多方法需实现
    - 传 3 个必传项：本批 TODO 序号列表（如 [1, 3, 5]）、TODO 文件绝对路径、被审核文档路径 / 代码库根目录（模式 B 时）
 2. **不干预被调用技能内部**：TDD/设计规范/验证/提交消息格式由其按自身规范执行；本技能仅提供 scope 建议（= 功能标签）
-3. **获取修复提交 SHA 并更新 TODO 文件**：被调用技能（bug-fix-workflow / feature-development-workflow）已在内部完成代码修复并提交（其工作流含提交+push）。先用 `git log -1 --format=%h` 取最新提交的短 SHA（= 本批修复 commit 的 tip）；再把本批条目的 `- [ ] TODO1.` 改为 `- [x] TODO1.`，**并在每条条目末尾追加一行 `修复SHA:: <短SHA>`**（作为该条目最后一个缩进属性行，紧跟在原有属性行之后），其他属性行不动，条目留原位。若被调用技能产出多个 commit（如修复+lint+合并），取最后一个（tip）的短 SHA；完整范围可由上一批次 tip 或审核提交（第 4 步第 4 项）起 `git log` 追溯。**若工作区仍有未提交的修复变更**（被调用技能未完成提交），须先让其完成提交再取 SHA，不得在未提交状态下取 SHA。
+3. **获取修复提交 SHA 并更新 TODO 文件**：被调用技能（dd-bug-fix-workflow / dd-feature-development-workflow）已在内部完成代码修复并提交（其工作流含提交+push）。先用 `git log -1 --format=%h` 取最新提交的短 SHA（= 本批修复 commit 的 tip）；再把本批条目的 `- [ ] TODO1.` 改为 `- [x] TODO1.`，**并在每条条目末尾追加一行 `修复SHA:: <短SHA>`**（作为该条目最后一个缩进属性行，紧跟在原有属性行之后），其他属性行不动，条目留原位。若被调用技能产出多个 commit（如修复+lint+合并），取最后一个（tip）的短 SHA；完整范围可由上一批次 tip 或审核提交（第 4 步第 4 项）起 `git log` 追溯。**若工作区仍有未提交的修复变更**（被调用技能未完成提交），须先让其完成提交再取 SHA，不得在未提交状态下取 SHA。
 4. **生成验证摘要文档**：为本批生成一份可手动验证的摘要文档，供用户按操作步骤逐条验证修复效果。
    - **查看实际改动**：用 `git show <修复SHA>` 查看本批修复 commit 的 diff（多 commit 时用 `git diff <上批tip>..<本批tip>` 看完整范围），据此编写可操作的验证步骤。
    - **命名**：`<doc-name>_批次<N>_验证摘要.md`（`<doc-name>` = 被审核文档 basename 去扩展名；`<N>` = 本批次序号，与 commit message 中「第 X 批」的 X 一致，如 `批次1`）。
@@ -256,11 +256,11 @@ description: Use when user wants to review a document by asking questions one at
 - **并行分组不给建议**（只列批次不给并行/串行建议）→ 建议内容必须包含：哪些可同时启动、哪些必须串行、串行顺序（P0→P1→P2→P3）
 - **空场景仍创建并行分组** → TODO 文件未创建时跳过此步（与收尾第 1 项空场景一致）
 - **批量修复未归类就开修** → 必须先按性质判定（bug/feature）再按功能模块标签归类分批，归类完成后直接开始修复（第 4 步并行分组已覆盖分类逻辑）
-- **跳过 5.1 性质判定直接调 bug-fix-workflow** → 5.1 第一步逐条性质判定是必经步骤；不得跳过判定、不得在 5.2 重新判定、不得偷懒一律走 bug-fix-workflow
-- **对 feature 类 TODO（空桩/模块缺失/函数体只有 pass）硬套 bug-fix-workflow** → feature 类必须走 `feature-development-workflow`；仅当同时满足「纯后端 + 单函数补全 + 不跨文件 + 无状态流转/回调/外部系统交互」时可降级，且须在 commit message body 注明降级原因；命中任一禁止降级情形（UI/可见行为/E2E/跨文件/多函数/状态流转/回调/外部系统/整个模块缺失/类多方法）时强制走 feature-development-workflow
+- **跳过 5.1 性质判定直接调 dd-bug-fix-workflow** → 5.1 第一步逐条性质判定是必经步骤；不得跳过判定、不得在 5.2 重新判定、不得偷懒一律走 dd-bug-fix-workflow
+- **对 feature 类 TODO（空桩/模块缺失/函数体只有 pass）硬套 dd-bug-fix-workflow** → feature 类必须走 `dd-feature-development-workflow`；仅当同时满足「纯后端 + 单函数补全 + 不跨文件 + 无状态流转/回调/外部系统交互」时可降级，且须在 commit message body 注明降级原因；命中任一禁止降级情形（UI/可见行为/E2E/跨文件/多函数/状态流转/回调/外部系统/整个模块缺失/类多方法）时强制走 dd-feature-development-workflow
 - **同批次混修 bug 类与 feature 类** → 两技能内部流程不同，不得混批；同功能模块若同时含两类按性质拆成两批
 - **批次超 5 条** → 必须按优先级拆分；跨功能 P0 必须单独成批
-- **未提交就改 TODO 为完成** → 必须先由被调用技能（bug-fix-workflow / feature-development-workflow）完成修复并提交，再改 `- [ ] TODO1.` 为 `- [x] TODO1.` 并随修复内容一起提交
+- **未提交就改 TODO 为完成** → 必须先由被调用技能（dd-bug-fix-workflow / dd-feature-development-workflow）完成修复并提交，再改 `- [ ] TODO1.` 为 `- [x] TODO1.` 并随修复内容一起提交
 - **批次未完成就询问是否继续** → 必须本批完全修复 + 提交后才能询问；批次中不引入 DOING 半成品状态
 - **未询问就自动修下一批** → 除用户选「全部自动修复」外，每批提交后必须用 `AskUserQuestion` 询问
 - **5.3 选项少于 4 个**（只给"继续修复下一批"）→ 必须给出全部 4 选项（继续下一批 / 选择特定批次 / 暂停 / 全部自动），即使只剩 1 批也不得减少
@@ -297,12 +297,12 @@ description: Use when user wants to review a document by asking questions one at
 | 并行分组只列批次不给建议 | 建议必须含：哪些可同时启动、哪些必须串行、串行顺序（P0→P1→P2→P3） |
 | 空场景仍创建并行分组 | TODO 文件未创建时跳过此步 |
 | 批量修复未归类就开修 | 必须先按性质判定（bug/feature）再按功能模块标签归类分批，归类后直接开始修复（第 4 步并行分组已覆盖分类逻辑） |
-| 跳过 5.1 性质判定直接调 bug-fix-workflow | 5.1 第一步逐条性质判定是必经步骤；不得跳过、不得在 5.2 重新判定、不得偷懒一律走 bug-fix-workflow |
-| feature 类 TODO（空桩/模块缺失/pass）硬套 bug-fix-workflow | feature 类必须走 `feature-development-workflow`；仅当同时满足「纯后端 + 单函数补全 + 不跨文件 + 无状态流转/回调/外部系统交互」时可降级，且须在 commit message body 注明降级原因；命中禁止降级情形（UI/可见行为/E2E/跨文件/多函数/状态流转/回调/外部系统/整个模块缺失/类多方法）时强制走 feature-development-workflow |
-| 滥用降级（跨文件/状态流转/整个模块缺失也降级到 bug-fix-workflow） | 降级须同时满足全部 3 条件；任一禁止降级情形命中即必须走 feature-development-workflow |
+| 跳过 5.1 性质判定直接调 dd-bug-fix-workflow | 5.1 第一步逐条性质判定是必经步骤；不得跳过、不得在 5.2 重新判定、不得偷懒一律走 dd-bug-fix-workflow |
+| feature 类 TODO（空桩/模块缺失/pass）硬套 dd-bug-fix-workflow | feature 类必须走 `dd-feature-development-workflow`；仅当同时满足「纯后端 + 单函数补全 + 不跨文件 + 无状态流转/回调/外部系统交互」时可降级，且须在 commit message body 注明降级原因；命中禁止降级情形（UI/可见行为/E2E/跨文件/多函数/状态流转/回调/外部系统/整个模块缺失/类多方法）时强制走 dd-feature-development-workflow |
+| 滥用降级（跨文件/状态流转/整个模块缺失也降级到 dd-bug-fix-workflow） | 降级须同时满足全部 3 条件；任一禁止降级情形命中即必须走 dd-feature-development-workflow |
 | 同批次混修 bug 类与 feature 类 | 两技能流程不同不得混批；同功能模块含两类时按性质拆成两批 |
 | 批次超 5 条 | 必须按优先级拆分；跨功能 P0 单独成批 |
-| 未提交就改 TODO 为完成 | 必须先由被调用技能（bug-fix-workflow / feature-development-workflow）完成修复并提交，再改 `- [ ] TODO1.` 为 `- [x] TODO1.` 并随修复内容一起提交 |
+| 未提交就改 TODO 为完成 | 必须先由被调用技能（dd-bug-fix-workflow / dd-feature-development-workflow）完成修复并提交，再改 `- [ ] TODO1.` 为 `- [x] TODO1.` 并随修复内容一起提交 |
 | 批次中用 DOING 标记半成品 | 不引入 DOING；本批完全修复+提交后才改 `- [x] TODO1.` |
 | 未询问就自动修下一批 | 除「全部自动修复」外，每批提交后必须 `AskUserQuestion` 询问 |
 | 5.3 只给"继续修复下一批"1个选项 | 必须给出全部 4 选项（继续下一批 / 选择特定批次 / 暂停 / 全部自动），即使只剩 1 批也不得减少 |
@@ -338,12 +338,12 @@ description: Use when user wants to review a document by asking questions one at
 | "按功能标签分组就够了，何必看文件" | 模式 B 有代码位置时必须按文件路径；同标签不同文件可并行，标签分组会误判为串行 |
 | "分组信息不必写入 TODO 文件" | 用户要求写入；不写入则并行开发者/代理拿不到分组，分组沦为口头建议 |
 | "并行建议可选，列批次即可" | 必须给出哪些可同时启动、哪些必须串行、串行顺序；不给建议则分组无操作性 |
-| "TDD 仍可适用，feature 类用 bug-fix-workflow 也行" | TDD 通用性不等于技能匹配；feature 类涉及设计规范/可见行为/E2E 证据，`feature-development-workflow` 才是正确流程，硬套 bug-fix-workflow 会跳过设计阶段 |
-| "技能文档写死了 bug-fix-workflow，我没权换" | 5.1 已要求逐条性质判定，5.2 已按性质路由；不判定就一律走 bug-fix-workflow 才是违反文档 |
-| "判定 bug/feature 太麻烦，统一走 bug-fix-workflow 更省事" | 性质判定是 5.1 必经步骤；省事不等于正确，错配技能会让 feature 类跳过设计规范阶段 |
+| "TDD 仍可适用，feature 类用 dd-bug-fix-workflow 也行" | TDD 通用性不等于技能匹配；feature 类涉及设计规范/可见行为/E2E 证据，`dd-feature-development-workflow` 才是正确流程，硬套 dd-bug-fix-workflow 会跳过设计阶段 |
+| "技能文档写死了 dd-bug-fix-workflow，我没权换" | 5.1 已要求逐条性质判定，5.2 已按性质路由；不判定就一律走 dd-bug-fix-workflow 才是违反文档 |
+| "判定 bug/feature 太麻烦，统一走 dd-bug-fix-workflow 更省事" | 性质判定是 5.1 必经步骤；省事不等于正确，错配技能会让 feature 类跳过设计规范阶段 |
 | "空桩也算 bug，补全实现就是修 bug" | 空桩（pass/NotImplementedError/空函数体）一律算 feature 类；"补全实现"本质是实现新功能，非修 bug |
-| "降级用 bug-fix-workflow 不用注明原因" | 降级必须在 commit message body 注明原因，否则无法回溯为何跳过 feature-development-workflow |
-| "跨文件/状态流转/整个模块缺失也可降级，反正都是补实现" | 降级须同时满足「纯后端 + 单函数补全 + 不跨文件 + 无状态流转/回调/外部系统交互」全部条件；任一禁止降级情形命中即必须走 feature-development-workflow，不得扩大降级范围 |
+| "降级用 dd-bug-fix-workflow 不用注明原因" | 降级必须在 commit message body 注明原因，否则无法回溯为何跳过 dd-feature-development-workflow |
+| "跨文件/状态流转/整个模块缺失也可降级，反正都是补实现" | 降级须同时满足「纯后端 + 单函数补全 + 不跨文件 + 无状态流转/回调/外部系统交互」全部条件；任一禁止降级情形命中即必须走 dd-feature-development-workflow，不得扩大降级范围 |
 | "SHA 没必要记，git log 能查到" | 用户明确要求记录到 TODO 末尾以便逐条追溯；不记则 TODO 文件失去自包含可追溯性 |
 | "用 TODO 更新提交的 SHA 就行" | 修复SHA 须指向代码修复 commit（被调用技能产出 tip），非 TODO 状态更新提交；两者不同 |
 | "被调用技能多个 commit，记哪个都行" | 取最后一个（tip）的短 SHA；完整范围由 git log 追溯，TODO 必须记 tip |
@@ -366,7 +366,7 @@ description: Use when user wants to review a document by asking questions one at
 - 每条 TODO 含文档位置锚点，AI 改进时可精确定位
 - 审核成果与修复成果分两次提交，git log 可回溯
 - 收尾时按文件级冲突最小化创建并行分组并写入 TODO 文件，并行开发者/代理可直接读取分组同时启动互不冲突的批次，串行组内按优先级排队
-- 批量修复按性质路由（bug 类→bug-fix-workflow / feature 类→feature-development-workflow），避免 feature 类错配 TDD 修 bug 流程而跳过设计规范阶段
+- 批量修复按性质路由（bug 类→dd-bug-fix-workflow / feature 类→dd-feature-development-workflow），避免 feature 类错配 TDD 修 bug 流程而跳过设计规范阶段
 - 批量修复按功能模块归类，同模块上下文连贯，每批 ≤5 条可控，同批次不混性质
 - 修复完成后 TODO→DONE 原位标记，状态与代码提交同步，bug 类用 `fix()` / feature 类用 `feat()` 提交语义清晰
 - 标记完成 `- [x] TODO1.` 时同步追加 `修复SHA:: <短SHA>`（指向本批修复 commit tip），每条 TODO 可独立追溯其修复提交，TODO 文件自包含可追溯

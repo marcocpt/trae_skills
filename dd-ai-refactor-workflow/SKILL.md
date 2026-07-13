@@ -1,5 +1,5 @@
 ---
-name: "ai-refactor-workflow"
+name: "dd-ai-refactor-workflow"
 description: "在重构遗留/屎山代码、用户提到 AI 重构/refactoring、或工作到达需要人类确认的刹车点时调用。涉及 Characterization Test、解依赖、God Object 拆分、行为漂移检测等场景。"
 ---
 
@@ -18,7 +18,7 @@ description: "在重构遗留/屎山代码、用户提到 AI 重构/refactoring�
 - 工作到达需要人类确认的刹车点（Characterization Test 锁定、解依赖合并、Commit Review 等）
 - 涉及 God Object 拆分、行为漂移检测、解依赖改造
 
-**不适用：** bug 修复（用 bug-fix-workflow）、新功能开发（用 feature-development-workflow）、纯文档修改
+**不适用：** bug 修复（用 dd-bug-fix-workflow）、新功能开发（用 dd-feature-development-workflow）、纯文档修改
 
 ## 全局会话规则（强制）
 

@@ -1,5 +1,5 @@
 ---
-name: feature-development-workflow
+name: dd-feature-development-workflow
 description: 当实现新功能（设计规范优先的工作流）、UI 重的应用需要可见行为/截图/E2E/XCUITest/Playwright 证据或手动验收记录时使用；或当用户提到"新特性流程"或"feature development workflow"时使用。
 ---
 
@@ -202,7 +202,7 @@ fi
 开始时宣布：
 
 ```
-我正在使用 feature-development-workflow，并先进行需求拷问确定新特性需求。
+我正在使用 dd-feature-development-workflow，并先进行需求拷问确定新特性需求。
 ```
 
 进行需求质询，仅聚焦于**需求本身**，不做技术方案设计。
@@ -755,7 +755,7 @@ EOF
 1. **单测试文件绿灯验证**（本地执行，TDD 快速反馈）：仅运行当前任务编写的新测试，确认因实现而通过。此时代码未提交，无法触发 CI，本地执行是唯一选项
 2. **全量回归验证**（**步骤 4.5 提交后**按 `test-location-strategy` skill 走 CI 优先）：运行项目完整测试套件，确认实现未破坏其他测试。**禁止在步骤 4.3 中直接本地跑全量回归——必须延迟到步骤 4.5 提交后走 CI 验证**
 
-> **为什么不能在步骤 4.3 本地跑全量回归？** 与 bug-fix-workflow 相同：代码未提交无法 push 触发 CI。即使本地通过，CI 环境差异可能掩盖问题。
+> **为什么不能在步骤 4.3 本地跑全量回归？** 与 dd-bug-fix-workflow 相同：代码未提交无法 push 触发 CI。即使本地通过，CI 环境差异可能掩盖问题。
 
 - **回归测试失败需修改时**：必须使用 `AskUserQuestion` 说明失败原因和修改理由，获得用户确认后方可修改
 - 如果实现不起作用：
