@@ -50,69 +50,14 @@ digraph feature_development_workflow {
 
 ## 上下文恢复机制
 
-会话上下文压缩后可能遗忘当前 worktree 路径、`BASE_BRANCH`、`FEATURE_BRANCH`、设计规范路径、计划目录、已完成阶段等关键状态。通过**状态文件持久化**解决。
+状态持久化遵循 [dd-shared-state](../dd-shared-state/SKILL.md)，参数 `WORKFLOW_TYPE=feature-development`，`BRANCH_FIELD=feature_branch`。
 
-### 状态文件位置
-
-`$(git rev-parse --git-dir)/feature-development-state.json`
-
-存放在 git dir（worktree 私有目录）下，不被 `git status` 检测。每个 worktree 拥有独立状态文件，支持多会话并行开发。
-
-### 状态文件内容
-
-```json
-{
-  "workflow_type": "feature-development",
-  "feature_name": "short feature name",
-  "worktree_path": "/absolute/path/to/worktree",
-  "base_branch": "main",
-  "feature_branch": "feature/xxx",
-  "main_root": "/absolute/path/to/main/repo",
-  "worktree_dir": "/absolute/path/to/project-worktrees",
-  "spec_path": "docs/.../feature-design-spec.md",
-  "review_path": "docs/.../feature-design-review.md",
-  "test_case_path": "docs/.../feature-test-cases.md",
-  "plan_dir": "docs/.../plans/feature-name",
-  "current_step": "4",
-  "current_phase": "phase-1",
-  "total_phases": "3",
-  "commits": {
-    "design_spec": "abc1234",
-    "design_review": "def5678",
-    "plans": "987abcd"
-  },
-  "created_at": "2026-06-30T10:00:00Z"
-}
-```
-
-### 恢复流程
-
-每个步骤开始前，若不确定当前工作上下文，执行以下恢复：
-
-```bash
-git_dir=$(git rev-parse --git-dir)
-state_file="$git_dir/feature-development-state.json"
-
-if [ -f "$state_file" ]; then
-    # 一次读取所有关键变量
-    eval $(python3 -c "
-import json
-d = json.load(open('$state_file'))
-for k in ['worktree_path','base_branch','feature_branch','main_root','worktree_dir','spec_path','plan_dir','current_phase']:
-    print(f'{k.upper()}=\"{d.get(k,\"\")}\"')
-")
-    cd "$WORKTREE_PATH"
-else
-    echo "未找到状态文件，可能尚未创建工作树或已清理"
-fi
-```
-
-### 写入时机
-
+- **状态文件**：`$(git rev-parse --git-dir)/feature-development-state.json`
+- **特有字段**：feature_name、spec_path、review_path、test_case_path、plan_dir、current_phase、total_phases、commits
 - **写入**：步骤 1（工作树创建/验证成功后）
-- **更新 `current_step`**：每完成一个步骤，更新此字段
-- **更新 `current_phase`**：每完成一个子计划，更新此字段
-- **删除**：步骤 9 清理工作树前先删除（须在离开 worktree 前执行，此时 `git-dir` 指向 worktree 私有目录）
+- **更新 `current_step`**：每完成一个步骤
+- **更新 `current_phase`**：每完成一个子计划
+- **删除**：步骤 9 清理工作树前（须在离开 worktree 前执行）
 
 ## 全局规则
 
@@ -258,17 +203,7 @@ cd "$path"
 
 #### 1.2.5 验证基线测试干净
 
-按 test-location-strategy skill 决策测试位置。**基线验证的语义是确认起点 commit 干净**——起点 = BASE_BRANCH 的 HEAD（步骤 1.2.1 已记录）。新创建的 fix 分支尚未 push，远端无此分支，此时**必须**查 BASE_BRANCH 的 CI 结果，因为工作树 HEAD 等于 BASE_BRANCH HEAD，基线 commit 已有成功 CI 证据即满足复用条件。
-
-1. **检查基线 commit 的 CI 已有结果**（按优先级检索，commit 一致即可复用）：
-   - 先查当前分支：`gh run list --workflow macos-ci.yml --branch <当前分支> --limit 1`
-   - 当前分支无远端或无结果时，**必须**再查 BASE_BRANCH：`gh run list --workflow macos-ci.yml --branch <BASE_BRANCH> --limit 1`
-   - 任一查询返回 `conclusion=success` 且 `headSha` 等于当前工作树 HEAD → 复用 CI 结果（记录复用来源分支与 run ID），跳过本地测试
-   - `status=in_progress` → 等待 CI 完成，不重复触发
-2. **触发 CI**（无可用结果且当前分支已 push 时）：`gh workflow run macos-ci.yml --ref <当前分支>` + `gh run watch <run-id> --exit-status`
-   - **当前分支未 push 时不得以此为由降级本地**——按 1.2.7 红线处理（先查 BASE_BRANCH 已有结果，或用 AskUserQuestion 询问是否 push 后触发 CI）
-   - `gh workflow run` 本身报错（ref 不存在、鉴权失败等）→ 按 test-location-strategy 步骤 2 的 AskUserQuestion 流程处理，**不得降级本地**
-3. **本地测试**（仅在满足 1.2.7 红线明示条件时）：`bash scripts/ci/test-macos.sh`（与 CI 同脚本，基于 xcodebuild test + Macim.xcworkspace + MacimApp scheme）。禁止用 `swift test` 替代——本项目是 Xcode 工程，`swift test` 只覆盖 SwiftPM 子集。
+CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 1（基线 CI 验证）。按 test-location-strategy skill 决策测试位置。
 
 - 测试失败：报告失败情况，询问是否继续或排查
 - 测试通过：报告就绪
@@ -285,25 +220,19 @@ cd "$path"
 
 #### 1.2.7 红线
 
-**绝不：**
-- 跳过基线测试验证
-- 不询问就带着失败的测试继续
-- 在项目内部创建工作树目录（污染 git status）
-- **以"当前分支未 push 导致 CI 触发失败"为由降级本地测试**——必须先查 BASE_BRANCH 的 CI 结果（基线 commit 与 BASE_BRANCH HEAD 相同）；若 BASE_BRANCH 也无结果，用 AskUserQuestion 询问是否 push 后触发 CI，不得直接降级本地
-- **以"CI 不可用"宽泛措辞降级本地**——"CI 不可用"仅指：项目无 `.github/workflows/` 配置、`gh` 命令不可用且用户选择不修复、用户在**无可用 CI 结果**时明确选择本地。分支未 push、`gh workflow run` 报错、CI 触发失败**均不构成"CI 不可用"**
-- **以"用户明确要求"凌驾于 CI 优先之上**——当已有可复用的成功 CI 结果时，用户要求本地不构成降级理由；应用 AskUserQuestion 给出"复用 CI 结果（推荐）/ 仍要本地仅作参考 / 终止"选项
-  - **触发时机**：若 agent 已按步骤 1 确定复用（commit 一致 + conclusion=success），可直接复用并告知用户，无需 AskUserQuestion；AskUserQuestion 仅在 agent 考虑接受用户本地请求时强制触发（即 agent 在"复用 CI"与"本地执行"之间犹豫时，必须用 AskUserQuestion 让用户显式选择，不得沉默降级本地）
+CI 相关红线（跳过基线测试、未 push 降级本地、CI 不可用宽泛措辞、用户要求凌驾 CI 优先）遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 红线章节。
 
-> **与步骤 8.2.1 红线的关系**：步骤 8.2.1"分支未 push 时必须先 push 再等待 CI，禁止落到本地测试""CI 触发失败不构成走本地测试的理由"同样适用于本步骤——基线验证与回归验证在"CI 优先"上标准一致，不得在 1.2.5 阶段降级。
->
-> **1.2.5 与 8.2.1 的表面张力说明**：1.2.5"可复用 BASE_BRANCH 的 CI 结果"与 8.2.1"分支未 push 时必须先 push"并不冲突——8.2.1 的"必须先 push"针对**回归验证**（步骤 8 提交后的新 commit 需新 CI 运行）；1.2.5 的"可复用 BASE_BRANCH"针对**基线验证**（步骤 1 的起点 commit 已有 CI 证据，无需新运行）。两者场景不同，不得混淆。
+**本步骤特有红线**：
+- 在项目内部创建工作树目录（污染 git status）
+
+> **与步骤 8.2.1 红线的关系**：步骤 8.2.1 的 CI 红线同样适用于本步骤——基线验证与回归验证在"CI 优先"上标准一致，不得在 1.2.5 阶段降级。详见 dd-shared-ci"基线验证 vs 回归验证的表面张力说明"。
 
 ### 1.3 当前 worktree 验证
 
 跳过创建，仅做验证：
 
 ```bash
-# 并发检查：禁止同一 worktree 上同时运行多个工作流
+# 并发检查：遵循 dd-shared-state 并发检查
 git_dir=$(git rev-parse --git-dir)
 for f in "$git_dir"/bug-fix-state.json "$git_dir"/feature-development-state.json; do
   if [ -f "$f" ]; then
@@ -319,16 +248,7 @@ BASE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 # 验证工作区状态
 git status  # 必须干净，有未提交变更需先处理
 
-# 验证基线测试（按 test-location-strategy skill 决策测试位置）
-# 1. 检查基线 commit 的 CI 已有结果（commit 一致即可复用）：
-#    - 先查当前分支：gh run list --workflow macos-ci.yml --branch <当前分支> --limit 1
-#    - 当前分支无远端或无结果时，必须再查 BASE_BRANCH：gh run list --workflow macos-ci.yml --branch <BASE_BRANCH> --limit 1
-#    - 任一返回 conclusion=success 且 headSha==当前工作树 HEAD → 复用 CI 结果，跳过本地测试
-#    - status=in_progress → 等待 CI 完成，不重复触发
-# 2. 触发 CI（无可用结果且当前分支已 push 时）：gh workflow run macos-ci.yml --ref <当前分支> && gh run watch <run-id> --exit-status
-#    - 当前分支未 push 时不得降级本地——先查 BASE_BRANCH 已有结果，或 AskUserQuestion 询问是否 push
-# 3. 本地测试（仅在 1.2.7 红线明示条件满足时）：bash scripts/ci/test-macos.sh（与 CI 同脚本）
-#    禁止用 swift test 替代——本项目是 Xcode 工程
+# 验证基线测试：CI 验证遵循 dd-shared-ci 场景 1（基线 CI 验证）
 ```
 
 - 成功标准：工作区干净 + 基线测试通过
@@ -336,40 +256,7 @@ git status  # 必须干净，有未提交变更需先处理
 
 ### 1.4 写入状态文件
 
-工作树创建/验证成功后，持久化关键状态供上下文恢复：
-
-```bash
-common_dir=$(git rev-parse --git-common-dir)
-main_root=$(cd "$(dirname "$common_dir")" && pwd)
-project=$(basename "$main_root")
-worktree_dir=$(dirname "$main_root")/${project}-worktrees
-git_dir=$(git rev-parse --git-dir)
-
-cat > "$git_dir/feature-development-state.json" <<EOF
-{
-  "workflow_type": "feature-development",
-  "feature_name": "<简短特性名>",
-  "worktree_path": "$(pwd)",
-  "base_branch": "$BASE_BRANCH",
-  "feature_branch": "$(git rev-parse --abbrev-ref HEAD)",
-  "main_root": "$main_root",
-  "worktree_dir": "$worktree_dir",
-  "spec_path": "<设计规范路径>",
-  "review_path": "<设计评审摘要路径>",
-  "test_case_path": "<测试用例表路径>",
-  "plan_dir": "<计划目录路径>",
-  "current_step": "1",
-  "current_phase": "",
-  "total_phases": "<Phase总数>",
-  "commits": {
-    "design_spec": "<commit-sha>",
-    "design_review": "<commit-sha>",
-    "plans": "<commit-sha>"
-  },
-  "created_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-}
-EOF
-```
+工作树创建/验证成功后，持久化关键状态供上下文恢复。遵循 [dd-shared-state](../dd-shared-state/SKILL.md) 写入模板，参数 `WORKFLOW_TYPE=feature-development`，`BRANCH_FIELD=feature_branch`，`current_step=1`。需追加 feature-development 特有字段：feature_name、spec_path、review_path、test_case_path、plan_dir、current_phase、total_phases、commits。
 
 ---
 
@@ -808,44 +695,11 @@ EOF
 
 如果实现任务已经按计划产生了多个 commit，确保当前子计划结束时没有未提交变更；如 check-code 后没有新增变更，记录最后一个属于该子计划的 commit SHA 作为完成点，不创建空提交。
 
-**提交后全量回归验证（CI 优先，必须 push）**：本步是步骤 4.3 延迟的 XCUITest 验证 + 全量 XCTest 回归的唯一执行点（XCTest 单测试文件绿灯已在步骤 4.3 本地验证）。代码已提交，必须 push 到远端触发 CI 验证。**禁止在本地执行测试作为 CI 的替代**——本地环境差异会掩盖问题。按以下顺序执行（不得跳步、不得本地测试兜底）：
+**提交后全量回归验证（CI 优先，必须 push）**：本步是步骤 4.3 延迟的 XCUITest 验证 + 全量 XCTest 回归的唯一执行点（XCTest 单测试文件绿灯已在步骤 4.3 本地验证）。
 
-1. **检查分支是否已 push 到远端**：
-   ```bash
-   CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-   git ls-remote --exit-code --heads origin "$CURRENT_BRANCH" >/dev/null 2>&1
-   ```
-   - **退出码 0**（远端已有此分支）→ 进入步骤 2
-   - **退出码非 0**（远端无此分支，新建分支未 push）→ **必须先 push**：`git push -u origin "$CURRENT_BRANCH"`
-     - push 失败 → **AskUserQuestion**：重试 push（排查网络/权限）/ 停止工作流排查权限
-     - **禁止**：以 push 失败为由落到本地测试
+CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 2（回归 CI 验证）。按顺序执行：检查 push → 检查 CI 已有结果 → 触发 CI 并等待 → CI 失败处理。
 
-2. **检查 CI 已有结果**（分支已 push 到远端后）：`gh run list --workflow macos-ci.yml --branch <当前分支> --limit 1`
-   - `conclusion=success` 且 `headSha` 等于当前 HEAD → 复用 CI 结果，更新状态文件进入下一个子计划
-   - `status=in_progress` → 等待 CI 完成，不重复触发
-
-3. **触发 CI 并等待结果**（无可用 CI 结果时）：
-   ```bash
-   gh workflow run macos-ci.yml --ref <当前分支>
-   sleep 5
-   RUN_ID=$(gh run list --workflow macos-ci.yml --branch <当前分支> --limit 5 \
-     --json databaseId,headSha \
-     --jq ".[] | select(.headSha == \"$(git rev-parse HEAD)\") | .databaseId" | head -1)
-   gh run watch "$RUN_ID" --exit-status
-   ```
-   - **触发失败** → **AskUserQuestion**：重试触发 CI / 停止工作流排查 CI 配置
-   - **禁止**：以 CI 触发失败为由落到本地测试
-
-- **CI 通过** → 更新状态文件，进入下一个子计划
-- **CI 失败**（测试用例未通过）→ **AskUserQuestion**：
-  - 选项 1（推荐）：拉取 CI 日志（`gh run view <run-id> --log-failed`）分析失败原因，回到步骤 4 修复
-  - 选项 2：本地复现排查（`bash scripts/ci/test-macos.sh`，**仅用于理解失败原因，修复后必须重新走 CI 验证**）
-  - 选项 3：跳过继续（不推荐）
-
-> **红线**：
-> - 不得跳过本验证。步骤 4.3 的 XCUITest 验证 + 全量回归已延迟到此处，跳过等于放弃 UI 测试和全量回归验证。
-> - **分支未 push 时，必须先 push 再等待 CI，禁止落到本地测试**。本地测试不能作为 CI 的替代。
-> - **CI 触发失败不构成走本地测试的理由**。应排查 CI 配置或重试，而非降级验证。
+> **红线**：不得跳过本验证。步骤 4.3 的 XCUITest 验证 + 全量回归已延迟到此处，跳过等于放弃 UI 测试和全量回归验证。CI 相关红线遵循 dd-shared-ci 红线章节。
 
 更新状态文件的 `current_phase`。
 
@@ -1088,16 +942,9 @@ git log --oneline "$BASE_BRANCH"..HEAD
 
 **测试验证部分**（按 test-location-strategy skill 决策测试位置）：
 
-lint 通过后，运行项目测试套件验证整体回归：
+lint 通过后，运行项目测试套件验证整体回归。CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 2（回归 CI 验证，需先 push 再触发 CI）。
 
-1. **检查 CI 已有结果**：`gh run list --workflow macos-ci.yml --branch <当前分支> --limit 1`
-   - `conclusion=success` 且 `headSha` 等于当前工作树 HEAD → 复用 CI 结果，跳过本地测试
-   - `status=in_progress` → 等待 CI 完成，不重复触发
-2. **触发 CI**（无可用结果时）：代码已提交，先 `git push` 再 `gh workflow run macos-ci.yml --ref <当前分支>` + `gh run watch <run-id> --exit-status`
-   - `gh workflow run` 本身报错（ref 不存在、鉴权失败等）→ 按 test-location-strategy 步骤 2 的 AskUserQuestion 流程处理，**不得降级本地**
-3. **本地测试**：仅在 test-location-strategy 步骤 3 封闭列表条件满足时（无 `.github/workflows/` 配置 / `gh` 不可用且用户选择不修复 / 无可用 CI 结果且 CI 触发失败且用户明确选择本地）。禁止用 `swift test` 替代——本项目是 Xcode 工程，`swift test` 只覆盖 SwiftPM 子集。
-
-> **红线**：代码已提交，必须 push 后走 CI 验证。不得以"CI 不可用"或"用户明确要求"为由本地降级——按步骤 8.2.1 红线处理。
+> **红线**：代码已提交，必须 push 后走 CI 验证。不得以"CI 不可用"或"用户明确要求"为由本地降级——按 dd-shared-ci 红线章节处理。
 
 - **成功** → 进入 8.2
 - **失败** → 修复后重新执行 lint + 测试
@@ -1130,39 +977,9 @@ git push
 
 push 完成后必须等待 CI 运行完成，不得直接结束工作流或宣称完成。本步是新流程的核心：让远端 self-hosted runner 验证代码，避免本地环境差异掩盖问题。
 
-```bash
-# 等 GitHub 注册新 push
-sleep 5
-
-# 查找当前 SHA 对应的最新 run
-CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-CURRENT_SHA=$(git rev-parse HEAD)
-
-RUN_ID=$(gh run list \
-  --workflow "macos-ci.yml" \
-  --branch "$CURRENT_BRANCH" \
-  --limit 5 \
-  --json databaseId,headSha \
-  --jq ".[] | select(.headSha == \"${CURRENT_SHA}\") | .databaseId" \
-  | head -1)
-
-if [ -n "$RUN_ID" ]; then
-  echo "Watching run ${RUN_ID}..."
-  gh run watch "$RUN_ID" --exit-status
-else
-  echo "⚠️ 未找到对应 SHA 的 run，可能 CI 未触发或 workflow 文件不存在"
-fi
-```
+CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 3（Push 后等待 CI）。CI 失败或未找到 run 时的 AskUserQuestion 选项遵循 dd-shared-ci 场景 3。
 
 - **成功** → 进入步骤 9
-- **CI 失败** → **AskUserQuestion**：
-  - 选项 1（推荐）：拉取 CI 日志（`gh run view <run-id> --log-failed`）分析失败原因，回到步骤 4 修复
-  - 选项 2：本地复现排查（`bash scripts/ci/test-macos.sh`，**仅用于理解失败原因，修复后必须重新走 CI 验证**）
-  - 选项 3：跳过继续（不推荐，会引入未验证代码到远端）
-- **未找到 run** → **AskUserQuestion**：
-  - 选项 1（推荐）：手动触发 `gh workflow run macos-ci.yml --ref <当前分支>` 后重新等待
-  - 选项 2：检查 workflow 文件是否存在 / `.github/workflows/macos-ci.yml` 配置是否正确
-  - 选项 3：跳过继续（不推荐，会引入未验证代码到远端）
 
 ---
 
@@ -1177,12 +994,7 @@ fi
 
 ### 9.1 选"合并到原分支"
 
-**先删除状态文件**（在离开工作树前，此时 `git-dir` 指向 worktree 私有目录）：
-
-```bash
-git_dir=$(git rev-parse --git-dir)
-rm -f "$git_dir/feature-development-state.json"
-```
+**先删除状态文件**（在离开工作树前，遵循 [dd-shared-state](../dd-shared-state/SKILL.md) 删除模板，参数 `WORKFLOW_TYPE=feature-development`）。
 
 ```bash
 # 以下命令必须在主仓库路径执行
@@ -1193,21 +1005,9 @@ git checkout "$BASE_BRANCH"
 git merge --no-ff <工作树分支>
 ```
 
-**合并后全量回归验证（CI 优先）**：合并产生新的 commit，必须验证合并后代码在 CI 中通过。按 `test-location-strategy` skill 决策测试位置：
+**合并后全量回归验证（CI 优先）**：合并产生新的 commit，必须验证合并后代码在 CI 中通过。
 
-1. **本地快速冒烟**（可选，快速检测合并冲突遗留）：仅编译检查（如 `swift build --package-path MacimCore`），**不替代全量测试**
-2. **CI 全量验证**（**必需**）：
-   - **已 push**：`gh run list --workflow macos-ci.yml --branch "$BASE_BRANCH" --limit 1` 查找对应 SHA 的 run，`gh run watch` 等待结果
-   - **未 push**：先 `git push`，再等待 CI 结果（与步骤 8.2.1 相同流程）
-3. **本地全量测试**：仅在 test-location-strategy 步骤 3 封闭列表条件满足时（无 `.github/workflows/` 配置 / `gh` 不可用且用户选择不修复 / 无可用 CI 结果且 CI 触发失败且用户明确选择本地）
-
-- **CI 通过** → 继续清理工作树
-- **CI 失败** → **AskUserQuestion**：
-  - 选项 1（推荐）：拉取 CI 日志分析，回到步骤 4 修复
-  - 选项 2：`git merge --abort` 撤销合并，回到步骤 4
-  - 选项 3：本地复现排查
-
-> **红线**：合并后不得跳过 CI 验证直接清理工作树。合并可能引入基线变更冲突，CI 是唯一的跨环境验证。
+CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 4（合并后 CI 验证）。CI 失败时的 AskUserQuestion 选项遵循 dd-shared-ci 场景 4。
 
 清理工作树：删除工作树目录。
 
@@ -1215,12 +1015,7 @@ git merge --no-ff <工作树分支>
 
 ### 9.2 选"不合并，仅清理工作树"
 
-**先删除状态文件**（在离开工作树前）：
-
-```bash
-git_dir=$(git rev-parse --git-dir)
-rm -f "$git_dir/feature-development-state.json"
-```
+**先删除状态文件**（在离开工作树前，遵循 [dd-shared-state](../dd-shared-state/SKILL.md) 删除模板，参数 `WORKFLOW_TYPE=feature-development`）。
 
 - 保留原分支不变
 - 清理工作树：删除工作树目录
@@ -1291,27 +1086,9 @@ rm -f "$git_dir/feature-development-state.json"
 - 将多个阶段的无关变更混在同一个 commit
 - **在步骤 4.3 中本地执行 UI 测试（XCUITest）**（必须延迟到步骤 4.5 走 CI；XCTest 单测试文件可本地执行快速反馈）
 - **跳过步骤 4.5 提交后全量回归验证**
-- **分支未 push 时落到本地测试**（必须先 push 再等 CI，禁止本地测试兜底）
-- **以 CI 触发失败为由走本地测试**（应排查 CI 配置或重试，而非降级验证）
-- **合并后跳过 CI 验证直接清理工作树**
-- **用"本地合并"作为跳过 CI 的理由**（合并方式不影响验证质量）
 - **使用 git rebase 同步上游或合并分支**（遵循 dd-ai-git-workflow merge-only 原则，禁止 rebase）
 - **在 feature 分支夹带公共文件修改**（公共文件必须开独立分支，加 PublicFile tag）
 
+> **CI 相关红线**（分支未 push 降级本地、CI 触发失败降级本地、合并后跳过 CI、"本地合并"作为跳过 CI 理由）遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 红线章节。CI 合理化借口表见 dd-shared-ci。
+
 **以上任一情况发生时，停止当前步骤，回到违规步骤重新执行。**
-
-## 测试位置 — 合理化借口表
-
-| 借口 | 现实 |
-|------|------|
-| "TDD 循环中代码未提交，无法触发 CI" | XCTest 单测试文件可本地验证（快速反馈）。XCUITest 必须延迟到步骤 4.5 提交后走 CI。未提交 ≠ 可以本地跑 UI 测试。 |
-| "UI 测试本地跑更快，TDD 需要快速反馈" | XCUITest 对环境高度敏感（GUI 会话、Accessibility 权限、窗口焦点、TCC 弹窗），本地通过不能替代 CI。XCUITest 必须延迟到步骤 4.5 走 CI。XCTest 可本地快速反馈。 |
-| "本地跑全量测试更快" | 全量回归（XCTest 全量 + XCUITest）统一在步骤 4.5 走 CI。单测试文件 XCTest 可本地快速反馈，但全量回归必须 CI。 |
-| "用户选了本地合并所以跳过 CI" | 合并方式（本地 merge vs PR）不影响验证质量。合并产生新 commit，必须验证。步骤 9.1 明确要求合并后走 CI。 |
-| "只是小特性，全量 CI 没必要" | 小特性的回归风险不一定小。CI 正是捕获意外回归。 |
-| "CI 太慢，影响效率" | XCTest 单测试文件本地验证提供快速反馈。步骤 4.5 的 CI 等待（XCUITest + 全量回归）可与下一个子计划准备并行，不阻塞。 |
-| "本地测试通过了，CI 肯定也通过" | 本地环境 ≠ CI 环境。签名配置、SDK 版本、runner 权限差异都可能掩盖问题。 |
-| "分支未 push，CI 触发不了，只能本地测" | 分支未 push 时必须先 `git push`，再等待远程 CI 结果。push 是 CI 验证的前置条件，不是跳过 CI 的理由。步骤 4.5 已明确要求先 push。 |
-| "gh workflow run 失败了，CI 不可用" | CI 触发失败应排查配置或重试，而非降级到本地测试。本地测试不能替代 CI 的跨环境验证。 |
-| "先本地验证逻辑，等权限好了再补 CI" | 本地测试无论包装成"预验证""逻辑检查"还是"先跑通再说"，都不能作为 4.5 的通过条件。4.5 必须等 push + CI 完成才能进入下一个子计划。 |
-| "远端仓库故障（500/维护），CI 物理上跑不了" | 远端不可用时停止工作流并等待恢复，不得降级本地测试。基础设施故障不改变验证标准。 |
