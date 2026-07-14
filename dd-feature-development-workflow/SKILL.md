@@ -387,24 +387,7 @@ EOF
 )"
 ```
 
-提交信息格式遵循 Conventional Commits：
-
-- `<type>[scope]: <description>`，描述用现在时+命令式，<72 字符
-- 类型表：`feat` 新功能 | `fix` 修复 | `docs` 文档 | `style` 格式 | `refactor` 重构 | `perf` 性能 | `test` 测试 | `build` 构建 | `ci` CI | `chore` 维护 | `revert` 回退
-- **公共文件修改**（遵循 dd-ai-git-workflow 公共文件锁机制）：触及公共文件（参见 `.trae/public-files.txt` 清单）时，必须开独立分支 `refactor/public-file-{描述}`，commit message 必须包含 `PublicFile: <文件路径>` tag，且分支生命周期 <1 天优先合并。禁止在 feature 分支夹带公共文件修改：
-
-```text
-feat(F3.1): add OCR acceleration pipeline
-
-PublicFile: Sources/MacimCore/OCR/OCREngine.swift
-```
-
-**Git 安全协议**：
-- 禁止更新 git config
-- 禁止 `--force`、hard reset（除非用户明确要求）
-- 禁止 `--no-verify` 跳过 hooks
-- 禁止 force push 到 main/master
-- hooks 失败 → 修复后新建 commit，不 amend
+Commit 规范（type 列表、subject 约束、公共文件 `PublicFile:` tag）遵循 [dd-git-merge](../dd-git-merge/SKILL.md) Commit 规范章节。公共文件锁机制（独立分支 `refactor/public-file-{描述}`、`PublicFile:` tag、<1 天合并）遵循 [dd-git-conflict](../dd-git-conflict/SKILL.md) 公共文件锁机制章节。禁止在 feature 分支夹带公共文件修改。提交边界（暂存无关脏文件、提交秘密文件、`--no-verify`、force push）遵循 [dd-shared-ask](../dd-shared-ask/SKILL.md) 提交边界章节。
 
 提交成功后进入步骤 3。
 
@@ -715,7 +698,7 @@ CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 2（回归 CI �
 
 ### 5.1 同步上游 BASE_BRANCH 并解决冲突（merge-only，禁止 rebase）
 
-遵循 dd-ai-git-workflow 的 merge-only 原则，**禁止使用 rebase**同步上游。使用 `git merge` 同步 BASE_BRANCH 最新改动。
+merge-only 原则、混合模式（`--no-ff` / `--ff-only`）遵循 [dd-git-merge](../dd-git-merge/SKILL.md) merge-only 原则与混合模式章节。**禁止使用 rebase** 同步上游。
 
 #### 5.1.1 前置检查：对比本地与远端 BASE_BRANCH 新旧
 
@@ -740,27 +723,17 @@ fi
 
 #### 5.1.2 询问合并策略（仅当需要同步上游时）
 
+合并策略选项遵循 [dd-git-merge](../dd-git-merge/SKILL.md) merge-only 原则与混合模式表（默认 `--no-ff` 保留合并历史；`--ff-only` 仅限纯同步场景）。
+
 **AskUserQuestion**：
 
 - 选项 1（推荐）：`git merge --no-ff origin/$BASE_BRANCH`（保留合并历史，产生 merge commit）
 - 选项 2：`git merge --ff-only origin/$BASE_BRANCH`（仅限分支无独立提交或纯同步，线性历史）
 - 选项 3：不合并，跳过本子步
 
-#### 5.1.3 执行合并
+#### 5.1.3 执行合并与冲突处理
 
-选择合并时：
-
-```bash
-git merge --no-ff origin/$BASE_BRANCH
-```
-
-**冲突处理流程**（遵循 dd-ai-git-workflow：在 feature 分支解决冲突，禁止直接在 develop 上解决）：
-
-1. `git status` 查看冲突文件列表
-2. 手动逐个文件解决冲突（保留正确逻辑、删除冲突标记 `<<<<<<<` `=======` `>>>>>>>`）
-3. `git add <已解决文件>` 标记冲突已解决
-4. `git commit` 完成 merge commit（不使用 `--no-edit` 跳过）
-5. **成功标准**：`git status` 显示工作区干净，无冲突文件
+选择合并时执行 `git merge --no-ff origin/$BASE_BRANCH`。冲突处理流程（在 feature 分支解决，禁止直接在 develop 上解决）遵循 [dd-git-conflict](../dd-git-conflict/SKILL.md) 长分支冲突处理流程章节（5 步：merge → 在 feature 分支解决 → 提交 → 自检 → 合并到 develop）。
 
 **冲突无法解决** → **AskUserQuestion**：
 
@@ -768,7 +741,7 @@ git merge --no-ff origin/$BASE_BRANCH
 - 选项 2：继续手动解决冲突
 - 选项 3：放弃本次实现，清理工作树
 
-**禁止**：使用 `git rebase` 同步上游、强制 `--no-edit` 跳过冲突处理、使用 `git rebase --skip` 丢弃提交
+禁止事项（rebase、`--no-edit`、`rebase --skip`、固定 sleep 掩盖竞态）遵循 [dd-git-merge](../dd-git-merge/SKILL.md) 和 [dd-git-conflict](../dd-git-conflict/SKILL.md) 禁止事项章节。
 
 ### 5.2 添加详细日志
 
@@ -789,7 +762,7 @@ git merge --no-ff origin/$BASE_BRANCH
 
 ### 5.4 提交变更
 
-无论是否合并上游，均提交当前变更（含代码 + 日志 + 文档）。提交流程同步骤 2.7（分析 diff → 智能暂存 → Conventional Commits → Git 安全协议）。
+无论是否合并上游，均提交当前变更（含代码 + 日志 + 文档）。提交流程同步骤 2.7（分析 diff → 智能暂存 → 提交，规范引用 dd-git-merge/dd-shared-ask）。
 
 ```bash
 git add <files-for-current-sync>
