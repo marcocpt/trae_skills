@@ -33,7 +33,6 @@ description: 用户想逐条交互式审核文档时使用。触发词："审核
 - 一次性问答（直接答完即可）
 - 让 AI 生成新文档（用 dd-writing-design-specs）
 - 纯代码审查（用 chinese-code-review / TRAE-code-review）
-- 代码理解问答（用 dd-codeqa-grilling）
 
 ## 核心协议
 
@@ -321,16 +320,16 @@ flowchart TD
    - **格式**（markdown）：
      ```
      # <doc-name> 审核第 N 批修复验证摘要
-
+     
      - 被审核文档:: path/to/reviewed-doc.md
      - TODO 文件:: path/to/TODO.md
      - 批次:: 第 N 批（bug 类 / feature 类，#功能标签）
      - 修复 commit SHA:: <短SHA>
      - 生成时间:: YYYY-MM-DD HH:MM
      - 本批条目数:: M
-
+     
      ## 验证步骤
-
+     
      ### TODO1. [Pn] 问题简述 #标签
      - 文档位置:: [doc.md#L行](file:///...)
      - 修复内容:: <基于 git show 看到的实际改动，简述改了什么>

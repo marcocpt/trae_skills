@@ -107,5 +107,5 @@ gh workflow run "<workflow-name>" --ref <当前分支>
 - 项目配置了 GitHub Actions self-hosted runner
 
 **不适用：**
-- 单个测试文件的快速验证（本地直接运行更快）
+- 单个测试文件的快速验证（本地直接运行更快）——**例外**：dd-bug-fix-workflow 步骤 2 中 UI 测试（XCUITest）禁止本地执行，必须延迟到步骤 3.3.5 走 CI；XCTest 单测试文件可本地执行
 - 未纳入 CI 流程的本地专用检查工具
