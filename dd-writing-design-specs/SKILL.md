@@ -50,7 +50,7 @@ digraph writing_design_specs {
 - **一次一个文档**：设计规范、视觉原型、测试用例表必须**逐份**完成（写 → 审 → 确认），禁止并行调度或一次写多份后批量确认。
 - **没有拷问不写规范**：步骤 1 未完成禁止进入步骤 2。
 - **没有审查不进入下一篇**：步骤 3 未完成（3 个子代理全部返回）禁止进入步骤 4。
-- **每步必提交**：每个步骤产出可保存的工件后，**立即** `git add` + `git commit`，禁止跨步骤累积未提交变更。提交信息遵循 Conventional Commits（`<type>[scope]: <description>`，现在时+命令式，<72 字符）。禁止 `--no-verify`、`--force`、提交敏感文件、提交无关脏文件。
+- **每步必提交**：每个步骤产出可保存的工件后，**立即** `git add` + `git commit`，禁止跨步骤累积未提交变更。提交信息遵循 Conventional Commits（`<type>[scope]: <description>`，现在时+命令式，<72 字符）。**若本次提交修改了 `.trae/public-files.txt` 清单中的公共文件，commit message 末尾必须追加 `PublicFile` tag**（遵循 dd-ai-git-workflow）。禁止 `--no-verify`、`--force`、提交敏感文件、提交无关脏文件。
   - 步骤 0：提交"规则与参考摘要"到临时笔记文件（如 `docs/planning/P{n}/F{m}/.step0-rules-summary.md`）
   - 步骤 1：提交"grill 需求摘要"到临时笔记文件（如 `docs/planning/P{n}/F{m}/.step1-requirements-summary.md`）
   - 步骤 2：提交设计规范文件
@@ -515,6 +515,80 @@ git commit -m "chore(spec): clean up temporary notes for F{m}"
 | “规范+审查+总结一起提交省事” | 每步提交是审计单元。合并提交让审查回溯困难，且任一步失败时丢失已验证成果。按步骤顺序逐个提交。 |
 | “docs.md 合规性检查可跳过，反正步骤 0 已读过” | 步骤 0 读规则不等于步骤 3 验证合规。读取是输入，验证是输出。没有审查员 A 的 docs.md 合规性检查，目标文档可能偏离项目规则而不被发现，导致下游计划基于错误前提。 |
 
+## Git 工作流合规（强制）
+
+本技能涉及大量 git commit 操作（步骤 0.4、1.4、2.5、3.6、4.5、5.2、5.6），必须遵循 [dd-ai-git-workflow](../dd-ai-git-workflow/SKILL.md) 规范。
+
+### 分支与 worktree
+
+- **分支命名**：设计规范类工作使用 `docs/{主题}` 格式（如 `docs/F3.1-ocr-design-spec`）
+- **基线分支**：默认基于 `origin/develop` 最新提交创建
+- **worktree 创建**：推荐使用 dd-ai-git-workflow 提供的脚本：
+  ```bash
+  SKILL_DIR="$HOME/.trae-cn/skills/dd-ai-git-workflow"
+  bash "$SKILL_DIR/scripts/create-worktree.sh" docs <主题>
+  # 示例：bash "$SKILL_DIR/scripts/create-worktree.sh" docs F3.1-ocr-design-spec
+  ```
+- **隔离环境**：必须在独立 worktree 中执行，禁止在主仓库工作区直接操作
+
+### 每日必须合并
+
+- **24 小时窗口**：`docs/` 分支创建后必须在 24 小时内合并回 `develop`
+- **超时处理**：超过 24 小时未合并的分支视为陈旧，合并前必须先 `git merge --no-ff origin/develop` 同步上游变更并重新验证
+
+### merge 策略（merge-only）
+
+- **禁止 rebase**：本技能严格遵守 merge-only 策略，**禁止使用 `git rebase`**（包括 `rebase`、`rebase -i`、`pull --rebase`）
+- **合并方式**：使用 `git merge --no-ff` 保留合并历史
+- **同步上游**：合并前同步上游变更使用 `git merge --no-ff origin/develop`，不得使用 rebase
+
+### 合并前检查
+
+合并回 `develop` 前**必须**执行 dd-ai-git-workflow 提供的检查脚本（5 步流程）：
+
+```bash
+SKILL_DIR="$HOME/.trae-cn/skills/dd-ai-git-workflow"
+
+# 1. 预测冲突
+bash "$SKILL_DIR/scripts/conflict-predict.sh" origin/develop
+
+# 2. 分支健康度
+bash "$SKILL_DIR/scripts/branch-health.sh"
+
+# 3. 每日同步检查
+bash "$SKILL_DIR/scripts/daily-sync.sh"
+
+# 4. 预合并检查
+bash "$SKILL_DIR/scripts/pre-merge-check.sh" origin/develop
+
+# 5. 清理建议
+bash "$SKILL_DIR/scripts/cleanup-suggest.sh"
+```
+
+任一脚本失败必须修复后重试，**禁止跳过合并前检查直接合并**。
+
+### 公共文件锁机制
+
+- **公共文件清单**：`.trae/public-files.txt` 列出项目所有公共文件
+- **修改前加锁**：若设计规范工作需修改公共文件（如 `docs/CODING_STANDARDS.md`、`.trae/rules/docs.md`），必须先在公共文件锁机制中申请锁
+- **Commit 标注**：修改公共文件的 commit message 末尾必须追加 `PublicFile` tag
+- **禁止夹带**：设计规范分支禁止夹带与设计规范无关的公共文件修改
+
+### 冲突处理流程
+
+- 合并前检查发现冲突时，使用 `git merge --no-ff origin/develop` 同步上游，手动解决冲突
+- 冲突解决后重新执行合并前检查 5 步流程
+- **禁止使用 rebase 解决冲突**
+
+### 合并后清理
+
+- 合并成功后删除 worktree：`git worktree remove <worktree-path>`
+- 删除本地分支：`git branch -d <branch-name>`
+- 删除远端分支（如已 push）：`git push origin --delete <branch-name>`
+- 清理状态文件（如使用了状态持久化）
+
+---
+
 ## 红线 — 停下来重新开始
 
 - 没读 docs.md 就开始 grill 或写规范
@@ -529,6 +603,9 @@ git commit -m "chore(spec): clean up temporary notes for F{m}"
 - 任一步骤未提交 git 就进入下一步
 - 工作流结束未清理步骤 0、1 临时笔记
 - 审查时未检查 docs.md 合规性（审查员 A 漏查 6 项规则）
+- **使用 `git rebase`**（必须 merge-only，禁止 rebase、rebase -i、pull --rebase）
+- **在 docs 分支夹带与设计规范无关的公共文件修改**（公共文件修改必须单独分支 + PublicFile tag）
+- **跳过合并前检查直接合并**（必须执行 5 步检查脚本）
 - 用"省时间/省交互"为由违反上述任一规则
 
 **以上任一情况发生时，停止当前步骤，回到违规步骤重新执行。**
@@ -558,3 +635,4 @@ git commit -m "chore(spec): clean up temporary notes for F{m}"
 | 4. 合并确认 | 合并总结 + 一次一问 | 提交总结+规范修复 | 一次多问、批量确认多篇 |
 | 5. 下一篇 | 一次一篇，每篇走 2-4 | 每篇确认后提交该文档+审查+总结 | 并行写多篇、跳过审查 |
 | 结束 | 清理临时笔记 | `git rm` + 提交清理 | 保留临时笔记不清理 |
+| Git 合规 | `docs/{主题}` 分支 + worktree + merge-only + 合并前 5 步检查 + 公共文件锁 | 修改公共文件加 `PublicFile` tag | rebase、夹带公共文件、跳过合并前检查 |

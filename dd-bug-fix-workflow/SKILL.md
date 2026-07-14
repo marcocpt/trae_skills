@@ -96,7 +96,7 @@ fi
 - **更新 `current_step`**：每完成一个步骤，更新此字段
 - **删除**：步骤 7 清理工作树前先删除（须在离开 worktree 前执行，此时 `git-dir` 指向 worktree 私有目录）
 
-> **全局会话规则**：本工作流所有步骤中涉及用户决策的问题（步骤 0 三次询问、步骤 2 失败询问、步骤 3.1 变基选择/冲突失败、步骤 3.2 失败、步骤 3.4 同步选择/失败、步骤 4 是否继续、步骤 5 各失败点、步骤 6 各失败点、步骤 7 合并选择等）**都必须使用当前环境可用的结构化询问工具给出选项**。在 Trae 中使用 `AskUserQuestion`；在 Codex 中使用 `request_user_input`（如可用）或带清晰选项的简短文本问题。不得用无选项的纯文本提问中断会话。
+> **全局会话规则**：本工作流所有步骤中涉及用户决策的问题（步骤 0 三次询问、步骤 2 失败询问、步骤 3.1 合并选择/冲突失败、步骤 3.2 失败、步骤 3.4 同步选择/失败、步骤 4 是否继续、步骤 5 各失败点、步骤 6 各失败点、步骤 7 合并选择等）**都必须使用当前环境可用的结构化询问工具给出选项**。在 Trae 中使用 `AskUserQuestion`；在 Codex 中使用 `request_user_input`（如可用）或带清晰选项的简短文本问题。不得用无选项的纯文本提问中断会话。
 
 > **null 输入重问**：调用 `AskUserQuestion` 后，若返回结果为 null（含空值、空字符串、用户取消、未选择任何选项），视为未获取有效决策。必须以原问题重新询问用户，重复直到获取有效输入，不得自行假设默认值继续。
 
@@ -223,8 +223,13 @@ EOF
 
 #### 1.2.1 记录基线分支
 
+遵循 dd-ai-git-workflow，基线分支默认为 `develop`：
+
 ```bash
-BASE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+# 默认基线分支为 develop（遵循 dd-ai-git-workflow）
+# 若步骤 0 用户明确指定其他基线分支，则使用用户指定的分支
+BASE_BRANCH="${BASE_BRANCH:-develop}"
+git fetch origin "$BASE_BRANCH"
 ```
 
 #### 1.2.2 计算工作树路径
@@ -242,12 +247,27 @@ worktree_dir=$(dirname "$main_root")/${project}-worktrees
 
 #### 1.2.3 创建工作树
 
+遵循 dd-ai-git-workflow 的分支命名规则，bug 修复分支使用 `fix/{F编号}-{描述}` 格式。推荐使用 dd-ai-git-workflow 提供的脚本：
+
 ```bash
-BRANCH="fix/<简短描述>"
+# 使用 dd-ai-git-workflow 脚本创建（推荐）
+# 用法：./scripts/create-worktree.sh fix <F编号> <描述>
+SKILL_DIR="$HOME/.trae-cn/skills/dd-ai-git-workflow"
+bash "$SKILL_DIR/scripts/create-worktree.sh" fix <F编号> <描述>
+# 示例：bash "$SKILL_DIR/scripts/create-worktree.sh" fix F3.1 hotkey-conflict
+```
+
+或手动创建（基于 origin/develop 最新提交）：
+
+```bash
+BRANCH="fix/<F编号>-<描述>"  # 示例：fix/F3.1-hotkey-conflict
+git fetch origin develop
 path="$worktree_dir/$BRANCH"
-git worktree add "$path" -b "$BRANCH"
+git worktree add "$path" -b "$BRANCH" origin/develop
 cd "$path"
 ```
+
+**基线分支**：默认基于 `origin/develop` 最新提交创建（遵循 dd-ai-git-workflow）。若需基于其他分支，需在步骤 0 明确说明并获得用户确认。
 
 #### 1.2.4 运行项目设置
 
@@ -411,7 +431,9 @@ EOF
 
 ## 步骤 3：代码同步
 
-### 3.1 变基到 BASE_BRANCH 并解决冲突
+### 3.1 同步上游 BASE_BRANCH 并解决冲突（merge-only，禁止 rebase）
+
+遵循 dd-ai-git-workflow 的 merge-only 原则，**禁止使用 rebase**同步上游。使用 `git merge` 同步 BASE_BRANCH 最新改动。
 
 #### 3.1.1 前置检查：对比本地与远端 BASE_BRANCH 新旧
 
@@ -423,50 +445,45 @@ LOCAL_SHA=$(git rev-parse "$BASE_BRANCH")
 REMOTE_SHA=$(git rev-parse "origin/$BASE_BRANCH")
 
 if [ "$LOCAL_SHA" = "$REMOTE_SHA" ]; then
-    # 本地与远端一致，无需变基
-    SKIP_REBASE=true
-elif git merge-base --is-ancestor "$LOCAL_SHA" "$REMOTE_SHA"; then
-    # 远端更新，推荐 rebase 到 origin/<BASE_BRANCH>
-    RECOMMEND="origin/$BASE_BRANCH"
+    # 本地与远端一致，无需合并上游
+    SKIP_MERGE=true
 else
-    # 本地更新，推荐 rebase 到 <BASE_BRANCH>
-    RECOMMEND="$BASE_BRANCH"
+    # 远端更新，需要合并 origin/<BASE_BRANCH>
+    SKIP_MERGE=false
 fi
 ```
 
-- `SKIP_REBASE=true`（本地与远端一致）→ **跳过 3.1.2**，直接进入 3.2
-- 否则进入 3.1.2 询问变基策略（`$RECOMMEND` 为推荐目标）
+- `SKIP_MERGE=true`（本地与远端一致）→ **跳过 3.1.2**，直接进入 3.2
+- 否则进入 3.1.2 询问合并策略
 
-#### 3.1.2 询问变基策略（仅当需要变基时）
+#### 3.1.2 询问合并策略（仅当需要同步上游时）
 
 **AskUserQuestion 问 1**：
-- 选项 1（推荐）：变基到较新的一方（自动判定本地/远端）
-- 选项 2：变基到 `origin/<BASE_BRANCH>`（强制远端）
-- 选项 3：变基到 `<BASE_BRANCH>`（强制本地）
-- 选项 4：不变基，跳过本子步
+- 选项 1（推荐）：`git merge --no-ff origin/$BASE_BRANCH`（保留合并历史，产生 merge commit）
+- 选项 2：`git merge --ff-only origin/$BASE_BRANCH`（仅限分支无独立提交或纯同步，线性历史）
+- 选项 3：不合并，跳过本子步
 
-#### 3.1.3 执行变基
+#### 3.1.3 执行合并
 
-选择变基时：
+选择合并时：
 
 ```bash
-git rebase <目标分支>
+git merge --no-ff origin/$BASE_BRANCH
 ```
 
-**冲突处理流程**：
+**冲突处理流程**（遵循 dd-ai-git-workflow：在 fix 分支解决冲突，禁止直接在 develop 上解决）：
 1. `git status` 查看冲突文件列表
 2. 手动逐个文件解决冲突（保留正确逻辑、删除冲突标记 `<<<<<<<` `=======` `>>>>>>>`）
 3. `git add <已解决文件>` 标记冲突已解决
-4. `git rebase --continue` 继续 rebase
-5. 若有多个冲突 commit，重复步骤 1-4
-6. **成功标准**：`git status` 显示 `rebase in progress` 已结束，无冲突文件
+4. `git commit` 完成 merge commit（不使用 `--no-edit` 跳过）
+5. **成功标准**：`git status` 显示工作区干净，无冲突文件
 
 **冲突无法解决** → **AskUserQuestion 问 2**：
-- 选项 1（推荐）：`git rebase --abort` 中止，回到步骤 2 在 BASE_BRANCH 最新代码上重新修复
+- 选项 1（推荐）：`git merge --abort` 中止合并，回到步骤 2 在 BASE_BRANCH 最新代码上重新修复
 - 选项 2：继续手动解决冲突（提供具体冲突位置和上下文）
 - 选项 3：放弃本次修复，清理工作树
 
-**禁止**：强制 `--no-edit` 跳过冲突处理、使用 `git rebase --skip` 丢弃提交
+**禁止**：使用 `git rebase` 同步上游、强制 `--no-edit` 跳过冲突处理、使用 `git rebase --skip` 丢弃提交
 
 ### 3.2 添加详细日志与文档
 
@@ -497,7 +514,7 @@ git rebase <目标分支>
 
 ### 3.3 提交变更
 
-无论是否变基，均提交当前变更（含代码 + 日志 + 文档）。
+无论是否合并上游，均提交当前变更（含代码 + 日志 + 文档）。
 
 #### 3.3.1 分析 diff
 
@@ -555,6 +572,13 @@ git add src/components/*
 
 - 描述：现在时 + 命令式，<72 字符
 - 引用 issue：`Closes #123`、`Refs #456`
+- **公共文件修改**（遵循 dd-ai-git-workflow 公共文件锁机制）：触及公共文件（参见 `.trae/public-files.txt` 清单）时，必须开独立分支 `refactor/public-file-{描述}`，commit message 必须包含 `PublicFile: <文件路径>` tag，且分支生命周期 <1 天优先合并。禁止在 fix 分支夹带公共文件修改：
+
+```text
+fix(F3.1): resolve hotkey conflict with OCR shortcut
+
+PublicFile: Sources/MacimCore/Hotkey/HotkeyManager.swift
+```
 
 #### 3.3.4 执行提交
 
@@ -970,10 +994,7 @@ rm -f "$git_dir/bug-fix-state.json"
 # 以下命令必须在主仓库路径执行，不在修复 worktree 内执行
 cd "$main_root"
 
-# 变基到原分支最新
-git rebase "$BASE_BRANCH" <工作树分支>
-
-# 切回原分支并合并（保留合并记录）
+# 切回原分支并合并（merge-only，禁止 rebase，保留合并记录）
 git checkout "$BASE_BRANCH"
 git merge --no-ff <工作树分支>
 ```
@@ -1032,9 +1053,62 @@ rm -f "$git_dir/bug-fix-state.json"
 
 ### 7.6 步骤 0 选"当前 worktree"时的特殊处理
 
-- 选"合并" → 执行 rebase + merge --no-ff
+- 选"合并" → 执行 merge --no-ff（merge-only，禁止 rebase）
 - 选"不合并"/"暂不处理" → **不删除工作树**（因工作树非本流程创建）
 - 选"还有其他问题" → 在当前工作树继续新一轮
+
+---
+
+## Git 工作流合规（强制）
+
+本技能涉及的所有 Git 操作（分支创建、push、merge、清理等）**必须遵循 dd-ai-git-workflow 规范**。以下为关键引用点，详细规则参见 dd-ai-git-workflow/SKILL.md。
+
+> **路径变量**：下文脚本调用中的 `SKILL_DIR` 定义为 `$HOME/.trae-cn/skills/dd-ai-git-workflow`。
+
+### 合并前检查（强制）
+
+合并到 BASE_BRANCH 前必须依次执行（对应 dd-ai-git-workflow 的 5 步流程）：
+
+1. `git merge --no-ff origin/$BASE_BRANCH` 同步上游（步骤 3.1 已处理）
+2. `bash $SKILL_DIR/scripts/conflict-predict.sh` 输出 ConflictPredictionReport，`severity: high` 禁止合并
+3. Build / Tests / SwiftLint strict（步骤 6 已处理）
+4. `bash $SKILL_DIR/scripts/pre-merge-check.sh` 输出 PreMergeChecklist，`all_pass=false` 禁止合并
+5. PR / Merge（`--no-ff` 到 BASE_BRANCH，步骤 7 已处理）
+
+**本技能的 CI 验证规则与 dd-ai-git-workflow 的合并前检查协同**：CI 全绿是步骤 3.3.5/6.2.1/7.1 的必要条件，pre-merge-check.sh 的 `all_pass=true` 是合并的必要条件，两者缺一不可。
+
+### 每日必须合并
+
+AI Coding 场景下分支每天必须有合并动作（不只是同步）：
+
+- **拉取上游**：`bash $SKILL_DIR/scripts/daily-sync.sh` 同步 origin/develop
+- **推送可合并部分**：已完成且通过自检的 bug 修复合并回 develop
+- **长分支风险**：分支存活时间越长冲突指数级增长，bug 修复应小步快合并
+
+### 公共文件锁机制
+
+bug 修复可能触及公共文件（共享协议、模型、配置等），必须遵守：
+
+- 修改前查询 `.trae/public-files.txt` 清单判断是否命中
+- 命中则开独立分支 `refactor/public-file-{描述}`，commit 加 `PublicFile:` tag
+- 公共文件分支 <1 天优先合并，禁止在 fix 分支夹带公共文件修改
+- 跨模块修改必须开独立分支，按 Core → UI → App 顺序合并
+
+### 冲突处理流程
+
+长分支冲突必须按以下顺序，**禁止直接在 develop 上解决**：
+
+1. 在 fix 分支执行 `git merge origin/develop`（步骤 3.1 已处理）
+2. 在 fix 分支解决冲突并提交
+3. 在 fix 分支运行合并前自检（pre-merge-check.sh）
+4. 将 fix 分支合并到 develop（develop 端无冲突）
+
+### 合并后清理
+
+- 立即 `git worktree remove <path>`（步骤 7 已处理）
+- 立即 `git branch -d <branch>`
+- 通知其他活跃 Agent 拉取 develop
+- 定期运行 `bash $SKILL_DIR/scripts/cleanup-suggest.sh` 清理废弃 worktree/分支（需用户确认）
 
 ---
 
@@ -1051,6 +1125,8 @@ rm -f "$git_dir/bug-fix-state.json"
 - **以 CI 触发失败为由走本地测试**（应排查 CI 配置或重试，而非降级验证）
 - **合并后跳过 CI 验证直接清理工作树**
 - **用"本地合并"作为跳过 CI 的理由**（合并方式不影响验证质量）
+- **使用 git rebase 同步上游或合并分支**（遵循 dd-ai-git-workflow merge-only 原则，禁止 rebase）
+- **在 fix 分支夹带公共文件修改**（公共文件必须开独立分支，加 PublicFile tag）
 
 **以上所有都意味着：回到违规步骤重新执行。**
 

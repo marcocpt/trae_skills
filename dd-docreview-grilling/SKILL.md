@@ -280,6 +280,8 @@ flowchart TD
    - `git add <TODO 文件> <LATER 文件>`（LATER 文件若有变更）
    - `git commit`，commit message 格式：`docs(dd-docreview-grilling): 记录 <doc-name> 审核发现的 N 个 TODO + M 个 LATER`
    - 若 TODO 和 LATER 都未创建（双空场景）：跳过 git 提交
+   - **分支上下文**（遵循 dd-ai-git-workflow）：审核成果提交应在 `docs/{主题}` 分支上进行；若批量修复路由到 fix/feature 分支，则审核成果提交可与首批修复同分支或在 `docs/` 分支独立提交后合并
+   - **公共文件**（遵循 dd-ai-git-workflow 公共文件锁机制）：若 TODO/LATER 文件本身属于公共文件（如 `AGENTS.md`、`CLAUDE.md`），commit message 必须包含 `PublicFile: <文件路径>` tag
 6. 用 `AskUserQuestion` 询问是否立即进入批量修复流程（第 7 步）：是 → 进入第 7 步；否 → 进入第 8 步（流程结束询问）
 
 ### 7. 批量修复流程
@@ -348,6 +350,7 @@ flowchart TD
 5. **提交修复成果**：`git add <修复的文件> <TODO 文件> 验证摘要/<验证摘要文档>` + `git commit`（修复的文件已由被调用技能提交，此处 `git add` 对其为空操作；TODO 文件含 `- [x] TODO1.` + 修复SHA、验证摘要文档为本批新增），commit message 格式：
    - bug 类批次：`fix(<scope>): 修复 <doc-name> 审核的第 X 批 N 个问题`（`<scope>` = 功能标签）
    - feature 类批次：`feat(<scope>): 实现 <doc-name> 审核的第 X 批 N 个缺失功能`（`<scope>` = 功能标签）
+   - **公共文件修改**（遵循 dd-ai-git-workflow 公共文件锁机制）：若本批修复触及公共文件（参见 `.trae/public-files.txt` 清单），commit message 必须包含 `PublicFile: <文件路径>` tag，且公共文件修改应已由被调用技能在独立分支处理
    - 提交后用 markdown 链接 `[文件名](file:///绝对路径)` 输出验证摘要文档路径给用户，提示可按其逐条手动验证本批修复。
 
 **7.3 询问是否继续下一批**（每批提交后，**必须**用 `AskUserQuestion` 给出以下 4 选项，不得减少或省略）：
@@ -373,6 +376,77 @@ flowchart TD
 | 有其他任务 | 用户可继续其他工作（如审核另一份文档、调其他技能等） |
 
 **不得直接结束而不询问。不得假设用户想结束。**
+
+## Git 工作流合规（强制）
+
+本技能涉及的所有 Git 操作（提交、批量修复路由等）**必须遵循 dd-ai-git-workflow 规范**。以下为关键引用点，详细规则参见 dd-ai-git-workflow/SKILL.md。
+
+> **路径变量**：下文脚本调用中的 `SKILL_DIR` 定义为 `$HOME/.trae-cn/skills/dd-ai-git-workflow`。
+
+### 分支命名
+
+- **审核成果提交**：使用 `docs/{主题}` 分支（如 `docs/ai-git-workflow-review`）
+- **批量修复路由**：bug 类 → `fix/{F编号}-{描述}` 分支（由 dd-bug-fix-workflow 处理）；feature 类 → `feature/{F编号}-{描述}` 分支（由 dd-feature-development-workflow 处理）
+- **公共文件修改**：使用 `refactor/public-file-{描述}` 独立分支，生命周期 <1 天优先合并
+
+### Commit 规范
+
+遵循 dd-ai-git-workflow 的 conventional commits + scope 格式：
+
+| 场景 | type | 示例 |
+|------|------|------|
+| 审核成果提交 | `docs` | `docs(dd-docreview-grilling): 记录 <doc-name> 审核发现的 N 个 TODO + M 个 LATER` |
+| bug 类批量修复 | `fix` | `fix(<scope>): 修复 <doc-name> 审核的第 X 批 N 个问题` |
+| feature 类批量修复 | `feat` | `feat(<scope>): 实现 <doc-name> 审核的第 X 批 N 个缺失功能` |
+
+**公共文件修改**：触及公共文件时，commit message 必须包含 `PublicFile: <文件路径>` tag。
+
+### 合并前检查（强制）
+
+本技能直接提交（审核成果、批量修复结果）合并到 develop 前必须依次执行：
+
+1. `git merge --no-ff origin/develop` 同步上游
+2. `bash $SKILL_DIR/scripts/conflict-predict.sh`，`severity: high` 禁止合并
+3. Build / Tests / SwiftLint strict
+4. `bash $SKILL_DIR/scripts/pre-merge-check.sh`，`all_pass=false` 禁止合并
+5. PR / Merge（`--no-ff` 到 develop）
+
+**批量修复路由的协同**：dd-bug-fix-workflow / dd-feature-development-workflow 已内嵌 dd-ai-git-workflow 合规检查，本技能路由到的修复流程自带合并前检查。
+
+### 每日必须合并
+
+AI Coding 场景下分支每天必须有合并动作：
+
+- **拉取上游**：`bash $SKILL_DIR/scripts/daily-sync.sh` 同步 origin/develop
+- **推送可合并部分**：已完成且通过自检的审核成果/修复批次合并回 develop
+- **长分支风险**：分支存活时间越长冲突指数级增长
+
+### 公共文件锁机制
+
+审核过程和批量修复可能触及公共文件（共享协议、模型、配置、`AGENTS.md`、`CLAUDE.md` 等），必须遵守：
+
+- 修改前查询 `.trae/public-files.txt` 清单判断是否命中
+- 命中则开独立分支 `refactor/public-file-{描述}`，commit 加 `PublicFile:` tag
+- 公共文件分支 <1 天优先合并，禁止在 docs/fix/feature 分支夹带公共文件修改
+- 跨模块修改必须开独立分支，按 Core → UI → App 顺序合并
+
+### merge 策略（merge-only，禁止 rebase）
+
+| 场景 | 命令 | 说明 |
+|------|------|------|
+| 审核/修复合并到 develop | `git merge --no-ff <branch>` | 保留分支历史 |
+| 纯同步上游 | `git merge --ff-only origin/develop` | 仅限无独立提交 |
+
+**禁止**：rebase、force push、用 `--ff-only` 替代功能合并。
+
+### 合并后清理
+
+- 立即 `git worktree remove <path>`
+- 立即 `git branch -d <branch>`
+- 通知其他活跃 Agent 拉取 develop
+- 定期运行 `bash $SKILL_DIR/scripts/cleanup-suggest.sh`（需用户确认）
+
+---
 
 ## 红线 - 停下并修正
 
@@ -425,6 +499,9 @@ flowchart TD
 - **全部流程结束后不询问是否结束/有其他任务** → 必须用 `AskUserQuestion` 询问，不得直接结束
 - **启动询问图形化开关** → 默认启用，不询问
 - **启动询问 LATER 路径** → 固定 `/docs/AI/LATER.md`，不询问
+- **使用 git rebase 同步上游或合并分支**（遵循 dd-ai-git-workflow merge-only 原则，禁止 rebase）
+- **在 docs/fix/feature 分支夹带公共文件修改**（公共文件必须开独立分支，加 PublicFile tag）
+- **跳过合并前检查直接合并**（必须运行 pre-merge-check.sh，all_pass=false 禁止合并）
 
 **违反以上任一条 = 违反本技能的精神。**
 

@@ -251,8 +251,13 @@ fi
 
 #### 1.2.1 记录基线分支
 
+遵循 dd-ai-git-workflow，基线分支默认为 `develop`：
+
 ```bash
-BASE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+# 默认基线分支为 develop（遵循 dd-ai-git-workflow）
+# 若步骤 0 用户明确指定其他基线分支，则使用用户指定的分支
+BASE_BRANCH="${BASE_BRANCH:-develop}"
+git fetch origin "$BASE_BRANCH"
 ```
 
 #### 1.2.2 计算工作树路径
@@ -270,12 +275,27 @@ worktree_dir=$(dirname "$main_root")/${project}-worktrees
 
 #### 1.2.3 创建工作树
 
+遵循 dd-ai-git-workflow 的分支命名规则，feature 分支使用 `feature/{F编号}-{描述}` 格式。推荐使用 dd-ai-git-workflow 提供的脚本：
+
 ```bash
-BRANCH="feature/<简短描述>"
+# 使用 dd-ai-git-workflow 脚本创建（推荐）
+# 用法：./scripts/create-worktree.sh feature <F编号> <描述>
+SKILL_DIR="$HOME/.trae-cn/skills/dd-ai-git-workflow"
+bash "$SKILL_DIR/scripts/create-worktree.sh" feature <F编号> <描述>
+# 示例：bash "$SKILL_DIR/scripts/create-worktree.sh" feature F3.1 ocr-acceleration
+```
+
+或手动创建（基于 origin/develop 最新提交）：
+
+```bash
+BRANCH="feature/<F编号>-<描述>"  # 示例：feature/F3.1-ocr-acceleration
+git fetch origin develop
 path="$worktree_dir/$BRANCH"
-git worktree add "$path" -b "$BRANCH"
+git worktree add "$path" -b "$BRANCH" origin/develop
 cd "$path"
 ```
+
+**基线分支**：默认基于 `origin/develop` 最新提交创建（遵循 dd-ai-git-workflow）。若需基于其他分支，需在步骤 0 明确说明并获得用户确认。
 
 #### 1.2.4 运行项目设置
 
@@ -547,6 +567,13 @@ EOF
 
 - `<type>[scope]: <description>`，描述用现在时+命令式，<72 字符
 - 类型表：`feat` 新功能 | `fix` 修复 | `docs` 文档 | `style` 格式 | `refactor` 重构 | `perf` 性能 | `test` 测试 | `build` 构建 | `ci` CI | `chore` 维护 | `revert` 回退
+- **公共文件修改**（遵循 dd-ai-git-workflow 公共文件锁机制）：触及公共文件（参见 `.trae/public-files.txt` 清单）时，必须开独立分支 `refactor/public-file-{描述}`，commit message 必须包含 `PublicFile: <文件路径>` tag，且分支生命周期 <1 天优先合并。禁止在 feature 分支夹带公共文件修改：
+
+```text
+feat(F3.1): add OCR acceleration pipeline
+
+PublicFile: Sources/MacimCore/OCR/OCREngine.swift
+```
 
 **Git 安全协议**：
 - 禁止更新 git config
@@ -724,9 +751,10 @@ EOF
 4. 根据 check-code 结果修复问题，直到通过
 5. 对 UI 子计划执行真实路径验证或手动验收，保存截图/录屏/日志/测试输出
 6. 运行子计划要求的验证命令（按 test-location-strategy skill 决策测试位置）：
-   - **单测试文件验证**（代码未提交，本地执行）：仅运行当前子计划相关的测试，确认 TDD 绿灯。此时代码未提交，无法 push 触发 CI，本地执行是唯一选项
+   - **XCTest 单测试文件验证**（代码未提交，本地执行）：仅运行当前子计划相关的 XCTest，确认 TDD 绿灯。无 GUI 依赖，本地快速反馈合理
+   - **XCUITest 验证**：禁止本地执行，延迟到步骤 4.5 提交后走 CI（UI 测试依赖 GUI 会话、Accessibility 权限等环境状态，本地不可靠）
    - **全量回归验证**：延迟到步骤 4.5 提交后按 test-location-strategy 走 CI 优先（先 push 再触发 CI）
-   - **禁止**：在步骤 4.2.6 本地跑全量回归——代码未提交，本地通过不能替代 CI 的跨环境验证；不得以"CI 不可用"或"用户明确要求"为由本地降级
+   - **禁止**：在步骤 4.2.6 本地跑全量回归或本地执行 XCUITest——代码未提交，本地通过不能替代 CI 的跨环境验证；不得以"CI 不可用"或"用户明确要求"为由本地降级
 7. 提交当前子计划相关代码、测试、文档、证据记录
 8. 更新状态文件的 `current_phase`
 9. 进入下一个子计划
@@ -741,8 +769,9 @@ EOF
 
 - 阅读设计规范的 AC 和子计划的任务描述
 - 编写最小测试（只测一件事，使用真实代码，避免不必要 mock）
-- 验证因正确原因失败（失败信息反映功能缺失，非拼写错误）
-- 测试通过？说明测了已有行为，需修改测试
+- **按测试类型决定红灯验证位置**：
+  - **XCTest（单元测试）**：可本地验证红灯（快速反馈，无 GUI 依赖），确认测试因正确原因失败而非拼写错误
+  - **XCUITest（UI 测试）**：禁止本地验证红灯，延迟到步骤 4.5 走 CI（UI 测试依赖 GUI 会话、Accessibility 权限、窗口焦点等环境状态，本地环境不可靠）
 
 #### 第二步：实现设计（绿灯）
 
@@ -750,12 +779,16 @@ EOF
 
 - 严格按子计划步骤实现（不做"顺便改改"的优化，不捆绑重构）
 
-**验证分两层，必须严格区分：**
+**按测试类型决定验证位置，必须严格区分：**
 
-1. **单测试文件绿灯验证**（本地执行，TDD 快速反馈）：仅运行当前任务编写的新测试，确认因实现而通过。此时代码未提交，无法触发 CI，本地执行是唯一选项
-2. **全量回归验证**（**步骤 4.5 提交后**按 `test-location-strategy` skill 走 CI 优先）：运行项目完整测试套件，确认实现未破坏其他测试。**禁止在步骤 4.3 中直接本地跑全量回归——必须延迟到步骤 4.5 提交后走 CI 验证**
+- **XCTest（单元测试）**：
+  - **单测试文件绿灯验证**（本地执行，TDD 快速反馈）：仅运行当前任务编写的新 XCTest，确认因实现而通过。无 GUI 依赖，本地快速反馈合理
+  - **不在本地跑全量 XCTest 回归**——全量回归延迟到步骤 4.5 提交并 push 后走 CI
+- **XCUITest（UI 测试）**：
+  - **禁止本地执行任何 XCUITest**（包括单测试文件、包括红灯和绿灯验证）——UI 测试依赖 GUI 会话、Accessibility 权限、窗口焦点、TCC 授权弹窗等环境状态，本地环境不可靠。所有 XCUITest 验证延迟到步骤 4.5 走 CI
+  - 实现是否让 UI 测试通过，由步骤 4.5 的 CI 结果判断。在 CI 结果出来前，不声明"UI 测试已验证"
 
-> **为什么不能在步骤 4.3 本地跑全量回归？** 与 dd-bug-fix-workflow 相同：代码未提交无法 push 触发 CI。即使本地通过，CI 环境差异可能掩盖问题。
+> **为什么 XCUITest 禁止本地执行？** 与 dd-bug-fix-workflow 相同：UI 测试对运行环境高度敏感（GUI 会话、Accessibility 权限、窗口焦点、TCC 弹窗），本地通过不能替代 CI 验证。XCTest 无 GUI 依赖，本地快速反馈是合理的。步骤 4.5 提交后由 CI 给出最终验证（XCTest 全量回归 + XCUITest）。
 
 - **回归测试失败需修改时**：必须使用 `AskUserQuestion` 说明失败原因和修改理由，获得用户确认后方可修改
 - 如果实现不起作用：
@@ -767,12 +800,12 @@ EOF
 
 #### 第三步：重构
 
-**目标：在绿灯基础上清理代码。**
+**目标：在 XCTest 绿灯基础上清理代码（XCUITest 验证延迟到步骤 4.5）。**
 
 - 消除重复
 - 改善命名
 - 提取辅助函数
-- 保持测试绿灯，不添加行为
+- 保持 XCTest 绿灯，不添加行为（XCUITest 验证延迟到 CI）
 
 #### 第四步：提交
 
@@ -838,7 +871,7 @@ EOF
 
 如果实现任务已经按计划产生了多个 commit，确保当前子计划结束时没有未提交变更；如 check-code 后没有新增变更，记录最后一个属于该子计划的 commit SHA 作为完成点，不创建空提交。
 
-**提交后全量回归验证（CI 优先，必须 push）**：代码已提交，必须 push 到远端触发 CI 验证。**禁止在本地执行测试作为 CI 的替代**——本地环境差异会掩盖问题。按以下顺序执行（不得跳步、不得本地测试兜底）：
+**提交后全量回归验证（CI 优先，必须 push）**：本步是步骤 4.3 延迟的 XCUITest 验证 + 全量 XCTest 回归的唯一执行点（XCTest 单测试文件绿灯已在步骤 4.3 本地验证）。代码已提交，必须 push 到远端触发 CI 验证。**禁止在本地执行测试作为 CI 的替代**——本地环境差异会掩盖问题。按以下顺序执行（不得跳步、不得本地测试兜底）：
 
 1. **检查分支是否已 push 到远端**：
    ```bash
@@ -873,7 +906,7 @@ EOF
   - 选项 3：跳过继续（不推荐）
 
 > **红线**：
-> - 不得跳过本验证。步骤 4.3 的全量回归已延迟到此处，跳过等于放弃回归验证。
+> - 不得跳过本验证。步骤 4.3 的 XCUITest 验证 + 全量回归已延迟到此处，跳过等于放弃 UI 测试和全量回归验证。
 > - **分支未 push 时，必须先 push 再等待 CI，禁止落到本地测试**。本地测试不能作为 CI 的替代。
 > - **CI 触发失败不构成走本地测试的理由**。应排查 CI 配置或重试，而非降级验证。
 
@@ -889,7 +922,9 @@ EOF
 
 ## 步骤 5：代码同步
 
-### 5.1 变基到 BASE_BRANCH 并解决冲突
+### 5.1 同步上游 BASE_BRANCH 并解决冲突（merge-only，禁止 rebase）
+
+遵循 dd-ai-git-workflow 的 merge-only 原则，**禁止使用 rebase**同步上游。使用 `git merge` 同步 BASE_BRANCH 最新改动。
 
 #### 5.1.1 前置检查：对比本地与远端 BASE_BRANCH 新旧
 
@@ -901,53 +936,48 @@ LOCAL_SHA=$(git rev-parse "$BASE_BRANCH")
 REMOTE_SHA=$(git rev-parse "origin/$BASE_BRANCH")
 
 if [ "$LOCAL_SHA" = "$REMOTE_SHA" ]; then
-    # 本地与远端一致，无需变基
-    SKIP_REBASE=true
-elif git merge-base --is-ancestor "$LOCAL_SHA" "$REMOTE_SHA"; then
-    # 远端更新，推荐 rebase 到 origin/<BASE_BRANCH>
-    RECOMMEND="origin/$BASE_BRANCH"
+    # 本地与远端一致，无需合并上游
+    SKIP_MERGE=true
 else
-    # 本地更新，推荐 rebase 到 <BASE_BRANCH>
-    RECOMMEND="$BASE_BRANCH"
+    # 远端更新，需要合并 origin/<BASE_BRANCH>
+    SKIP_MERGE=false
 fi
 ```
 
-- `SKIP_REBASE=true` → **跳过 5.1.2**，直接进入 5.2
-- 否则进入 5.1.2 询问变基策略
+- `SKIP_MERGE=true` → **跳过 5.1.2**，直接进入 5.2
+- 否则进入 5.1.2 询问合并策略
 
-#### 5.1.2 询问变基策略（仅当需要变基时）
+#### 5.1.2 询问合并策略（仅当需要同步上游时）
 
 **AskUserQuestion**：
 
-- 选项 1（推荐）：变基到较新的一方（自动判定本地/远端）
-- 选项 2：变基到 `origin/<BASE_BRANCH>`（强制远端）
-- 选项 3：变基到 `<BASE_BRANCH>`（强制本地）
-- 选项 4：不变基，跳过本子步
+- 选项 1（推荐）：`git merge --no-ff origin/$BASE_BRANCH`（保留合并历史，产生 merge commit）
+- 选项 2：`git merge --ff-only origin/$BASE_BRANCH`（仅限分支无独立提交或纯同步，线性历史）
+- 选项 3：不合并，跳过本子步
 
-#### 5.1.3 执行变基
+#### 5.1.3 执行合并
 
-选择变基时：
+选择合并时：
 
 ```bash
-git rebase <目标分支>
+git merge --no-ff origin/$BASE_BRANCH
 ```
 
-**冲突处理流程**：
+**冲突处理流程**（遵循 dd-ai-git-workflow：在 feature 分支解决冲突，禁止直接在 develop 上解决）：
 
 1. `git status` 查看冲突文件列表
-2. 手动逐个文件解决冲突（保留正确逻辑、删除冲突标记）
+2. 手动逐个文件解决冲突（保留正确逻辑、删除冲突标记 `<<<<<<<` `=======` `>>>>>>>`）
 3. `git add <已解决文件>` 标记冲突已解决
-4. `git rebase --continue` 继续 rebase
-5. 若有多个冲突 commit，重复步骤 1-4
-6. **成功标准**：`git status` 显示 rebase 已结束，无冲突文件
+4. `git commit` 完成 merge commit（不使用 `--no-edit` 跳过）
+5. **成功标准**：`git status` 显示工作区干净，无冲突文件
 
 **冲突无法解决** → **AskUserQuestion**：
 
-- 选项 1（推荐）：`git rebase --abort` 中止，回到步骤 4 在 BASE_BRANCH 最新代码上重新实现
+- 选项 1（推荐）：`git merge --abort` 中止合并，回到步骤 4 在 BASE_BRANCH 最新代码上重新实现
 - 选项 2：继续手动解决冲突
 - 选项 3：放弃本次实现，清理工作树
 
-**禁止**：强制 `--no-edit` 跳过冲突处理、使用 `git rebase --skip` 丢弃提交
+**禁止**：使用 `git rebase` 同步上游、强制 `--no-edit` 跳过冲突处理、使用 `git rebase --skip` 丢弃提交
 
 ### 5.2 添加详细日志
 
@@ -968,7 +998,7 @@ git rebase <目标分支>
 
 ### 5.4 提交变更
 
-无论是否变基，均提交当前变更（含代码 + 日志 + 文档）。提交流程同步骤 2.7（分析 diff → 智能暂存 → Conventional Commits → Git 安全协议）。
+无论是否合并上游，均提交当前变更（含代码 + 日志 + 文档）。提交流程同步骤 2.7（分析 diff → 智能暂存 → Conventional Commits → Git 安全协议）。
 
 ```bash
 git add <files-for-current-sync>
@@ -1221,10 +1251,7 @@ rm -f "$git_dir/feature-development-state.json"
 # 以下命令必须在主仓库路径执行
 cd "$main_root"
 
-# 变基到原分支最新
-git rebase "$BASE_BRANCH" <工作树分支>
-
-# 切回原分支并合并（保留合并记录）
+# 切回原分支并合并（merge-only，禁止 rebase，保留合并记录）
 git checkout "$BASE_BRANCH"
 git merge --no-ff <工作树分支>
 ```
@@ -1283,9 +1310,71 @@ rm -f "$git_dir/feature-development-state.json"
 
 ### 9.6 步骤 1 选"当前 worktree"时的特殊处理
 
-- 选"合并" → 执行 rebase + merge --no-ff
+- 选"合并" → 执行 merge --no-ff（merge-only，禁止 rebase）
 - 选"不合并"/"暂不处理" → **不删除工作树**（因工作树非本流程创建）
 - 选"还有其他特性" → 在当前工作树继续新一轮
+
+---
+
+## Git 工作流合规（强制）
+
+本技能涉及的所有 Git 操作（分支创建、push、merge、清理等）**必须遵循 dd-ai-git-workflow 规范**。以下为关键引用点，详细规则参见 dd-ai-git-workflow/SKILL.md。
+
+> **路径变量**：下文脚本调用中的 `SKILL_DIR` 定义为 `$HOME/.trae-cn/skills/dd-ai-git-workflow`。
+
+### 合并前检查（强制）
+
+合并到 BASE_BRANCH 前必须依次执行（对应 dd-ai-git-workflow 的 5 步流程）：
+
+1. `git merge --no-ff origin/$BASE_BRANCH` 同步上游（步骤 5.1 已处理）
+2. `bash $SKILL_DIR/scripts/conflict-predict.sh` 输出 ConflictPredictionReport，`severity: high` 禁止合并
+3. Build / Tests / SwiftLint strict（步骤 8 已处理）
+4. `bash $SKILL_DIR/scripts/pre-merge-check.sh` 输出 PreMergeChecklist，`all_pass=false` 禁止合并
+5. PR / Merge（`--no-ff` 到 BASE_BRANCH，步骤 9 已处理）
+
+**本技能的 CI 验证规则与 dd-ai-git-workflow 的合并前检查协同**：CI 全绿是步骤 4.5/8.2.1/9.1 的必要条件，pre-merge-check.sh 的 `all_pass=true` 是合并的必要条件，两者缺一不可。
+
+### 每日必须合并
+
+AI Coding 场景下分支每天必须有合并动作（不只是同步）：
+
+- **拉取上游**：`bash $SKILL_DIR/scripts/daily-sync.sh` 同步 origin/develop
+- **推送可合并部分**：已完成且通过自检的子计划/Phase 合并回 develop
+- **长分支风险**：分支存活时间越长冲突指数级增长，feature 开发应小步快合并
+
+### 公共文件锁机制
+
+feature 开发可能触及公共文件（共享协议、模型、配置等），必须遵守：
+
+- 修改前查询 `.trae/public-files.txt` 清单判断是否命中
+- 命中则开独立分支 `refactor/public-file-{描述}`，commit 加 `PublicFile:` tag
+- 公共文件分支 <1 天优先合并，禁止在 feature 分支夹带公共文件修改
+- 跨模块修改必须开独立分支，按 Core → UI → App 顺序合并
+
+### 冲突处理流程
+
+长分支冲突必须按以下顺序，**禁止直接在 develop 上解决**：
+
+1. 在 feature 分支执行 `git merge origin/develop`（步骤 5.1 已处理）
+2. 在 feature 分支解决冲突并提交
+3. 在 feature 分支运行合并前自检（pre-merge-check.sh）
+4. 将 feature 分支合并到 develop（develop 端无冲突）
+
+### merge 策略（merge-only，禁止 rebase）
+
+| 场景 | 命令 | 说明 |
+|------|------|------|
+| feature 合并到 develop | `git merge --no-ff <branch>` | 保留分支历史，产生 merge commit |
+| 纯同步上游 | `git merge --ff-only origin/develop` | 仅限分支无独立提交或纯同步 |
+
+**禁止**：rebase、force push、用 `--ff-only` 替代功能合并。
+
+### 合并后清理
+
+- 立即 `git worktree remove <path>`（步骤 9 已处理）
+- 立即 `git branch -d <branch>`
+- 通知其他活跃 Agent 拉取 develop
+- 定期运行 `bash $SKILL_DIR/scripts/cleanup-suggest.sh`（需用户确认）
 
 ---
 
@@ -1303,12 +1392,14 @@ rm -f "$git_dir/feature-development-state.json"
 - 没有启动真实 app/浏览器或没有手动验收证据，却声称 UI 已验证
 - 审查发现问题但继续下一个子计划
 - 将多个阶段的无关变更混在同一个 commit
-- **在步骤 4.3 中直接本地跑全量回归**（必须延迟到步骤 4.5 提交后走 CI）
+- **在步骤 4.3 中本地执行 UI 测试（XCUITest）**（必须延迟到步骤 4.5 走 CI；XCTest 单测试文件可本地执行快速反馈）
 - **跳过步骤 4.5 提交后全量回归验证**
 - **分支未 push 时落到本地测试**（必须先 push 再等 CI，禁止本地测试兜底）
 - **以 CI 触发失败为由走本地测试**（应排查 CI 配置或重试，而非降级验证）
 - **合并后跳过 CI 验证直接清理工作树**
 - **用"本地合并"作为跳过 CI 的理由**（合并方式不影响验证质量）
+- **使用 git rebase 同步上游或合并分支**（遵循 dd-ai-git-workflow merge-only 原则，禁止 rebase）
+- **在 feature 分支夹带公共文件修改**（公共文件必须开独立分支，加 PublicFile tag）
 
 **以上任一情况发生时，停止当前步骤，回到违规步骤重新执行。**
 
@@ -1316,11 +1407,12 @@ rm -f "$git_dir/feature-development-state.json"
 
 | 借口 | 现实 |
 |------|------|
-| "TDD 循环中代码未提交，无法触发 CI" | **步骤 4.3 的单测试文件绿灯可本地执行**（快速反馈），但**全量回归必须延迟到步骤 4.5**（代码已提交，可触发 CI）。未提交 ≠ 放弃 CI 验证。 |
-| "本地跑全量测试更快" | 快不等于可靠。CI 验证本地环境差异（签名、SDK、runner 配置），是工作流核心价值。快速反馈靠步骤 4.3 单测试文件本地验证，全量靠 CI。 |
+| "TDD 循环中代码未提交，无法触发 CI" | XCTest 单测试文件可本地验证（快速反馈）。XCUITest 必须延迟到步骤 4.5 提交后走 CI。未提交 ≠ 可以本地跑 UI 测试。 |
+| "UI 测试本地跑更快，TDD 需要快速反馈" | XCUITest 对环境高度敏感（GUI 会话、Accessibility 权限、窗口焦点、TCC 弹窗），本地通过不能替代 CI。XCUITest 必须延迟到步骤 4.5 走 CI。XCTest 可本地快速反馈。 |
+| "本地跑全量测试更快" | 全量回归（XCTest 全量 + XCUITest）统一在步骤 4.5 走 CI。单测试文件 XCTest 可本地快速反馈，但全量回归必须 CI。 |
 | "用户选了本地合并所以跳过 CI" | 合并方式（本地 merge vs PR）不影响验证质量。合并产生新 commit，必须验证。步骤 9.1 明确要求合并后走 CI。 |
 | "只是小特性，全量 CI 没必要" | 小特性的回归风险不一定小。CI 正是捕获意外回归。 |
-| "CI 太慢，影响效率" | 步骤 4.3 已提供快速本地绿灯反馈。步骤 4.5 的 CI 等待可与下一个子计划准备并行，不阻塞。 |
+| "CI 太慢，影响效率" | XCTest 单测试文件本地验证提供快速反馈。步骤 4.5 的 CI 等待（XCUITest + 全量回归）可与下一个子计划准备并行，不阻塞。 |
 | "本地测试通过了，CI 肯定也通过" | 本地环境 ≠ CI 环境。签名配置、SDK 版本、runner 权限差异都可能掩盖问题。 |
 | "分支未 push，CI 触发不了，只能本地测" | 分支未 push 时必须先 `git push`，再等待远程 CI 结果。push 是 CI 验证的前置条件，不是跳过 CI 的理由。步骤 4.5 已明确要求先 push。 |
 | "gh workflow run 失败了，CI 不可用" | CI 触发失败应排查配置或重试，而非降级到本地测试。本地测试不能替代 CI 的跨环境验证。 |
