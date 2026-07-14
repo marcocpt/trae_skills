@@ -517,75 +517,23 @@ git commit -m "chore(spec): clean up temporary notes for F{m}"
 
 ## Git 工作流合规（强制）
 
-本技能涉及大量 git commit 操作（步骤 0.4、1.4、2.5、3.6、4.5、5.2、5.6），必须遵循 [dd-ai-git-workflow](../dd-ai-git-workflow/SKILL.md) 规范。
+本技能涉及 Git 操作，必须遵循 dd-ai-git-workflow 系列子技能：
 
-### 分支与 worktree
+| 子技能 | 职责 | 本技能相关 |
+|--------|------|-----------|
+| [dd-git-workflow](../dd-git-workflow/SKILL.md) | 入口导航、分支模型 | 总览 |
+| [dd-git-branch](../dd-git-branch/SKILL.md) | 分支命名、创建 | `docs/{主题}` 分支命名 |
+| [dd-git-merge](../dd-git-merge/SKILL.md) | merge-only、Commit 规范 | merge-only，禁止 rebase |
+| [dd-git-conflict](../dd-git-conflict/SKILL.md) | 冲突处理、公共文件锁 | PublicFile tag |
+| [dd-git-worktree](../dd-git-worktree/SKILL.md) | worktree 管理 | 隔离环境 |
+| [dd-git-health](../dd-git-health/SKILL.md) | 健康度、每日同步 | 24h 合并窗口 |
+| [dd-git-cleanup](../dd-git-cleanup/SKILL.md) | 废弃清理 | 合并后清理 |
+| [dd-git-ci](../dd-git-ci/SKILL.md) | 合并前检查、CI | 5 步检查脚本 |
 
-- **分支命名**：设计规范类工作使用 `docs/{主题}` 格式（如 `docs/F3.1-ocr-design-spec`）
-- **基线分支**：默认基于 `origin/develop` 最新提交创建
-- **worktree 创建**：推荐使用 dd-ai-git-workflow 提供的脚本：
-  ```bash
-  SKILL_DIR="$HOME/.trae-cn/skills/dd-ai-git-workflow"
-  bash "$SKILL_DIR/scripts/create-worktree.sh" docs <主题>
-  # 示例：bash "$SKILL_DIR/scripts/create-worktree.sh" docs F3.1-ocr-design-spec
-  ```
-- **隔离环境**：必须在独立 worktree 中执行，禁止在主仓库工作区直接操作
-
-### 每日必须合并
-
-- **24 小时窗口**：`docs/` 分支创建后必须在 24 小时内合并回 `develop`
-- **超时处理**：超过 24 小时未合并的分支视为陈旧，合并前必须先 `git merge --no-ff origin/develop` 同步上游变更并重新验证
-
-### merge 策略（merge-only）
-
-- **禁止 rebase**：本技能严格遵守 merge-only 策略，**禁止使用 `git rebase`**（包括 `rebase`、`rebase -i`、`pull --rebase`）
-- **合并方式**：使用 `git merge --no-ff` 保留合并历史
-- **同步上游**：合并前同步上游变更使用 `git merge --no-ff origin/develop`，不得使用 rebase
-
-### 合并前检查
-
-合并回 `develop` 前**必须**执行 dd-ai-git-workflow 提供的检查脚本（5 步流程）：
-
-```bash
-SKILL_DIR="$HOME/.trae-cn/skills/dd-ai-git-workflow"
-
-# 1. 预测冲突
-bash "$SKILL_DIR/scripts/conflict-predict.sh" origin/develop
-
-# 2. 分支健康度
-bash "$SKILL_DIR/scripts/branch-health.sh"
-
-# 3. 每日同步检查
-bash "$SKILL_DIR/scripts/daily-sync.sh"
-
-# 4. 预合并检查
-bash "$SKILL_DIR/scripts/pre-merge-check.sh" origin/develop
-
-# 5. 清理建议
-bash "$SKILL_DIR/scripts/cleanup-suggest.sh"
-```
-
-任一脚本失败必须修复后重试，**禁止跳过合并前检查直接合并**。
-
-### 公共文件锁机制
-
-- **公共文件清单**：`.trae/public-files.txt` 列出项目所有公共文件
-- **修改前加锁**：若设计规范工作需修改公共文件（如 `docs/CODING_STANDARDS.md`、`.trae/rules/docs.md`），必须先在公共文件锁机制中申请锁
-- **Commit 标注**：修改公共文件的 commit message 末尾必须追加 `PublicFile` tag
-- **禁止夹带**：设计规范分支禁止夹带与设计规范无关的公共文件修改
-
-### 冲突处理流程
-
-- 合并前检查发现冲突时，使用 `git merge --no-ff origin/develop` 同步上游，手动解决冲突
-- 冲突解决后重新执行合并前检查 5 步流程
-- **禁止使用 rebase 解决冲突**
-
-### 合并后清理
-
-- 合并成功后删除 worktree：`git worktree remove <worktree-path>`
-- 删除本地分支：`git branch -d <branch-name>`
-- 删除远端分支（如已 push）：`git push origin --delete <branch-name>`
-- 清理状态文件（如使用了状态持久化）
+**本技能特有约束**：
+- 禁止使用 `git rebase`（必须 merge-only）
+- 禁止在 docs 分支夹带公共文件修改
+- 禁止跳过合并前检查
 
 ---
 

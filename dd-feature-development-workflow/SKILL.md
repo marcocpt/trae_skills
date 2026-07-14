@@ -1318,63 +1318,23 @@ rm -f "$git_dir/feature-development-state.json"
 
 ## Git 工作流合规（强制）
 
-本技能涉及的所有 Git 操作（分支创建、push、merge、清理等）**必须遵循 dd-ai-git-workflow 规范**。以下为关键引用点，详细规则参见 dd-ai-git-workflow/SKILL.md。
+本技能涉及 Git 操作，必须遵循 dd-ai-git-workflow 系列子技能：
 
-> **路径变量**：下文脚本调用中的 `SKILL_DIR` 定义为 `$HOME/.trae-cn/skills/dd-ai-git-workflow`。
+| 子技能 | 职责 | 本技能相关 |
+|--------|------|-----------|
+| [dd-git-workflow](../dd-git-workflow/SKILL.md) | 入口导航、分支模型 | 总览 |
+| [dd-git-branch](../dd-git-branch/SKILL.md) | 分支命名、创建 | `feature/{F编号}-{描述}` 分支命名 |
+| [dd-git-merge](../dd-git-merge/SKILL.md) | merge-only、Commit 规范 | merge-only，禁止 rebase |
+| [dd-git-conflict](../dd-git-conflict/SKILL.md) | 冲突处理、公共文件锁 | PublicFile tag |
+| [dd-git-worktree](../dd-git-worktree/SKILL.md) | worktree 管理 | 隔离环境 |
+| [dd-git-health](../dd-git-health/SKILL.md) | 健康度、每日同步 | 24h 合并窗口 |
+| [dd-git-cleanup](../dd-git-cleanup/SKILL.md) | 废弃清理 | 合并后清理 |
+| [dd-git-ci](../dd-git-ci/SKILL.md) | 合并前检查、CI | 5 步检查脚本 |
 
-### 合并前检查（强制）
-
-合并到 BASE_BRANCH 前必须依次执行（对应 dd-ai-git-workflow 的 5 步流程）：
-
-1. `git merge --no-ff origin/$BASE_BRANCH` 同步上游（步骤 5.1 已处理）
-2. `bash $SKILL_DIR/scripts/conflict-predict.sh` 输出 ConflictPredictionReport，`severity: high` 禁止合并
-3. Build / Tests / SwiftLint strict（步骤 8 已处理）
-4. `bash $SKILL_DIR/scripts/pre-merge-check.sh` 输出 PreMergeChecklist，`all_pass=false` 禁止合并
-5. PR / Merge（`--no-ff` 到 BASE_BRANCH，步骤 9 已处理）
-
-**本技能的 CI 验证规则与 dd-ai-git-workflow 的合并前检查协同**：CI 全绿是步骤 4.5/8.2.1/9.1 的必要条件，pre-merge-check.sh 的 `all_pass=true` 是合并的必要条件，两者缺一不可。
-
-### 每日必须合并
-
-AI Coding 场景下分支每天必须有合并动作（不只是同步）：
-
-- **拉取上游**：`bash $SKILL_DIR/scripts/daily-sync.sh` 同步 origin/develop
-- **推送可合并部分**：已完成且通过自检的子计划/Phase 合并回 develop
-- **长分支风险**：分支存活时间越长冲突指数级增长，feature 开发应小步快合并
-
-### 公共文件锁机制
-
-feature 开发可能触及公共文件（共享协议、模型、配置等），必须遵守：
-
-- 修改前查询 `.trae/public-files.txt` 清单判断是否命中
-- 命中则开独立分支 `refactor/public-file-{描述}`，commit 加 `PublicFile:` tag
-- 公共文件分支 <1 天优先合并，禁止在 feature 分支夹带公共文件修改
-- 跨模块修改必须开独立分支，按 Core → UI → App 顺序合并
-
-### 冲突处理流程
-
-长分支冲突必须按以下顺序，**禁止直接在 develop 上解决**：
-
-1. 在 feature 分支执行 `git merge origin/develop`（步骤 5.1 已处理）
-2. 在 feature 分支解决冲突并提交
-3. 在 feature 分支运行合并前自检（pre-merge-check.sh）
-4. 将 feature 分支合并到 develop（develop 端无冲突）
-
-### merge 策略（merge-only，禁止 rebase）
-
-| 场景 | 命令 | 说明 |
-|------|------|------|
-| feature 合并到 develop | `git merge --no-ff <branch>` | 保留分支历史，产生 merge commit |
-| 纯同步上游 | `git merge --ff-only origin/develop` | 仅限分支无独立提交或纯同步 |
-
-**禁止**：rebase、force push、用 `--ff-only` 替代功能合并。
-
-### 合并后清理
-
-- 立即 `git worktree remove <path>`（步骤 9 已处理）
-- 立即 `git branch -d <branch>`
-- 通知其他活跃 Agent 拉取 develop
-- 定期运行 `bash $SKILL_DIR/scripts/cleanup-suggest.sh`（需用户确认）
+**本技能特有约束**：
+- 禁止使用 `git rebase`（必须 merge-only，rebase→merge 核心冲突已修复）
+- 禁止在 feature 分支夹带公共文件修改
+- 禁止跳过合并前检查
 
 ---
 
