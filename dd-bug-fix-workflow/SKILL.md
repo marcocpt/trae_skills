@@ -26,8 +26,8 @@ digraph bug_fix_workflow {
     "0. 需求确认" -> "1. 创建工作树";
     "1. 创建工作树" -> "2. TDD 调试修复";
     "2. TDD 调试修复" -> "3. 代码同步";
-    "3. 代码同步" -> "3.3.5 CI 回归验证";
-    "3.3.5 CI 回归验证" -> "4. 确认是否继续";
+    "3. 代码同步" -> "3.2.5 CI 回归验证";
+    "3.2.5 CI 回归验证" -> "4. 确认是否继续";
     "4. 确认是否继续" -> "5. 文档检查" [label="继续"];
     "4. 确认是否继续" -> "1. 创建工作树" [label="回到1", style=dashed];
     "4. 确认是否继续" -> "2. TDD 调试修复" [label="回到2", style=dashed];
@@ -255,7 +255,7 @@ CI 相关红线（跳过基线测试、未 push 降级本地、CI 不可用宽�
 - 编写最小复现测试（只测一件事，使用真实代码，避免不必要 mock）
 - **按测试类型决定红灯验证位置**：
   - **XCTest（单元测试）**：可本地验证红灯（快速反馈，无 GUI 依赖），确认测试因正确原因失败而非拼写错误
-  - **XCUITest（UI 测试）**：禁止本地验证红灯，延迟到步骤 3.3.5 走 CI（UI 测试依赖 GUI 会话、Accessibility 权限、窗口焦点等环境状态，本地环境不可靠）
+  - **XCUITest（UI 测试）**：禁止本地验证红灯，延迟到步骤 3.2.5 走 CI（UI 测试依赖 GUI 会话、Accessibility 权限、窗口焦点等环境状态，本地环境不可靠）
 - 编写时通过代码审查确保测试逻辑正确（断言反映功能缺失，非拼写错误；测试覆盖预期失败路径）
 - 记录到日志文件：`debug-logs/YYYY-MM-DD-<简短问题描述>.md`
 
@@ -267,8 +267,7 @@ CI 相关红线（跳过基线测试、未 push 降级本地、CI 不可用宽�
 - **跟踪数据流**：错误值从哪里产生？谁用错误值调用了这里？持续向上追踪直到找到源头
 - **模式分析**：找到同一代码库中正常工作的类似代码，逐行对比，列出每一个差异
 - **假设与验证**：提出单一假设"X 是根本原因，因为 Y"，做最小改动验证，每次只改一个变量；生效 → 进入修复；没生效 → 提出新假设
-- **调试期间可添加诊断日志辅助排查**：关键变量值、坐标转换前后对比、条件分支走向等，日志带功能标签前缀（如 `[F1.10]`）便于检索和清理
-  - 与步骤 3.2 正式运行日志区别：此处为临时诊断，验证假设后可移除
+- **调试期间可添加诊断日志辅助排查**：关键变量值、坐标转换前后对比、条件分支走向等，日志带功能标签前缀（如 `[F1.10]`）便于检索和清理。此处为临时诊断，验证假设后可移除
 - 记录到日志文件：错误信息/复现步骤/近期变更/数据流/假设验证/根本原因
 
 ### 2.3 第三步：实施修复（TDD 绿灯）
@@ -281,12 +280,12 @@ CI 相关红线（跳过基线测试、未 push 降级本地、CI 不可用宽�
 
 - **XCTest（单元测试）**：
   - **单测试文件绿灯验证**（本地执行，TDD 快速反馈）：仅运行步骤 2.1 编写的新 XCTest，确认因修复而通过。无 GUI 依赖，本地快速反馈合理
-  - **不在本地跑全量 XCTest 回归**——全量回归延迟到步骤 3.3.5 提交并 push 后走 CI
+  - **不在本地跑全量 XCTest 回归**——全量回归延迟到步骤 3.2.5 提交并 push 后走 CI
 - **XCUITest（UI 测试）**：
-  - **禁止本地执行任何 XCUITest**（包括单测试文件、包括红灯和绿灯验证）——UI 测试依赖 GUI 会话、Accessibility 权限、窗口焦点、TCC 授权弹窗等环境状态，本地环境不可靠。所有 XCUITest 验证延迟到步骤 3.3.5 走 CI
-  - 修复是否让 UI 测试通过，由步骤 3.3.5 的 CI 结果判断。在 CI 结果出来前，不声明"UI 测试已验证"
+  - **禁止本地执行任何 XCUITest**（包括单测试文件、包括红灯和绿灯验证）——UI 测试依赖 GUI 会话、Accessibility 权限、窗口焦点、TCC 授权弹窗等环境状态，本地环境不可靠。所有 XCUITest 验证延迟到步骤 3.2.5 走 CI
+  - 修复是否让 UI 测试通过，由步骤 3.2.5 的 CI 结果判断。在 CI 结果出来前，不声明"UI 测试已验证"
 
-> **为什么 XCUITest 禁止本地执行？** UI 测试对运行环境高度敏感：GUI 会话状态、Accessibility 权限、窗口焦点、系统弹窗（TCC 授权）都会影响结果，本地通过不能替代 CI 验证。XCTest 无 GUI 依赖，本地快速反馈是合理的。步骤 3.3.5 提交后由 CI 给出最终验证（XCTest 全量回归 + XCUITest）。
+> **为什么 XCUITest 禁止本地执行？** UI 测试对运行环境高度敏感：GUI 会话状态、Accessibility 权限、窗口焦点、系统弹窗（TCC 授权）都会影响结果，本地通过不能替代 CI 验证。XCTest 无 GUI 依赖，本地快速反馈是合理的。步骤 3.2.5 提交后由 CI 给出最终验证（XCTest 全量回归 + XCUITest）。
 
 - **回归测试失败需修改时**：必须使用 `AskUserQuestion` 说明失败原因和修改理由，获得用户确认后方可修改。禁止未经确认直接修改回归测试
 - 如果修复不起作用（XCTest 本地绿灯未通过，或 CI 结果显示 XCUITest/全量回归失败）：
@@ -294,11 +293,11 @@ CI 相关红线（跳过基线测试、未 push 降级本地、CI 不可用宽�
   - 3 次或以上：停下来质疑架构 → **AskUserQuestion**：
     - 选项 1（推荐）：继续调试（回到根因调查）
     - 选项 2：放弃并清理工作树
-- 记录到日志文件：修复方案/修改文件/XCTest 本地绿灯结果/XCUITest + 全量回归延迟到步骤 3.3.5
+- 记录到日志文件：修复方案/修改文件/XCTest 本地绿灯结果/XCUITest + 全量回归延迟到步骤 3.2.5
 
 ### 2.4 第四步：重构（TDD 重构）
 
-**目标：在 XCTest 绿灯基础上清理代码（XCUITest 验证延迟到步骤 3.3.5）。**
+**目标：在 XCTest 绿灯基础上清理代码（XCUITest 验证延迟到步骤 3.2.5）。**
 
 - 消除重复
 - 改善命名
@@ -313,7 +312,7 @@ CI 相关红线（跳过基线测试、未 push 降级本地、CI 不可用宽�
 
 ### 2.6 出口判定
 
-- 成功（XCTest 绿灯 + 重构完成，XCUITest 验证延迟到步骤 3.3.5）→ 进入步骤 3
+- 成功（XCTest 绿灯 + 重构完成，XCUITest 验证延迟到步骤 3.2.5）→ 进入步骤 3
 - 失败（3 次以上修复无效）→ AskUserQuestion（见 2.3）
 
 ---
@@ -322,7 +321,7 @@ CI 相关红线（跳过基线测试、未 push 降级本地、CI 不可用宽�
 
 ### 3.1 同步上游 BASE_BRANCH 并解决冲突（merge-only，禁止 rebase）
 
-遵循 dd-ai-git-workflow 的 merge-only 原则，**禁止使用 rebase**同步上游。使用 `git merge` 同步 BASE_BRANCH 最新改动。
+merge-only 原则、混合模式（`--no-ff` / `--ff-only`）遵循 [dd-git-merge](../dd-git-merge/SKILL.md) merge-only 原则与混合模式章节。**禁止使用 rebase** 同步上游。
 
 #### 3.1.1 前置检查：对比本地与远端 BASE_BRANCH 新旧
 
@@ -347,65 +346,29 @@ fi
 
 #### 3.1.2 询问合并策略（仅当需要同步上游时）
 
+合并策略选项遵循 [dd-git-merge](../dd-git-merge/SKILL.md) merge-only 原则与混合模式表（默认 `--no-ff` 保留合并历史；`--ff-only` 仅限纯同步场景）。
+
 **AskUserQuestion 问 1**：
 - 选项 1（推荐）：`git merge --no-ff origin/$BASE_BRANCH`（保留合并历史，产生 merge commit）
 - 选项 2：`git merge --ff-only origin/$BASE_BRANCH`（仅限分支无独立提交或纯同步，线性历史）
 - 选项 3：不合并，跳过本子步
 
-#### 3.1.3 执行合并
+#### 3.1.3 执行合并与冲突处理
 
-选择合并时：
-
-```bash
-git merge --no-ff origin/$BASE_BRANCH
-```
-
-**冲突处理流程**（遵循 dd-ai-git-workflow：在 fix 分支解决冲突，禁止直接在 develop 上解决）：
-1. `git status` 查看冲突文件列表
-2. 手动逐个文件解决冲突（保留正确逻辑、删除冲突标记 `<<<<<<<` `=======` `>>>>>>>`）
-3. `git add <已解决文件>` 标记冲突已解决
-4. `git commit` 完成 merge commit（不使用 `--no-edit` 跳过）
-5. **成功标准**：`git status` 显示工作区干净，无冲突文件
+选择合并时执行 `git merge --no-ff origin/$BASE_BRANCH`。冲突处理流程（在 fix 分支解决，禁止直接在 develop 上解决）遵循 [dd-git-conflict](../dd-git-conflict/SKILL.md) 长分支冲突处理流程章节（5 步：merge → 在 feature 分支解决 → 提交 → 自检 → 合并到 develop）。
 
 **冲突无法解决** → **AskUserQuestion 问 2**：
 - 选项 1（推荐）：`git merge --abort` 中止合并，回到步骤 2 在 BASE_BRANCH 最新代码上重新修复
 - 选项 2：继续手动解决冲突（提供具体冲突位置和上下文）
 - 选项 3：放弃本次修复，清理工作树
 
-**禁止**：使用 `git rebase` 同步上游、强制 `--no-edit` 跳过冲突处理、使用 `git rebase --skip` 丢弃提交
+禁止事项（rebase、`--no-edit`、`rebase --skip`、固定 sleep 掩盖竞态）遵循 [dd-git-merge](../dd-git-merge/SKILL.md) 和 [dd-git-conflict](../dd-git-conflict/SKILL.md) 禁止事项章节。
 
-### 3.2 添加详细日志与文档
+### 3.2 提交变更
 
-**流程图和时序图通过子代理生成**：调度子代理，传入修复涉及的代码路径和变更摘要，由子代理生成流程图和时序图。日志添加在主线程完成（需结合调试上下文）。
+无论是否合并上游，均提交当前变更（含代码及相关变更）。
 
-#### 3.2.1 给相关代码添加详细 log
-
-- 关键变量值、状态变更、条件分支走向
-- 日志带功能标签前缀（如 `[F1.10]`）便于检索
-- 与步骤 2 临时诊断日志区别：此处为修复后的**正式运行日志**，保留在代码中用于运行时观察
-
-#### 3.2.2 编写流程图
-
-- 描述修复涉及的代码执行流程
-- 标注关键节点与分支条件
-
-#### 3.2.3 编写时序图
-
-- 描述修复涉及的组件交互顺序
-- 标注关键消息与状态转换
-
-**成功标准**：log 已添加，流程图与时序图已编写
-
-**失败** → **AskUserQuestion 问 3**：
-- 选项 1（推荐）：重试
-- 选项 2：跳过继续
-- 选项 3：停止工作流
-
-### 3.3 提交变更
-
-无论是否合并上游，均提交当前变更（含代码 + 日志 + 文档）。
-
-#### 3.3.1 分析 diff
+#### 3.2.1 分析 diff
 
 ```bash
 # 有暂存时
@@ -418,7 +381,7 @@ git diff
 git status --porcelain
 ```
 
-#### 3.3.2 智能暂存
+#### 3.2.2 智能暂存
 
 ```bash
 # 按逻辑分组暂存
@@ -431,45 +394,11 @@ git add src/components/*
 
 **禁止提交敏感文件**：`.env`、`credentials.json`、私钥等。
 
-#### 3.3.3 生成 Conventional Commits 消息
+#### 3.2.3 生成 Conventional Commits 消息
 
-格式：
+Commit 规范（type 列表、subject 约束、公共文件 `PublicFile:` tag）遵循 [dd-git-merge](../dd-git-merge/SKILL.md) Commit 规范章节。公共文件锁机制（独立分支 `refactor/public-file-{描述}`、`PublicFile:` tag、<1 天合并）遵循 [dd-git-conflict](../dd-git-conflict/SKILL.md) 公共文件锁机制章节。禁止在 fix 分支夹带公共文件修改。
 
-```
-<type>[optional scope]: <description>
-
-[optional body]
-
-[optional footer(s)]
-```
-
-类型表：
-
-| Type | Purpose |
-|------|---------|
-| `feat` | New feature |
-| `fix` | Bug fix |
-| `docs` | Documentation only |
-| `style` | Formatting/style (no logic) |
-| `refactor` | Code refactor (no feature/fix) |
-| `perf` | Performance improvement |
-| `test` | Add/update tests |
-| `build` | Build system/dependencies |
-| `ci` | CI/config changes |
-| `chore` | Maintenance/misc |
-| `revert` | Revert commit |
-
-- 描述：现在时 + 命令式，<72 字符
-- 引用 issue：`Closes #123`、`Refs #456`
-- **公共文件修改**（遵循 dd-ai-git-workflow 公共文件锁机制）：触及公共文件（参见 `.trae/public-files.txt` 清单）时，必须开独立分支 `refactor/public-file-{描述}`，commit message 必须包含 `PublicFile: <文件路径>` tag，且分支生命周期 <1 天优先合并。禁止在 fix 分支夹带公共文件修改：
-
-```text
-fix(F3.1): resolve hotkey conflict with OCR shortcut
-
-PublicFile: Sources/MacimCore/Hotkey/HotkeyManager.swift
-```
-
-#### 3.3.4 执行提交
+#### 3.2.4 执行提交
 
 ```bash
 # 单行
@@ -486,32 +415,27 @@ EOF
 )"
 ```
 
-**Git 安全协议**：
-- 禁止更新 git config
-- 禁止 `--force`、hard reset（除非用户明确要求）
-- 禁止 `--no-verify` 跳过 hooks（除非用户要求）
-- 禁止 force push 到 main/master
-- hooks 失败 → 修复后新建 commit，不 amend
+提交边界（暂存无关脏文件、提交秘密文件、`--no-verify`、force push）遵循 [dd-shared-ask](../dd-shared-ask/SKILL.md) 提交边界章节。
 
-**成功** → 进入 3.3.5
+**成功** → 进入 3.2.5
 
 **失败** → 回到步骤 2 修复问题，不跳过
 
-#### 3.3.5 提交后全量回归验证（CI 优先，必须 push）
+#### 3.2.5 提交后全量回归验证（CI 优先，必须 push）
 
 **本步是步骤 2 延迟的 XCUITest 验证 + 全量 XCTest 回归的唯一执行点（XCTest 单测试文件绿灯已在步骤 2.3 本地验证）。**
 
 CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 2（回归 CI 验证）。按顺序执行：检查 push → 检查 CI 已有结果 → 触发 CI 并等待 → CI 失败处理。
 
-> **红线**：不得跳过本步直接进入 3.4。步骤 2 的 XCUITest 验证 + 全量回归已延迟到此处，跳过等于放弃 UI 测试和全量回归验证。CI 相关红线（未 push 降级本地、CI 触发失败降级本地）遵循 dd-shared-ci 红线章节。
+> **红线**：不得跳过本步直接进入 3.3。步骤 2 的 XCUITest 验证 + 全量回归已延迟到此处，跳过等于放弃 UI 测试和全量回归验证。CI 相关红线（未 push 降级本地、CI 触发失败降级本地）遵循 dd-shared-ci 红线章节。
 
-### 3.4 同步 AI-test 测试工作树
+### 3.3 同步 AI-test 测试工作树
 
 确保 AI-test 测试工作树复位到最新修复分支，便于测试验证最新代码。
 
-**AskUserQuestion 问 4**：是否同步 AI-test 工作树
+**AskUserQuestion 问 3**：是否同步 AI-test 工作树
 - 选项 1（推荐）：同步（使用 `reset --hard` 复位到最新修复分支）
-- 选项 2：不同步，结束 3.4
+- 选项 2：不同步，结束 3.3
 
 选择同步时：
 
@@ -522,7 +446,7 @@ bash "$HOME/.trae-cn/skills/shared/scripts/sync-ai-test-worktree.sh" "$FIX_BRANC
 
 - **返回码 0**（成功）：AI-test 工作树 HEAD 等于当前修复分支最新 commit，工作区干净
 - **返回码 2**（未提交变更）：AI-test 工作树存在未提交变更，询问用户处理方式
-- **其他失败** → **AskUserQuestion 问 5**：
+- **其他失败** → **AskUserQuestion 问 4**：
   - 选项 1（推荐）：重试
   - 选项 2：跳过继续
   - 选项 3：停止工作流
@@ -873,8 +797,8 @@ CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 4（合并后 CI
 - 没有失败测试就写修复
 - 步骤 5 文档检查失败仍继续
 - 未经用户确认修改回归测试
-- **在步骤 2 中本地执行 UI 测试（XCUITest）**（必须延迟到步骤 3.3.5 走 CI；XCTest 单测试文件可本地执行快速反馈）
-- **跳过步骤 3.3.5 提交后全量回归验证**
+- **在步骤 2 中本地执行 UI 测试（XCUITest）**（必须延迟到步骤 3.2.5 走 CI；XCTest 单测试文件可本地执行快速反馈）
+- **跳过步骤 3.2.5 提交后全量回归验证**
 - **使用 git rebase 同步上游或合并分支**（遵循 dd-ai-git-workflow merge-only 原则，禁止 rebase）
 - **在 fix 分支夹带公共文件修改**（公共文件必须开独立分支，加 PublicFile tag）
 
