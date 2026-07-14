@@ -4,17 +4,16 @@ set -euo pipefail
 # 全局技能 dd-ai-git-workflow 配套脚本
 # 用法: ./conflict-predict.sh [base-branch]
 # 输出 ConflictPredictionReport JSON 到 stdout
-# 依赖: git 2.38+（支持 merge-tree --write-tree）, jq
+# 依赖: git 2.55+（支持 merge-tree --write-tree --name-only）, jq
 
 BASE="${1:-origin/develop}"
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 
 git fetch origin develop:refs/remotes/origin/develop 2>/dev/null || true
 
-# 使用 git merge-tree --write-tree 检测冲突（git 2.38+）
-# 注意：不能用 `... || true` 后接 `$?`，否则退出码恒为 0
+# 使用 git merge-tree --write-tree --name-only 检测冲突（git 2.55+）
 set +e
-TREE_OUTPUT=$(git merge-tree --write-tree "$BASE" HEAD 2>&1)
+TREE_OUTPUT=$(git merge-tree --write-tree --name-only "$BASE" HEAD 2>&1)
 EXIT_CODE=$?
 set -e
 
@@ -24,16 +23,15 @@ if [ "$EXIT_CODE" -eq 0 ]; then
   exit 0
 fi
 
-# 解析冲突文件：git merge-tree --write-tree 在冲突时输出 "CONFLICT (content): Merge conflict in <file>"
-CONFLICT_FILES=$(echo "$TREE_OUTPUT" | grep -oE 'Merge conflict in [^ ]+' | sed 's/Merge conflict in //' || true)
+# --name-only 模式：冲突文件直接以文件名列表输出（每行一个）
+# 输出格式：<OID>\n<conflicted filenames>\n<messages>
+# 提取 OID 行之后的文件名部分
+TREE_OID=$(echo "$TREE_OUTPUT" | head -1)
+CONFLICT_FILES=$(echo "$TREE_OUTPUT" | tail -n +2 | sed '/^$/q' | head -n -1 | grep -v '^$' || true)
 
 if [ -z "$CONFLICT_FILES" ]; then
-  # 兼容旧版 git：回退到试合并检测
-  # 用 trap 保护，避免脚本中途退出时卡在 merge 状态污染工作区
-  trap 'git merge --abort 2>/dev/null || true' EXIT INT TERM
-  CONFLICT_FILES=$(git merge --no-commit --no-ff "$BASE" 2>&1 | grep -oE 'CONFLICT .* in [^ ]+' | sed -E 's/.* in //' || true)
-  git merge --abort 2>/dev/null || true
-  trap - EXIT INT TERM
+  # 兼容：回退到旧版 grep 解析
+  CONFLICT_FILES=$(echo "$TREE_OUTPUT" | grep -oE 'Merge conflict in [^ ]+' | sed 's/Merge conflict in //' || true)
 fi
 
 CONFLICT_FILE_JSON=$(echo "$CONFLICT_FILES" | jq -R -s -c 'split("\n") | map(select(length > 0))')

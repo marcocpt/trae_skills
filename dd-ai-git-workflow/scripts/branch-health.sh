@@ -4,7 +4,7 @@ set -euo pipefail
 # 全局技能 dd-ai-git-workflow 配套脚本
 # 用法: ./branch-health.sh [base-branch]
 # 输出 BranchHealthReport JSON 到 stdout
-# 依赖: git 2.38+, macOS date（BSD）
+# 依赖: git 2.55+, macOS date（BSD）
 
 BASE="${1:-origin/develop}"
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
@@ -29,18 +29,22 @@ LAST_TS=$(date -j -f "%Y-%m-%d" "$LAST_SYNC_DATE" +%s 2>/dev/null || echo "$TODA
 STALE_DAYS=$(( (TODAY_TS - LAST_TS) / 86400 ))
 [ $STALE_DAYS -lt 0 ] && STALE_DAYS=0
 
-# 2. 冲突难度：merge-tree 检测冲突文件数
+# 2. 冲突难度：merge-tree --name-only 检测冲突文件数
 CONFLICT_COUNT=0
-if ! git merge-tree --write-tree "$BASE" HEAD >/dev/null 2>&1; then
-  CONFLICT_OUTPUT=$(git merge-tree --write-tree "$BASE" HEAD 2>&1 || true)
-  CONFLICT_COUNT=$(echo "$CONFLICT_OUTPUT" | grep -cE 'Merge conflict in' || true)
+if ! git merge-tree --write-tree --name-only "$BASE" HEAD >/dev/null 2>&1; then
+  CONFLICT_OUTPUT=$(git merge-tree --write-tree --name-only "$BASE" HEAD 2>&1 || true)
+  CONFLICT_FILES=$(echo "$CONFLICT_OUTPUT" | tail -n +2 | sed '/^$/q' | head -n -1 | grep -v '^$' || true)
+  CONFLICT_COUNT=$(echo "$CONFLICT_FILES" | grep -c . || true)
+  if [ "$CONFLICT_COUNT" -eq 0 ]; then
+    CONFLICT_COUNT=$(echo "$CONFLICT_OUTPUT" | grep -cE 'Merge conflict in' || true)
+  fi
 fi
 
 # 3. 变更规模：分支相对 base 的变更文件数
 CHANGED_FILES=$(git diff --name-only "$BASE...HEAD" 2>/dev/null | wc -l | tr -d ' ')
 
 # 4. 可合并性
-if git merge-tree --write-tree "$BASE" HEAD >/dev/null 2>&1; then
+if git merge-tree --write-tree --name-only "$BASE" HEAD >/dev/null 2>&1; then
   MERGEABLE=true
   MERGEABLE_SCORE=100
 else

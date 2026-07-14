@@ -4,7 +4,7 @@ set -euo pipefail
 # 全局技能 dd-ai-git-workflow 配套脚本
 # 用法: ./pre-merge-check.sh
 # 输出 PreMergeChecklist JSON 到 stdout
-# 依赖: git 2.38+, swiftlint（可选）
+# 依赖: git 2.55+（支持 merge-tree --write-tree --name-only）, swiftlint（可选）
 
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 BASE="origin/develop"
@@ -50,10 +50,16 @@ fi
 
 # 4. 冲突预检
 CONFLICT_COUNT=0
-if git merge-tree --write-tree "$BASE" HEAD >/dev/null 2>&1; then
+if git merge-tree --write-tree --name-only "$BASE" HEAD >/dev/null 2>&1; then
   RESULTS+=('"conflict_predict":{"status":"pass","conflict_files":0}')
 else
-  CONFLICT_COUNT=$(git merge-tree --write-tree "$BASE" HEAD 2>&1 | grep -cE 'Merge conflict in' || true)
+  CONFLICT_OUTPUT=$(git merge-tree --write-tree --name-only "$BASE" HEAD 2>&1 || true)
+  # --name-only 输出：<OID>\n<conflicted filenames>\n<messages>
+  CONFLICT_FILES=$(echo "$CONFLICT_OUTPUT" | tail -n +2 | sed '/^$/q' | head -n -1 | grep -v '^$' || true)
+  CONFLICT_COUNT=$(echo "$CONFLICT_FILES" | grep -c . || true)
+  if [ "$CONFLICT_COUNT" -eq 0 ]; then
+    CONFLICT_COUNT=$(echo "$CONFLICT_OUTPUT" | grep -cE 'Merge conflict in' || true)
+  fi
   RESULTS+=('"conflict_predict":{"status":"fail","conflict_files":'"$CONFLICT_COUNT"'}')
   CHECKS_OK=false
 fi

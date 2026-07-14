@@ -327,7 +327,7 @@ flowchart TD
 
 ```bash
 git fetch origin
-git merge-tree --write-tree origin/develop HEAD
+git merge-tree --write-tree --name-only origin/develop HEAD
 ```
 
 随后执行：Build、Unit Test、UI Test。全部通过后再合并。
@@ -487,7 +487,7 @@ flowchart TD
 ```bash
 # 基础 alias
 git config alias.sync "!git fetch origin && git merge origin/develop"
-git config alias.checkmerge "merge-tree --write-tree origin/develop HEAD"
+git config alias.checkmerge "merge-tree --write-tree --name-only origin/develop HEAD"
 git config alias.graph "log --graph --oneline --decorate --all"
 
 # 技能脚本 alias（需设置 SKILL_DIR 环境变量）
@@ -508,7 +508,7 @@ CI 流水线推荐包含以下步骤：
 2. **SwiftLint**：代码规范检查（含 strict 模式）
 3. **Unit Test**：单元测试
 4. **UI Test**：UI 测试（如适用）
-5. **merge-tree 检查**：合并冲突预检
+5. **merge-tree 检查**：合并冲突预检（`git merge-tree --write-tree --name-only`）
 6. **Merge 到 develop**：PR 审查通过后自动合并
 
 ### CI 触发时机
@@ -516,6 +516,20 @@ CI 流水线推荐包含以下步骤：
 - PR 创建时：步骤 1-5
 - PR 合并时：步骤 6
 - 定时任务（每日）：健康度检查 + 废弃清理建议
+
+### Git 2.55+ 推荐配置
+
+```bash
+# 大仓库性能优化：启用 fsmonitor（Linux via inotify / macOS / Windows）
+git config core.fsmonitor true
+git config core.untrackedCache true
+
+# 配置式 hooks 并行执行（git 2.55+），加速 pre-commit
+# 示例：linter 与单元测试并行跑
+git config hook.pre-commit.command "swiftlint lint --strict"
+git config hook.pre-commit.command "scripts/ci/test-unit.sh"
+git config hook.pre-commit.parallel true
+```
 
 ## 禁止事项
 

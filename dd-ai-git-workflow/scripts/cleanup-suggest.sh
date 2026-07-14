@@ -4,7 +4,7 @@ set -euo pipefail
 # 全局技能 dd-ai-git-workflow 配套脚本
 # 用法: ./cleanup-suggest.sh [stale-days]
 # 输出 CleanupSuggestion JSON 到 stdout
-# 依赖: git 2.38+, jq, macOS date（BSD）
+# 依赖: git 2.55+, jq, macOS date（BSD）
 
 STALE_DAYS="${1:-7}"
 BASE="origin/develop"
