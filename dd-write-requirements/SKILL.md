@@ -132,12 +132,12 @@ Requirements 文档中**绝不**出现以下内容：
 1. **Background（背景）**：为什么做。只描述事实与业务上下文，不提方案
 2. **Problem Statement（问题定义）**：现状哪里不好。每条可验证，不写"代码太乱"
 3. **Goals（目标）**：成功是什么样。描述结果，不描述实现
-4. **Scope（范围）**：本次包含什么/不包含什么。防止 AI 顺手改一百个文件
+4. **Scope（范围）**：本次包含什么（仅写"包含"，"不包含"的事项统一放第 9 节 Out of Scope，避免两节重复）。防止 AI 顺手改一百个文件
 5. **Functional Requirements（功能需求）**：编号 FR-001 起。只描述可观察行为，绝不出现类名/方法名
 6. **Non-functional Requirements（非功能需求）**：性能/内存/线程/稳定性/用户体验。用可测量描述
 7. **Constraints（约束）**：兼容性、依赖、不可改的 API。**业务约束可写，技术实现约束放 Design**
 8. **Acceptance Criteria（验收标准）**：编号 AC-1 起。用 Given/When/Then。每个 FR 至少一个 AC
-9. **Out of Scope（明确不做）**：防止 AI"顺便帮你改一下"
+9. **Out of Scope（明确不做）**：明确不做的事项唯一清单（所有"不做"条目集中于此，与 Scope 不重复）。防止 AI"顺便帮你改一下"
 10. **Terminology（术语）**：定义业务术语，**不是代码符号**。防止 Label/Text/TextBox/Region 混用
 11. **Decision Freedom（实现自由度）**：告诉 AI 哪些可自由发挥（架构/拆类/命名）、哪些禁止改（公共 API/数据格式/协议语义）
 12. **Future Considerations（未来扩展）**：未来可能增加什么。让 AI 设计时避免堵死路
@@ -222,12 +222,12 @@ Constraints-1：模板匹配置信度阈值默认 0.8，支持运行时修改即
 | Background | 为什么做 | ❌ | 短 |
 | Problem | 现状哪里不好 | ❌ | 短，可验证 |
 | Goals | 成功是什么样 | ❌ | 短，结果导向 |
-| Scope | 做什么/不做什么 | ❌ | 清单 |
+| Scope | 做什么（仅包含） | ❌ | 清单 |
 | FR | 系统应做什么 | ❌ 绝不 | 编号，可观察 |
 | NFR | 质量要求 | ❌ | 可测量 |
 | Constraints | 边界 | ⚠️ 仅业务约束 | 清单 |
 | AC | 如何验证 | ❌ | Given/When/Then |
-| Out of Scope | 明确不做 | ❌ | 清单 |
+| Out of Scope | 明确不做（唯一清单，不与 Scope 重复） | ❌ | 清单 |
 | Terminology | 业务术语 | ❌ 绝不写代码符号 | 字典 |
 | Decision Freedom | AI 自由度 | ❌（描述边界） | 允许/禁止清单 |
 | Future | 未来可能 | ❌ | 信息性 |
@@ -405,6 +405,7 @@ digraph doc_layers {
 - [ ] Decision Freedom 双向（允许 + 禁止）
 - [ ] 无"优化/改进/更好"等模糊词
 - [ ] 文档换语言/换框架不需要改
+- [ ] Scope 不写"不包含"，所有"不做"条目集中在 Out of Scope（唯一清单，两节无重复）
 
 **任一项失败，修订后重新验证。**
 
