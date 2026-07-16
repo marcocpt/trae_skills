@@ -283,8 +283,8 @@ flowchart TD
    - `git add <TODO 文件> <LATER 文件>`（LATER 文件若有变更）
    - `git commit`，commit message 格式：`docs(dd-docreview-grilling): 记录 <doc-name> 审核发现的 N 个 TODO + M 个 LATER`
    - 若 TODO 和 LATER 都未创建（双空场景）：跳过 git 提交
-   - **分支上下文**（遵循 dd-ai-git-workflow）：审核成果提交应在 `docs/{主题}` 分支上进行；若批量修复路由到 fix/feature 分支，则审核成果提交可与首批修复同分支或在 `docs/` 分支独立提交后合并
-   - **公共文件**（遵循 dd-ai-git-workflow 公共文件锁机制）：若 TODO/LATER 文件本身属于公共文件（如 `AGENTS.md`、`CLAUDE.md`），commit message 必须包含 `PublicFile: <文件路径>` tag
+   - **分支上下文**（遵循 [dd-git-workflow](../dd-git-workflow/SKILL.md)）：审核成果提交应在 `docs/{主题}` 分支上进行；若批量修复路由到 fix/feature 分支，则审核成果提交可与首批修复同分支或在 `docs/` 分支独立提交后合并
+   - **公共文件**（遵循 [dd-git-conflict](../dd-git-conflict/SKILL.md) 公共文件锁机制）：若 TODO/LATER 文件本身属于公共文件（如 `AGENTS.md`、`CLAUDE.md`），commit message 必须包含 `PublicFile: <文件路径>` tag
 6. 用 `AskUserQuestion` 询问是否立即进入批量修复流程（第 7 步）：是 → 进入第 7 步；否 → 进入第 8 步（流程结束询问）
 
 ### 7. 批量修复流程
@@ -354,7 +354,7 @@ flowchart TD
 5. **提交修复成果**：`git add <修复的文件> <TODO 文件> 验证摘要/<验证摘要文档>` + `git commit`（修复的文件已由被调用技能提交，此处 `git add` 对其为空操作；TODO 文件含 `- [x] TODO1.` + 修复SHA、验证摘要文档为本批新增），commit message 格式：
    - bug 类批次：`fix(<scope>): 修复 <doc-name> 审核的第 X 批 N 个问题`（`<scope>` = 功能标签）
    - feature 类批次：`feat(<scope>): 实现 <doc-name> 审核的第 X 批 N 个缺失功能`（`<scope>` = 功能标签）
-   - **公共文件修改**（遵循 dd-ai-git-workflow 公共文件锁机制）：若本批修复触及公共文件（参见 `.trae/public-files.txt` 清单），commit message 必须包含 `PublicFile: <文件路径>` tag，且公共文件修改应已由被调用技能在独立分支处理
+   - **公共文件修改**（遵循 [dd-git-conflict](../dd-git-conflict/SKILL.md) 公共文件锁机制）：若本批修复触及公共文件（参见 `.trae/public-files.txt` 清单），commit message 必须包含 `PublicFile: <文件路径>` tag，且公共文件修改应已由被调用技能在独立分支处理
    - 提交后用 markdown 链接 `[文件名](file:///绝对路径)` 输出验证摘要文档路径给用户，提示可按其逐条手动验证本批修复。
 
 **7.3 询问是否继续下一批**（每批提交后，**必须**用 `AskUserQuestion` 给出以下 4 选项，不得减少或省略）：
@@ -383,7 +383,7 @@ flowchart TD
 
 ## Git 工作流合规（强制）
 
-本技能涉及 Git 操作，必须遵循 dd-ai-git-workflow 系列子技能：
+本技能涉及 Git 操作，必须遵循 [dd-git-workflow](../dd-git-workflow/SKILL.md) 系列子技能：
 
 | 子技能 | 职责 | 本技能相关 |
 |--------|------|-----------|
@@ -453,72 +453,11 @@ flowchart TD
 - **全部流程结束后不询问是否结束/有其他任务** → 必须用 `AskUserQuestion` 询问，不得直接结束
 - **启动询问图形化开关** → 默认启用，不询问
 - **启动询问 LATER 路径** → 固定 `/docs/AI/LATER.md`，不询问
-- **使用 git rebase 同步上游或合并分支**（遵循 dd-ai-git-workflow merge-only 原则，禁止 rebase）
+- **使用 git rebase 同步上游或合并分支**（遵循 [dd-git-merge](../dd-git-merge/SKILL.md) merge-only 原则，禁止 rebase）
 - **在 docs/fix/feature 分支夹带公共文件修改**（公共文件必须开独立分支，加 PublicFile tag）
 - **跳过合并前检查直接合并**（必须运行 pre-merge-check.sh，all_pass=false 禁止合并）
 
 **违反以上任一条 = 违反本技能的精神。**
-
-## 常见错误
-
-| 错误 | 修复 |
-|------|------|
-| 解答纯文字描述状态流转 | 必须用 Mermaid `stateDiagram-v2` 内联图 |
-| 解答纯文字描述调用链 | 必须用 Mermaid `sequenceDiagram` 内联图 |
-| 跨文件搜索直接 Grep | 必须用 `Task` 分派 `search` 子代理 |
-| 解答不附文档/代码位置锚点 | 必须用 `[文本](file:///绝对路径#L行号)` |
-| 答完直接等输入 | 必须立即调 `AskUserQuestion` 第一阶段 |
-| 单阶段提问或不提问 | 必须两阶段：满意后必进第二阶段选 TODO/LATER/不记录 |
-| 用户无继续提问时直接等待 | 必须调 `AskUserQuestion` 第三阶段询问是否继续/收尾 |
-| 用户无继续提问时假设结束自动收尾 | 必须先询问用户，不得替用户做决定 |
-| 用户无继续提问时假设继续无限等待 | 必须先询问用户，不得无限等待 |
-| 选项少于 3 个或改语义 | 第一阶段 3 选项，第二阶段 3 选项，第三阶段 2 选项，顺序语义不可变 |
-| TODO 用 Logseq `- TODO N.` 或普通列表 | 改用 Markdown 任务列表 `- [ ] TODO1. [Pn] 简述 #标签` + 缩进属性 |
-| TODO 第一行过于笼统 | 必须简洁准确、可独立理解 |
-| 位置字段用纯文本 | 改用 `[文本](file:///绝对路径#L行号)` 可点击链接 |
-| 未询问保存路径 | 启动时必须 `AskUserQuestion` 确认路径（首次追加时才创建文件） |
-| 文档位置只写文件名 | 必须带 `#L行号` 或 `#章节` |
-| TODO 缺字段 | 3 必有（文档位置/现状/改进建议）+ 审核时间必有；推荐修复文件：模式 B 验证过代码时必有，模式 A 或无法推荐时省略整行；代码位置按需添加，未引用代码时省略属性行；图形化预览仅 HTML server 时添加 |
-| 模式 B TODO 条目缺推荐修复文件 | 模式 B 验证过代码时推荐修复文件字段**必有**；推荐理由必须简述，不得只写路径不给理由 |
-| 场景 B 仅凭文档断言 | 必须先通过 `Task` 工具分派 `search` 子代理验证代码，主代理不得直接调用 `SearchCodebase`/`Grep` |
-| 场景 B 主代理直接 Grep 验证代码 | 必须改用 `Task` 子代理隔离上下文；只有 `Read` 已知具体文件具体行可例外 |
-| TODO 积压到结束才写 | 必须每次标记立即追加到文件，禁止积压；中断会丢失 |
-| LATER 不去重直接新增 | 必须 Grep 粗筛 + 子代理精判 |
-| LATER 描述超 80 字符 | LATER 是索引不是文档，必须压缩到单行 |
-| 多方案问题未列方案/未让用户选 | 必须列全部候选 + 推荐方案 + 理由，用 `AskUserQuestion` 让用户选定 |
-| TODO 改进建议字段堆砌多方案 | 只写用户选定的方案，多方案讨论留在会话记录里 |
-| 结束审核后不汇总 | 收尾第 3 步必须口述输出优先级分布 + 落盘分布（头部文件不再含汇总字段） |
-| 收尾未创建并行分组就提交 | 必须在第 6 步第 4 项创建并行分组并写入 TODO 文件后再提交（第 6 步第 5 项） |
-| 模式 B 并行分组按功能标签而非文件 | 模式 B 必须优先按「推荐修复文件」（无则 fallback「代码位置」）文件路径做文件级冲突分析；同标签不同文件 = 可并行；模式 A 或无代码位置条目才按功能标签 |
-| 并行分组重写头部/已有 TODO 行 | 必须插入头部（`审核文档::` 行）之后、首条 TODO 之前，不重写已有内容 |
-| 并行分组只列批次不给建议 | 建议必须含：哪些可同时启动、哪些必须串行、串行顺序（P0→P1→P2→P3） |
-| 空场景仍创建并行分组 | TODO 文件未创建时跳过此步 |
-| HTML server 询问用户是否启动 | 触发条件满足直接启动（浏览器展示不询问） |
-| 复杂架构图硬塞 Mermaid | 5+ 节点必须启动 HTML server |
-| 未启动 server 就写 HTML | 必须先调 `start-server.sh` 拿到 `screen_dir` |
-| HTML 文件复用文件名 | 每个屏幕必须新文件名 |
-| 收尾不关闭 HTML server | 若会话启动过 server，收尾时必须调 `stop-server.sh` 关闭 |
-| 批量修复未归类就开修 | 必须先按性质判定（bug/feature）再按功能模块标签归类分批，归类后直接开始修复（第 6 步并行分组已覆盖分类逻辑） |
-| 跳过 7.1 性质判定直接调 dd-bug-fix-workflow | 7.1 第一步逐条性质判定是必经步骤；不得跳过、不得在 7.2 重新判定、不得偷懒一律走 dd-bug-fix-workflow |
-| feature 类 TODO（空桩/模块缺失/pass）硬套 dd-bug-fix-workflow | feature 类必须走 `dd-feature-development-workflow`；仅当同时满足「纯后端 + 单函数补全 + 不跨文件 + 无状态流转/回调/外部系统交互」时可降级，且须在 commit message body 注明降级原因；命中禁止降级情形（UI/可见行为/E2E/跨文件/多函数/状态流转/回调/外部系统/整个模块缺失/类多方法）时强制走 dd-feature-development-workflow |
-| 滥用降级（跨文件/状态流转/整个模块缺失也降级到 dd-bug-fix-workflow） | 降级须同时满足全部 3 条件；任一禁止降级情形命中即必须走 dd-feature-development-workflow |
-| 同批次混修 bug 类与 feature 类 | 两技能流程不同不得混批；同功能模块含两类时按性质拆成两批 |
-| 批次超 5 条 | 必须按优先级拆分；跨功能 P0 单独成批 |
-| 未提交就改 TODO 为完成 | 必须先由被调用技能（dd-bug-fix-workflow / dd-feature-development-workflow）完成修复并提交，再改 `- [ ] TODO1.` 为 `- [x] TODO1.` 并随修复内容一起提交 |
-| 批次中用 DOING 标记半成品 | 不引入 DOING；本批完全修复+提交后才改 `- [x] TODO1.` |
-| 未询问就自动修下一批 | 除「全部自动修复」外，每批提交后必须 `AskUserQuestion` 询问 |
-| 7.3 只给"继续修复下一批"1个选项 | 必须给出全部 4 选项（继续下一批 / 选择特定批次 / 暂停 / 全部自动），即使只剩 1 批也不得减少 |
-| 标记完成时未记录修复SHA | 必须先 `git log -1 --format=%h` 取本批修复 commit tip 短 SHA，随 `- [ ] TODO1.` → `- [x] TODO1.` 追加 `修复SHA:: <短SHA>` |
-| 修复SHA 写成了 TODO 更新提交自身的 SHA | 修复SHA 须指向代码修复 commit（被调用技能产出 tip），不是 TODO 状态更新提交的 SHA |
-| 修复未提交就取 SHA | 被调用技能须先完成提交；未提交时 `git log -1` 取到旧 SHA，须等其提交后再取 |
-| 每批未生成验证摘要文档 | 必须在第 4 步生成 `<doc-name>_批次<N>_验证摘要.md`（含逐条验证步骤+预期结果），第 5 步随批 `git add` 提交 |
-| 验证步骤笼统（"测试 XX""检查是否正常"） | 必须具体可执行：启动应用→进入某页→输入某值→观察某现象；每条 ≥2 步，预期结果可观察判定 |
-| 验证摘要文档命名/位置错 | 命名 `<doc-name>_批次<N>_验证摘要.md`，位置必须在 TODO 文件同级的 `验证摘要/` 子目录 |
-| 验证摘要文档漏提交 | 第 5 步 `git add <验证摘要文档>` 随批提交，不得只生成不提交 |
-| 验证摘要文档用会话回复代替 | 必须落盘为独立 .md 文件并提交；会话回复不持久、不可追溯 |
-| 全部流程结束后直接结束不询问 | 必须用 `AskUserQuestion` 询问是否结束/有其他任务 |
-| 启动询问图形化开关 | 默认启用，不询问 |
-| 启动询问 LATER 路径 | 固定 `/docs/AI/LATER.md`，不询问 |
 
 ## 合理化借口表
 
