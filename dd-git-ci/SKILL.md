@@ -1,6 +1,6 @@
 ---
 name: dd-git-ci
-description: Git CI 和合并前检查技能，涵盖合并前自检清单、SwiftLint strict、文档同步检查、CI 配置和 JSON 输出格式。触发词：pre-merge check、合并前检查、CI 配置、swiftlint、JSON 输出。当需要执行合并前检查或配置 CI 时使用。
+description: 当合并前需要自检、配置 CI 流水线、输出 PreMergeChecklist JSON 时使用。触发词：pre-merge check、合并前检查、CI 配置、swiftlint、JSON 输出。
 ---
 
 # Git CI 和合并前检查

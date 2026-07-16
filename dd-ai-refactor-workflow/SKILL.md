@@ -1,6 +1,6 @@
 ---
-name: "dd-ai-refactor-workflow"
-description: "在重构遗留/屎山代码、用户提到 AI 重构/refactoring、或工作到达需要人类确认的刹车点时调用。涉及 Characterization Test、解依赖、God Object 拆分、行为漂移检测等场景。"
+name: dd-ai-refactor-workflow
+description: 当重构遗留/屎山代码、用户提到 AI 重构/refactoring、或工作到达需要人类确认的刹车点时使用。触发词：refactor、重构流程、Characterization Test、解依赖、God Object 拆分、行为漂移检测。
 ---
 
 # AI 重构工作流
@@ -55,7 +55,7 @@ description: "在重构遗留/屎山代码、用户提到 AI 重构/refactoring�
 
 ## Git 工作流合规（强制）
 
-本技能涉及 Git 操作，必须遵循 dd-ai-git-workflow 系列子技能：
+本技能涉及 Git 操作，必须遵循 [dd-git-workflow](../dd-git-workflow/SKILL.md) 系列子技能：
 
 | 子技能 | 职责 | 本技能相关 |
 |--------|------|-----------|
@@ -84,7 +84,7 @@ description: "在重构遗留/屎山代码、用户提到 AI 重构/refactoring�
 ### 阶段二：锁定现有行为（Characterization Test）
 
 - 测试范围 = 本次重构涉及的模块，不给整个项目加测试
-- 按可测性分级：高（AI 直接生成）→ 中（注入 Stub）→ 低（先解依赖）→ 极低（跳过记报告）。AI 生成测试后必须 push 走 CI 验证测试**在 CI 环境中**可运行（「可运行」指 CI 中能跑通且断言通过，**不是本地能编译执行**），不得用本地 `swift test`/`xcodebuild test`/`test-macos.sh` 替代——本地环境 ≠ CI 环境，测试是否能在 CI 中跑通是 CI 说了算
+- 按可测性分级：高（AI 直接生成）→ 中（注入 Stub）→ 低（先解依赖）→ 极低（跳过记报告）。AI 生成测试后必须 push 走 CI 验证测试**在 CI 环境中**可运行（「可运行」指 CI 中能跑通且断言通过，**不是本地能编译执行**），CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 2（回归 CI 验证）
 - 锁定前人类确认：测试描述的是真实行为还是 AI 误解
 - 已有测试不重写，只补缺口。已有测试仍需人类确认「描述的是真实行为」，但确认粒度可粗——可按模块批量确认（如「`OverlayWindowController*Tests.swift` 这批都描述真实行为吗？」），不必逐条确认
 
@@ -149,7 +149,7 @@ description: "在重构遗留/屎山代码、用户提到 AI 重构/refactoring�
 
 ### 小 Commit
 
-遵循 dd-ai-git-workflow 的 Commit 规范（conventional commits + scope）：
+遵循 [dd-git-merge](../dd-git-merge/SKILL.md) 的 Commit 规范（conventional commits + scope）：
 
 ```text
 refactor(ocr): extract OCRService from VisionManager
@@ -159,7 +159,7 @@ refactor(vision): split VisionManager into pipeline stages
 
 不要 `Refactor Whole Project`。
 
-**公共文件修改**：触及公共文件（见 dd-ai-git-workflow 公共文件清单）时，必须开独立分支 `refactor/public-file-{描述}`，commit message 必须包含 `PublicFile: <文件路径>` tag，且分支生命周期 <1 天优先合并：
+**公共文件修改**：触及公共文件（见 [dd-git-conflict](../dd-git-conflict/SKILL.md) 公共文件清单）时，必须开独立分支 `refactor/public-file-{描述}`，commit message 必须包含 `PublicFile: <文件路径>` tag，且分支生命周期 <1 天优先合并：
 
 ```text
 refactor(core): extract shared OCR protocol
@@ -188,34 +188,12 @@ Review 通过后，必须执行 CI 验证（见下方「CI 验证规则」）。
 
 每次 Commit 后必须 push 到远端并等待 CI 通过，不得用本地测试替代 CI 验证。重构的核心风险是行为漂移，CI 是跨环境验证的唯一保障。
 
-#### 验证流程
+**CI 验证流程遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 2（回归 CI 验证）和场景 3（Push 后等待 CI）。**
 
-1. **检查分支是否已 push**：
-   ```bash
-   CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-   git ls-remote --exit-code --heads origin "$CURRENT_BRANCH" >/dev/null 2>&1
-   ```
-   - 远端无此分支 → `git push -u origin "$CURRENT_BRANCH"`
+#### 重构特有的 CI 红线
 
-2. **检查 CI 已有结果**：
-   ```bash
-   gh run list --workflow macos-ci.yml --branch <当前分支> --limit 1
-   ```
-   - `conclusion=success` 且 `headSha` == 当前 HEAD → 复用 CI 结果
-   - `conclusion=failure` 且 `headSha` == 当前 HEAD → 进入「CI 失败处理」流程，不得复用
-   - `conclusion=failure` 但 `headSha` != 当前 HEAD（已有新 Commit）→ 旧 failure 可忽略，触发新 CI
-   - `status=in_progress` → 等待 CI 完成，不重复触发
-
-3. **触发 CI**（无可用结果时）：
-   ```bash
-   gh workflow run macos-ci.yml --ref <当前分支>
-   gh run watch <run-id> --exit-status
-   ```
-
-#### 红线
-
-- **禁止用 `swift test` 替代 CI**——本项目是 Xcode 工程，`swift test` 只覆盖 SwiftPM 子集。「只覆盖子集」是 swift test 的缺陷说明而非禁用前提；`xcodebuild test` 虽覆盖完整 scheme，仍因「本地环境 ≠ CI 环境」被同条红线禁止（见行为保持判定标准第 1 项及红线列表）
-- **禁止跳过 CI 验证**——重构必须验证行为不变，CI 是跨环境验证的唯一保障
+- **禁止用 `swift test` 替代 CI**——本项目是 Xcode 工程，`swift test` 只覆盖 SwiftPM 子集。「只覆盖子集」是 swift test 的缺陷说明而非禁用前提；`xcodebuild test` 虽覆盖完整 scheme，仍因「本地环境 ≠ CI 环境」被同条红线禁止
+- **3 子代理通过 ≠ 可合并**——3 子代理可能漏掉跨环境差异（签名、SDK、runner），只有 CI 全绿才算真正通过
 - **本地测试仅用于理解 CI 失败原因**——`bash scripts/ci/test-macos.sh` 可本地复现，但修复后必须重新走 CI
 - **分支未 push 时必须先 push 再等 CI**——禁止以 push 失败为由落到本地测试
 

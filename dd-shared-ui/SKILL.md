@@ -1,6 +1,6 @@
 ---
 name: dd-shared-ui
-description: dd 系列技能共享的 UI 可观测性门禁规则，涵盖证据分层和关闭规则。被 dd-ai-refactor-workflow、dd-feature-development-workflow 引用。触发词：UI 可观测性、UI 证据、UI 门禁、可观测性矩阵。
+description: 当需要 UI 可观测性门禁验证时使用（被 dd-ai-refactor-workflow、dd-feature-development-workflow 引用）。触发词：UI 可观测性、UI 证据、UI 门禁、可观测性矩阵。
 ---
 
 # dd 共享 UI 可观测性门禁

@@ -1,6 +1,6 @@
 ---
 name: dd-git-conflict
-description: Git 冲突处理技能，涵盖冲突处理流程、优先级、公共文件锁机制、冲突预测和模块拆分边界。触发词：merge conflict、冲突处理、公共文件、PublicFile。当遇到合并冲突或需要修改公共文件时使用。
+description: 当遇到合并冲突、需要修改公共文件、预测冲突风险时使用。触发词：merge conflict、冲突处理、公共文件、PublicFile。
 ---
 
 # Git 冲突处理

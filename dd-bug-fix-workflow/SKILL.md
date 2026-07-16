@@ -179,10 +179,10 @@ git status  # 必须干净，有未提交变更需先处理
 
 #### 1.2.1 记录基线分支
 
-遵循 dd-ai-git-workflow，基线分支默认为 `develop`：
+遵循 [dd-git-branch](../dd-git-branch/SKILL.md)，基线分支默认为 `develop`：
 
 ```bash
-# 默认基线分支为 develop（遵循 dd-ai-git-workflow）
+# 默认基线分支为 develop（遵循 dd-git-branch）
 # 若步骤 0 用户明确指定其他基线分支，则使用用户指定的分支
 BASE_BRANCH="${BASE_BRANCH:-develop}"
 git fetch origin "$BASE_BRANCH"
@@ -203,7 +203,7 @@ worktree_dir=$(dirname "$main_root")/${project}-worktrees
 
 #### 1.2.3 创建工作树
 
-遵循 dd-ai-git-workflow 的分支命名规则，bug 修复分支使用 `fix/{F编号}-{描述}` 格式。推荐使用 dd-ai-git-workflow 提供的脚本：
+遵循 [dd-git-branch](../dd-git-branch/SKILL.md) 的分支命名规则，bug 修复分支使用 `fix/{F编号}-{描述}` 格式。推荐使用 [dd-git-worktree](../dd-git-worktree/SKILL.md) 提供的脚本：
 
 ```bash
 # 使用 dd-ai-git-workflow 脚本创建（推荐）
@@ -223,7 +223,7 @@ git worktree add "$path" -b "$BRANCH" origin/develop
 cd "$path"
 ```
 
-**基线分支**：默认基于 `origin/develop` 最新提交创建（遵循 dd-ai-git-workflow）。若需基于其他分支，需在步骤 0 明确说明并获得用户确认。
+**基线分支**：默认基于 `origin/develop` 最新提交创建（遵循 dd-git-branch）。若需基于其他分支，需在步骤 0 明确说明并获得用户确认。
 
 #### 1.2.4 运行项目设置
 
@@ -845,7 +845,7 @@ CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 4（合并后 CI
 
 ## Git 工作流合规（强制）
 
-本技能涉及 Git 操作，必须遵循 dd-ai-git-workflow 系列子技能：
+本技能涉及 Git 操作，必须遵循 [dd-git-workflow](../dd-git-workflow/SKILL.md) 系列子技能：
 
 | 子技能 | 职责 | 本技能相关 |
 |--------|------|-----------|
@@ -874,7 +874,7 @@ CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 4（合并后 CI
 - 未经用户确认修改回归测试
 - **在步骤 2 中本地执行 UI 测试（XCUITest）**（必须延迟到步骤 3.2.5 走 CI；XCTest 单测试文件可本地执行快速反馈）
 - **跳过步骤 3.2.5 提交后全量回归验证**
-- **使用 git rebase 同步上游或合并分支**（遵循 dd-ai-git-workflow merge-only 原则，禁止 rebase）
+- **使用 git rebase 同步上游或合并分支**（遵循 [dd-git-merge](../dd-git-merge/SKILL.md) merge-only 原则，禁止 rebase）
 - **在 fix 分支夹带公共文件修改**（公共文件必须开独立分支，加 PublicFile tag）
 - **状态文件 `current_step` 未更新就进入下一步**（每个步骤出口判定成功后必须立即更新，会话压缩后智能体凭此恢复进度）
 - **状态文件不存在时默认从步骤 0 重启**（必须先按「状态文件不存在时的恢复策略」检查 git log 判断进度）
@@ -897,10 +897,3 @@ CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 4（合并后 CI
 **以上所有都意味着：回到违规步骤重新执行。**
 
 ---
-
-## 版本记录
-
-| 版本 | 日期 | 变更 |
-|------|------|------|
-| v1.1 | 2026-07-16 | 修复状态文件管理漏洞：(1) 每个步骤出口判定处新增 `current_step` 更新要求（步骤 0/2/3/4/5/6 出口）；(2) 步骤 7.1 删除时机从「merge 前」改为「merge 成功后」，merge 前先更新 `current_step="7.1-merging"` + `merge_in_progress=true`；(3) 新增「状态文件不存在时的恢复策略」，禁止默认从步骤 0 重启，必须先检查 git log 判断是否已有修复 commit；(4) 步骤 7.3/7.4/7.5/7.6 补充状态文件更新要求；(5) 红线章节新增 3 条状态文件相关红线 + 合理化借口表。修复背景：2026-07-16 真实场景中，会话压缩在步骤 7.1 状态文件已删除但 merge 未执行时发生，智能体误判为全新开始，浪费整轮 TDD 调查。 |
-| v1.0 | 2026-07-15 | 初始版本，建立 8 步严格顺序 bug 修复工作流 |

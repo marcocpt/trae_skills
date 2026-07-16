@@ -1,6 +1,6 @@
 ---
 name: dd-git-cleanup
-description: Git 废弃分支清理技能，涵盖自动检测项、清理流程和清理约束。触发词：分支清理、cleanup、废弃分支、worktree 清理。当需要清理已合并分支或陈旧 worktree 时使用。
+description: 当需要检测和清理已合并分支、陈旧 worktree、孤儿 worktree 时使用。触发词：分支清理、cleanup、废弃分支、worktree 清理。
 ---
 
 # Git 废弃分支清理

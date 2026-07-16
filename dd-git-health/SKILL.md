@@ -109,7 +109,7 @@ bash ../dd-ai-git-workflow/scripts/branch-health.sh [base-branch]
 
 其他 skill 通过 description 字段语义触发本技能：
 
-- `dd-ai-git-workflow`：合并前检查涉及健康度评估时引用
+- `dd-git-ci`：合并前检查涉及健康度评估时引用
 - `dd-feature-development-workflow`：功能开发流程涉及每日同步时引用
 - `dd-bug-fix-workflow`：bug 修复流程涉及分支健康监控时引用
 - `finishing-a-development-branch`：分支收尾涉及健康度确认时引用

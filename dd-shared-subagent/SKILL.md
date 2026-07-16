@@ -1,6 +1,6 @@
 ---
 name: dd-shared-subagent
-description: dd 系列技能共享的三子代理并行检查规则，涵盖调度方式、方向分工、汇总规则、处理结果和适用范围。被 dd-ai-refactor-workflow、dd-bug-fix-workflow、dd-feature-development-workflow 引用。触发词：三子代理、并行检查、subagent review。
+description: 当需要三子代理并行检查时使用（被 dd-ai-refactor-workflow、dd-bug-fix-workflow、dd-feature-development-workflow 引用）。触发词：三子代理、并行检查、subagent review。
 ---
 
 # dd 共享三子代理并行检查规则

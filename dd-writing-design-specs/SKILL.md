@@ -49,7 +49,7 @@ digraph writing_design_specs {
 - **一次一个文档**：设计规范、视觉原型、测试用例表必须**逐份**完成（写 → 审 → 确认），禁止并行调度或一次写多份后批量确认。
 - **没有拷问不写规范**：步骤 1 未完成禁止进入步骤 2。
 - **没有审查不进入下一篇**：步骤 3 未完成（3 个子代理全部返回）禁止进入步骤 4。
-- **每步必提交**：每个步骤产出可保存的工件后，**立即** `git add` + `git commit`，禁止跨步骤累积未提交变更。提交信息遵循 Conventional Commits（`<type>[scope]: <description>`，现在时+命令式，<72 字符）。**若本次提交修改了 `.trae/public-files.txt` 清单中的公共文件，commit message 末尾必须追加 `PublicFile` tag**（遵循 dd-ai-git-workflow）。禁止 `--no-verify`、`--force`、提交敏感文件、提交无关脏文件。
+- **每步必提交**：每个步骤产出可保存的工件后，**立即** `git add` + `git commit`，禁止跨步骤累积未提交变更。提交信息遵循 Conventional Commits（`<type>[scope]: <description>`，现在时+命令式，<72 字符）。**若本次提交修改了 `.trae/public-files.txt` 清单中的公共文件，commit message 末尾必须追加 `PublicFile` tag**（遵循 [dd-git-conflict](../dd-git-conflict/SKILL.md)）。禁止 `--no-verify`、`--force`、提交敏感文件、提交无关脏文件。
   - 步骤 0：提交"规则与参考摘要"到临时笔记文件（如 `docs/planning/P{n}/F{m}/.step0-rules-summary.md`）
   - 步骤 1：提交"grill 需求摘要"到临时笔记文件（如 `docs/planning/P{n}/F{m}/.step1-requirements-summary.md`）
   - 步骤 2：提交设计规范文件
@@ -516,7 +516,7 @@ git commit -m "chore(spec): clean up temporary notes for F{m}"
 
 ## Git 工作流合规（强制）
 
-本技能涉及 Git 操作，必须遵循 dd-ai-git-workflow 系列子技能：
+本技能涉及 Git 操作，必须遵循 [dd-git-workflow](../dd-git-workflow/SKILL.md) 系列子技能：
 
 | 子技能 | 职责 | 本技能相关 |
 |--------|------|-----------|

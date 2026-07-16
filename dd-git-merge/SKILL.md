@@ -1,6 +1,6 @@
 ---
 name: dd-git-merge
-description: Git 合并流程技能，涵盖 merge-only 原则、每天必须合并、Push 流程、5 步 Merge 流程和 Commit 规范。触发词：merge、合并、commit 规范、push 流程。当需要合并分支或确认提交规范时使用。
+description: 当执行合并流程、编写 commit message、选择 merge 策略时使用。触发词：merge、合并、commit 规范、push 流程。
 ---
 
 # Git 合并流程

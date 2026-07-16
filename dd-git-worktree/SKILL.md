@@ -1,6 +1,6 @@
 ---
 name: dd-git-worktree
-description: Git worktree 管理技能，涵盖 worktree 创建、命名、状态同步和清理规则。触发词：worktree、工作树、create-worktree。当需要创建或管理工作树时使用。
+description: 当需要创建或管理 worktree 时使用。触发词：worktree、工作树、create-worktree。
 ---
 
 # Git Worktree 管理

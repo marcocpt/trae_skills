@@ -1,6 +1,6 @@
 ---
 name: dd-git-workflow
-description: AI Coding Git 工作流入口技能，提供总览、核心原则、分支模型和子技能导航。触发词：git workflow、git 工作流、分支模型。当需要了解 Git 工作流全貌或不确定应使用哪个子技能时使用。
+description: 当需要了解 Git 工作流全貌、不确定应使用哪个子技能时使用。触发词：git workflow、git 工作流、分支模型。
 ---
 
 # Git 工作流入口
