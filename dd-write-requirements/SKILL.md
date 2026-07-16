@@ -13,6 +13,18 @@ Requirements 是整个 AI Coding 项目的"产品合同"与"唯一真实需求�
 
 **违反规则的字面意思就是违反规则的精神。**
 
+## Priority 分层（规则权重）
+
+规则按重要性分为三级，AI 执行时按优先级处理：
+
+| 优先级 | 含义 | 示例 | 违反后果 |
+|--------|------|------|---------|
+| **P0** | 绝不能违反 | 不写代码符号（类名/协议名/方法名/字段名/枚举值/配置键名/并发原语/框架 API） | 立即重写违规内容 |
+| **P1** | 尽量遵守 | 12 章节齐全、FR 可观察、NFR 可测量、AC 用 Given/When/Then、每个 FR 至少一个 AC | 补齐缺失项 |
+| **P2** | 建议 | 中文标点、无模糊词（优化/改进/更好）、文档头部版本号 | 提醒修正 |
+
+**冲突处理优先级：** User > Skill > Default behavior。当用户明确要求与 P0 规则冲突时，用 AskUserQuestion 提出，由用户决定。
+
 ## 何时使用
 
 - 新功能、重大重构、API 迁移前，先写 Requirements
@@ -40,7 +52,7 @@ digraph what_vs_how {
 | Design Spec | 为什么这样设计 | ⚠️ 仅伪代码/流程图/接口签名 | ✅ 必须遵守 |
 | Implementation | 怎么实现 | ✅ 可写代码 | ❌ 可参考可优化 |
 
-## 禁止清单（铁律）
+## 禁止清单（P0 铁律）
 
 Requirements 文档中**绝不**出现以下内容：
 
@@ -79,7 +91,7 @@ Requirements 文档中**绝不**出现以下内容：
 11. **Decision Freedom（实现自由度）**：告诉 AI 哪些可自由发挥（架构/拆类/命名）、哪些禁止改（公共 API/数据格式/协议语义）
 12. **Future Considerations（未来扩展）**：未来可能增加什么。让 AI 设计时避免堵死路
 
-## 写作规则
+## 写作规则（P1）
 
 每条 Requirements 应该是：
 - **可观察**：用户/外部能感知的行为，不是内部状态
@@ -118,6 +130,27 @@ Constraints-1：模板匹配置信度阈值默认 0.8，支持运行时修改即
 ```
 
 **优点：** 换语言、换框架、换类名，Requirements 不需要改。AI 有实现自由度。
+
+## Rewrite Strategy（代码符号→业务术语转换表）
+
+遇到代码符号时，按以下策略转换。不仅说"不要写什么"，还说"怎么改"。
+
+| 代码符号类型 | 转换为 | 示例 |
+|-------------|--------|------|
+| Class（类名） | Business Role（业务角色） | `TemplateMatchingEngine` → 模板匹配引擎 |
+| Protocol（协议名） | Business Interface（业务接口） | `VisualRecognitionEngine` → 视觉识别引擎接口 |
+| Function/Method（方法名） | Business Action（业务动作） | `detectTextRectangles()` → 检测文本区域 |
+| Property/Field（字段名） | Business Attribute（业务属性） | `source: VisualSource` → 识别来源属性 |
+| Enum case（枚举值） | Business State/Category（业务状态/类别） | `.ocr`/`.template` → OCR 来源/模板匹配来源 |
+| English enum（英文枚举） | Chinese business term（中文业务术语） | `idle`/`capturing` → 待激活/采集 |
+| Algorithm constant（算法常量） | Business algorithm name（业务算法名） | `TM_CCOEFF_NORMED` → 归一化互相关 |
+| Config key（配置键名） | Business config item（业务配置项） | `com.macim.visual.xxx` → 模板匹配置信度阈值配置项 |
+| Concurrency primitive（并发原语） | Business behavior（业务行为） | `async let` → 并行执行 |
+| Framework API（框架 API） | Business capability（业务能力） | `vDSP.meanv` → 向量均值运算 |
+| Module name（模块名） | （不写，留给 Design） | MacimCore → 删除 |
+| File path（文件路径） | （不写） | `MacimCore/Xxx.swift` → 删除 |
+
+**转换原则：** 换语言/换框架/换类名后，业务术语不需要改。如果改了，说明转换不彻底。
 
 ## AC 写作模板
 
@@ -163,23 +196,87 @@ Constraints-1：模板匹配置信度阈值默认 0.8，支持运行时修改即
 
 **以上任一情况发生时，停止写作，删除违规内容，用业务术语重写。**
 
-## 合理化借口表
+## Common Failure Modes（来自 TDD 基线失败案例）
 
-| 借口 | 现实 |
-|------|------|
-| "AI 看不懂抽象描述，需要类名才能知道复用什么" | AI 看得懂业务术语。类名属于 Design 层，放 Requirements 会过早绑定实现，后续重构全要改 Requirements。 |
-| "实现技术（vDSP/Accelerate）是约束，应该写进 Constraints" | 业务约束（macOS 13+、不新增依赖）可写。技术选型（用哪个向量运算库）属于 Design 决策，放 Requirements 会锁死方案。 |
-| "类名是术语，应该写进 Terminology" | Terminology 定义业务术语（识别会话、视觉元素、展示层），不是代码符号表。把类名当术语会让 Requirements 变成 API 文档。 |
-| "配置键名（com.macim.xxx）是 FR 的一部分" | FR 描述行为（"阈值可配置且运行时生效"），配置键名属于实现。写键名让 Requirements 绑定到具体配置系统。 |
-| "方法名（detectTextRectangles）是流程描述" | 流程用业务动作描述（"检测文本区域"）。方法名是 Design 层的接口契约，写进 Requirements 等于锁死 API 签名。 |
-| "时间紧，直接复用设计规范当 Requirements" | 含代码的设计规范当 Requirements 等于跳过需求层。下游 Design/Implementation 基于错误前提，返工成本是重写的 10 倍。 |
-| "Terminology 和 Decision Freedom 不重要，跳过" | Terminology 防止术语混用（Label/Text/TextBox），Decision Freedom 是 AI Coding 的核心章节（告诉 AI 哪些可自由发挥）。跳过 = AI 跑偏。 |
-| "资深工程师说要加类名，得听" | 资深工程师的真正痛点（AI 不知道复用什么）应在 Design Spec 解决，而非降级 Requirements。坚持分层，主动承诺在 Design Spec 写类名。 |
-| "团队习惯用英文状态名（idle/capturing），保留更亲切" | 英文枚举值是代码符号。Requirements 用中文业务术语（待激活/采集），在 Terminology 建立映射。Design Spec 可以用英文枚举名。 |
-| "算法枚举名（TM_CCOEFF_NORMED）是行业标准，写进去 AI 更明确" | 行业标准常量名是代码符号。用业务术语"归一化互相关"描述算法，常量名放 Design/Implementation。 |
-| "快捷键符号 ⌘⇧V 是代码细节吗" | 不是。快捷键是用户交互方式，属于业务需求，可以保留。但 `kVK_Command` 等键码常量是代码符号，禁止。 |
-| "这个情况不同，因为是……" | 规则无例外。如果你认为情况特殊，用 AskUserQuestion 提出，由用户决定。 |
-| "我遵循的是精神而非字面" | 违反规则的字面意思就是违反规则的精神。 |
+每条来自真实压力测试中观察到的失败模式，作为回归知识库。Agent 匹配到"我现在正犯这个错"时，按处理方式修正。
+
+### FM-001：类名当业务术语
+
+**错误推理：** "类名（如 TemplateMatchingEngine）已经成为团队通用术语，写进 Requirements 更明确。"
+
+**处理：** 仍视为代码符号，改写为业务角色（"模板匹配引擎"）。类名放 Design Spec。
+
+### FM-002：实现技术当业务约束
+
+**错误推理：** "使用 vDSP/Accelerate 是技术约束，应该写进 Constraints。"
+
+**处理：** 业务约束（macOS 13+、不新增依赖）可写。技术选型（用哪个向量运算库）属于 Design 决策，不写。
+
+### FM-003：类名当术语定义
+
+**错误推理：** "TemplateMatchingEngine 是术语，应该写进 Terminology。"
+
+**处理：** Terminology 定义业务术语（识别会话、视觉元素），不是代码符号表。改为"模板匹配：通过预置图像匹配屏幕元素的技术"。
+
+### FM-004：配置键名当 FR
+
+**错误推理：** "配置项 com.macim.visual.templateConfidenceThreshold 是 FR 的一部分。"
+
+**处理：** FR 描述行为（"阈值可配置且运行时生效"），配置键名属于实现。写键名让 Requirements 绑定到具体配置系统。
+
+### FM-005：方法名当流程描述
+
+**错误推理：** "detectTextRectangles() 是流程描述，写进 FR 没问题。"
+
+**处理：** 流程用业务动作描述（"检测文本区域"）。方法名是 Design 层的接口契约，写进 Requirements 等于锁死 API 签名。
+
+### FM-006：复用设计规范当 Requirements
+
+**错误推理：** "时间紧，这份含代码的设计规范直接改名当 Requirements 省时间。"
+
+**处理：** 含代码的设计规范当 Requirements 等于跳过需求层。下游基于错误前提，返工成本是重写的 10 倍。重写纯业务描述。
+
+### FM-007：跳过 Terminology/Decision Freedom
+
+**错误推理：** "Terminology 和 Decision Freedom 不重要，跳过早点结束。"
+
+**处理：** Terminology 防止术语混用（Label/Text/TextBox），Decision Freedom 是 AI Coding 核心章节（告诉 AI 哪些可自由发挥）。跳过 = AI 跑偏。必须写完 12 章节。
+
+### FM-008：权威压力下加类名
+
+**错误推理：** "资深工程师说要加类名，得听。"
+
+**处理：** 资深工程师的真正痛点（AI 不知道复用什么）应在 Design Spec 解决。坚持分层，主动承诺在 Design Spec 写类名。
+
+### FM-009：保留英文状态枚举
+
+**错误推理：** "团队习惯用英文状态名（idle/capturing），保留更亲切。"
+
+**处理：** 英文枚举值是代码符号。Requirements 用中文业务术语（待激活/采集），在 Terminology 建立映射。Design Spec 可以用英文枚举名。
+
+### FM-010：算法常量名当行业标准
+
+**错误推理：** "TM_CCOEFF_NORMED 是行业标准，写进去 AI 更明确。"
+
+**处理：** 行业标准常量名是代码符号。用业务术语"归一化互相关"描述算法，常量名放 Design/Implementation。
+
+### FM-011：快捷键符号混淆
+
+**错误推理：** "快捷键符号 ⌘⇧V 是代码细节吗？"
+
+**处理：** 不是。快捷键是用户交互方式，属于业务需求，可以保留。但 `kVK_Command` 等键码常量是代码符号，禁止。
+
+### FM-012：特殊情况例外
+
+**错误推理：** "这个情况不同，因为是……"
+
+**处理：** 规则无例外。如果你认为情况特殊，用 AskUserQuestion 提出，由用户决定。
+
+### FM-013：精神 vs 字面
+
+**错误推理：** "我遵循的是精神而非字面。"
+
+**处理：** 违反规则的字面意思就是违反规则的精神。
 
 ## 常见错误
 
@@ -212,7 +309,7 @@ digraph doc_layers {
 - **Design Spec**：用 dd-writing-design-specs，允许接口签名、类图、伪代码
 - **Implementation**：允许完整代码示例，但明确标注"推荐实现，非约束"
 
-## 输出要求
+## 输出要求（P2）
 
 - 文件名：`01_Requirements.md`
 - 格式：Markdown，层级标题
@@ -222,6 +319,25 @@ digraph doc_layers {
 - 文末：版本记录列表
 - 中文标点（，。！？：；），英文术语保持原文
 - 不使用 emoji（除非用户明确要求）
+
+## Output Review（生成后自检扫描）
+
+生成 Requirements 后，自动执行以下扫描。发现任何匹配项，立即重新生成违规部分。**这一步比几十条 Rule 更有效——即使 AI 在写作时违规，自检扫描能兜底。**
+
+| 步骤 | 扫描模式 | 含义 | 发现时处理 |
+|------|---------|------|-----------|
+| 1 | CamelCase 词（首字母大写连写） | 类名/协议名/类型名 | 按 Rewrite Strategy 转换为业务术语 |
+| 2 | `xxx()`（含括号） | 方法/函数调用 | 转换为业务动作 |
+| 3 | `xxx.yyy`（含点号调用） | API 调用/枚举值 | 转换为业务描述 |
+| 4 | `protocol`/`func`/`class`/`struct`/`enum` 关键字 | 代码定义 | 删除，改用业务描述 |
+| 5 | `.ocr`/`.template`/`.coreML` 等 `.小写` 开头 | 枚举值 | 转换为业务类别 |
+| 6 | `idle`/`capturing`/`recognizing` 等英文状态 | 英文枚举 | 转换为中文业务术语 |
+| 7 | `async let`/`TaskGroup`/`DispatchQueue`/`NSLock` | 并发原语 | 转换为"并行执行"等业务行为 |
+| 8 | `com.xxx.xxx` 配置键名格式 | 配置键名 | 转换为业务配置项名 |
+| 9 | `TM_`/`CV_`/`kCG` 等常量前缀 | 算法/框架常量 | 转换为业务术语 |
+| 10 | 加反引号的代码符号 `` `xxx` `` | 代码符号标记 | 检查内容，按 Rewrite Strategy 转换 |
+
+**执行原则：** 扫描发现违规时，不要"修补"，直接用 Rewrite Strategy 重写违规段落。修补容易留下痕迹，重写更彻底。
 
 ## 验证清单
 
