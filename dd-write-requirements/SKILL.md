@@ -9,7 +9,9 @@ description: Use when 编写 01_Requirements.md 需求文档，或在 AI Coding 
 
 **Requirements 只描述"系统应该是什么"（WHAT），绝不描述"系统怎么实现"（HOW）。**
 
-Requirements 是整个 AI Coding 项目的"产品合同"与"唯一真实需求来源"。它回答四个问题：要解决什么问题、最终必须达到什么效果、有哪些边界不能突破、哪些地方允许 AI 自主设计。即使后续架构、类名、设计模式全部重构，Requirements 基本不需要改。
+Requirements 是整个 AI Coding 项目的"产品合同"与"唯一真实需求来源（Single Source of Truth）"。它回答五个问题：为什么做、解决什么问题、用户看到什么、系统必须做到什么、成功标准是什么。即使后续架构、类名、设计模式全部重构，Requirements 基本不需要改。
+
+**Requirements 写的是"必须发生什么（Must happen）"，不关心"由谁负责"。** 例如"识别结束后必须清空展示层"是 Requirements；"识别模块负责触发清空"是 Design。
 
 **违反规则的字面意思就是违反规则的精神。**
 
@@ -71,19 +73,35 @@ skill 保持通用性，不固化任何项目特定规则。项目规则由 docs
 ## 核心原则：WHAT 不是 HOW
 
 ```dot
-digraph what_vs_how {
+digraph four_layers {
     rankdir=LR;
     node [shape=box];
-    "Requirements\n(WHAT)" -> "Design Spec\n(WHY/HOW 结构)" -> "Implementation\n(HOW 具体代码)";
-    "Requirements\n(WHAT)" [shape=box, style=filled, fillcolor=lightblue];
+    "Requirements\n(WHAT, 无代码)" -> "Design\n(模块边界/数据流/状态模型)" -> "Implementation Plan\n(接口/类/目录)" -> "Code\n(具体实现)";
+    "Requirements\n(WHAT, 无代码)" [shape=box, style=filled, fillcolor=lightblue];
 }
 ```
 
-| 层次 | 回答 | 是否写代码 | AI 是否遵守 |
-|------|------|-----------|-----------|
-| Requirements | 做什么 | ❌ 绝不 | ✅ 必须遵守 |
-| Design Spec | 为什么这样设计 | ⚠️ 仅伪代码/流程图/接口签名 | ✅ 必须遵守 |
-| Implementation | 怎么实现 | ✅ 可写代码 | ❌ 可参考可优化 |
+| 层级 | 内容 | 会不会随代码变化 | 是否写代码 | AI 是否遵守 |
+|------|------|----------------|-----------|-----------|
+| Requirements | 用户目标、业务规则、验收标准 | ❌ 基本不会 | ❌ 绝不 | ✅ 必须遵守 |
+| Design | 系统职责、模块边界、数据流、状态模型 | ⚠️ 偶尔调整 | ❌ 不写代码符号 | ✅ 必须遵守 |
+| Implementation Plan | 接口、类、目录、迁移方案 | ✅ 经常变化 | ✅ 可写接口签名/类定义 | ❌ 可参考可优化 |
+| Code | 具体实现 | ✅ 一直变化 | ✅ 完整代码 | ❌ 可参考可优化 |
+
+**关键区分：** Design 写"模块职责、边界、协作"，Implementation Plan 写"接口签名、类定义、目录结构"。接口签名属于 Implementation Plan，不属于 Design。
+
+## 判断方法：换实现方式测试
+
+写完一句话后，问自己：
+
+> **如果未来换一种实现方式（换语言、换框架、换类名），这句话还成立吗？**
+
+- **仍然成立** → 属于 Requirements 或 Design（视"Must happen vs Who is responsible"而定）
+- **会失效** → 属于 Implementation Plan 或 Code，不写入 Requirements
+
+**示例：**
+- "Overlay 必须支持更新" — 换 Swift/Qt/Flutter 都成立 → Requirements
+- "OverlayProvider 提供 render()" — 不用 Provider 或不用 render() 就废了 → Implementation Plan，不写入 Requirements
 
 ## 禁止清单（P0 铁律）
 
@@ -332,15 +350,16 @@ Constraints-1：模板匹配置信度阈值默认 0.8，支持运行时修改即
 digraph doc_layers {
     rankdir=LR;
     node [shape=box];
-    "01_Requirements.md\n(WHAT, 无代码)" -> "02_Architecture.md\n(WHY, 伪代码/流程图)";
-    "02_Architecture.md" -> "03_Design.md\n(接口签名/类图)";
-    "03_Design.md" -> "04_Implementation.md\n(代码示例/实现约束)";
+    "01_Requirements.md\n(WHAT, 无代码)" -> "02_Design.md\n(模块边界/数据流/状态模型)";
+    "02_Design.md" -> "03_Implementation.md\n(接口签名/类定义/目录)";
+    "03_Implementation.md" -> "04_Code.md\n(具体实现)";
 }
 ```
 
-- **Requirements**：本 skill，纯业务，无代码
-- **Design Spec**：用 dd-writing-design-specs，允许接口签名、类图、伪代码
-- **Implementation**：允许完整代码示例，但明确标注"推荐实现，非约束"
+- **Requirements**：本 skill，纯业务，无代码，产品合同（Single Source of Truth）
+- **Design**：用 dd-write-design，架构契约，模块边界/数据流/状态模型，无代码符号
+- **Implementation Plan**：允许接口签名、类定义、目录结构、迁移方案
+- **Code**：完整实现，明确标注"推荐实现，非约束"
 
 ## 输出要求（P2）
 
