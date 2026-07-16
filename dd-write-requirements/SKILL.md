@@ -35,6 +35,39 @@ Requirements 是整个 AI Coding 项目的"产品合同"与"唯一真实需求�
 
 **不适用：** bug 修复（用 dd-bug-fix-workflow）、设计规范（用 dd-writing-design-specs）、实现指南、纯文档修改
 
+## 项目规则优先（强制首步）
+
+写 Requirements 前，**必须先读取项目的 docs.md**。docs.md 的规则优先于 skill 的默认规则。这与 dd-writing-design-specs 步骤 0 的机制一致。
+
+### 读取路径（按存在情况尝试）
+
+```bash
+test -f .trae/rules/docs.md && cat .trae/rules/docs.md
+test -f docs/docs.md && cat docs/docs.md
+test -f docs.md && cat docs.md
+```
+
+### 从 docs.md 提取并记录
+
+1. **文档存放路径**（如 `docs/planning/P{n}/F{m}/`）
+2. **文件命名规则**（如 `01_Requirements.md` 或 `F{N}_{功能名}_需求文档.md`）
+3. **文档头部格式**（如 `> 最后更新：YYYY-MM-DD | 版本：vX.Y`）
+4. **标点符号规则**（中文标点/英文术语保持原文）
+5. **mermaid/流程图规则**（格式兼容版本、是否允许中文标点）
+6. **同步更新规则**（修改 Requirements 时是否需要同步更新其他文档）
+7. **编写顺序**（Requirements 在整个文档体系中的位置）
+
+### 处理规则
+
+- **docs.md 存在** → docs.md 规则优先于 skill 默认规则（路径/命名/头部格式等）
+- **docs.md 不存在** → 用 skill 默认规则
+- **docs.md 规则与 skill P0 冲突时** → P0 优先（不写代码符号是铁律），用 AskUserQuestion 提出冲突
+- **docs.md 规则与 skill P1/P2 冲突时** → docs.md 优先（项目约定 > 通用建议）
+
+### 注意
+
+skill 保持通用性，不固化任何项目特定规则。项目规则由 docs.md 动态提供，skill 只提供默认规则与读取机制。
+
 ## 核心原则：WHAT 不是 HOW
 
 ```dot
