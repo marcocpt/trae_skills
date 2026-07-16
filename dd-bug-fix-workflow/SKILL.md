@@ -48,8 +48,38 @@ digraph bug_fix_workflow {
 
 - **状态文件**：`$(git rev-parse --git-dir)/bug-fix-state.json`
 - **写入**：步骤 1（工作树创建/验证成功后）
-- **更新 `current_step`**：每完成一个步骤
-- **删除**：步骤 7 清理工作树前（须在离开 worktree 前执行）
+- **更新 `current_step`**：**每个步骤出口判定成功后必须立即更新**（步骤 0/1/2/3/4/5/6 均强制更新；步骤 7.1 在 `git merge` 成功后更新 `current_step=7.2`，再删除状态文件）
+- **删除**：步骤 7 合并成功后（须在 `git merge --no-ff` 成功后执行，禁止合并前删除）
+
+### 强制更新规则（HARD-GATE）
+
+每个步骤的「出口判定」章节必须包含更新状态文件的要求。智能体若发现状态文件 `current_step` 与实际进度不符，必须先更新再继续下一步，不得跳过。
+
+更新模板（在每个步骤出口执行）：
+
+```bash
+git_dir=$(git rev-parse --git-dir)
+python3 -c "
+import json
+state_file = '$git_dir/bug-fix-state.json'
+with open(state_file) as f:
+    state = json.load(f)
+state['current_step'] = '<新步骤号或子步骤>'
+with open(state_file, 'w') as f:
+    json.dump(state, f, indent=2)
+"
+```
+
+### 状态文件不存在时的恢复策略
+
+会话恢复时若状态文件不存在，**禁止默认从步骤 0 重启**。必须先按以下顺序判断：
+
+1. 检查当前目录是否在 worktree 中（`git rev-parse --is-inside-work-tree`）
+2. 获取当前分支名（`git rev-parse --abbrev-ref HEAD`）
+3. 若分支名匹配 `fix/F<N>-<描述>` 格式，对比 `git log origin/<BASE_BRANCH>..HEAD` 判断是否有已提交的修复
+4. 若已有修复 commit：识别为「步骤 7.1 合并中」状态，询问用户是否继续合并或开新一轮
+5. 若无修复 commit：识别为「步骤 2 TDD 中」状态，询问用户是否继续修复或重新开始
+6. 仅当无法判断进度时，才从步骤 0 重新开始
 
 > **通用规则**：结构化询问、null 输入重问遵循 [dd-shared-ask](../dd-shared-ask/SKILL.md)。
 
@@ -109,6 +139,8 @@ ls -t "$(pwd)/logs/" 2>/dev/null | head -5
 
 - 用户选"新建" → 步骤 1 走完整创建流程
 - 用户选"当前 worktree" → 步骤 1 仅做验证
+
+> **状态文件更新**：步骤 0 完成后无需更新（状态文件尚未创建，将在步骤 1 创建后写入 `current_step=1`）。
 
 ---
 
@@ -315,6 +347,8 @@ CI 相关红线（跳过基线测试、未 push 降级本地、CI 不可用宽�
 - 成功（XCTest 绿灯 + 重构完成，XCUITest 验证延迟到步骤 3.2.5）→ 进入步骤 3
 - 失败（3 次以上修复无效）→ AskUserQuestion（见 2.3）
 
+> **状态文件更新（HARD-GATE）**：进入步骤 3 前**必须**更新 `bug-fix-state.json` 的 `current_step="3"`。使用「上下文恢复机制」章节的更新模板。会话压缩后智能体凭此字段判断已进入步骤 3，避免从步骤 2 重复 TDD。
+
 ---
 
 ## 步骤 3：代码同步
@@ -453,6 +487,8 @@ bash "$HOME/.trae-cn/skills/shared/scripts/sync-ai-test-worktree.sh" "$FIX_BRANC
 
 选择不同步 → 直接进入步骤 4
 
+> **状态文件更新（HARD-GATE）**：进入步骤 4 前**必须**更新 `bug-fix-state.json` 的 `current_step="4"`。会话压缩后智能体凭此字段判断已进入「确认是否继续」询问，避免从步骤 1 重新验证 worktree。
+
 ---
 
 ## 步骤 4：确认是否继续
@@ -465,9 +501,11 @@ bash "$HOME/.trae-cn/skills/shared/scripts/sync-ai-test-worktree.sh" "$FIX_BRANC
 - 选项 3：回到步骤 2 重新 TDD 调试修复（在同一工作树中继续）
 
 **分支处理**：
-- 选"继续" → 进入步骤 5
-- 选"回到步骤 1" → 跳转到步骤 1 重新执行，后续步骤顺序推进
-- 选"回到步骤 2" → 跳转到步骤 2 重新执行，在同一工作树中继续，后续步骤顺序推进
+- 选"继续" → 更新 `current_step="5"`，进入步骤 5
+- 选"回到步骤 1" → 更新 `current_step="1"`，跳转到步骤 1 重新执行，后续步骤顺序推进
+- 选"回到步骤 2" → 更新 `current_step="2"`，跳转到步骤 2 重新执行，在同一工作树中继续，后续步骤顺序推进
+
+> **状态文件更新（HARD-GATE）**：用户选择后**必须**立即更新 `bug-fix-state.json` 的 `current_step`。会话压缩后智能体凭此字段判断当前所处步骤，避免重复询问或跳步。
 
 ---
 
@@ -621,6 +659,8 @@ git log --oneline "$BASE_BRANCH"..HEAD
   - 选项 2：跳过继续进入步骤 6
   - 选项 3：停止工作流
 
+> **状态文件更新（HARD-GATE）**：进入步骤 6 前**必须**更新 `bug-fix-state.json` 的 `current_step="6"`。会话压缩后智能体凭此字段判断文档检查已完成，避免从步骤 5 重复子代理分析。
+
 ---
 
 ## 步骤 6：Lint 与 Push
@@ -702,6 +742,8 @@ bash "$HOME/.trae-cn/skills/shared/scripts/sync-ai-test-worktree.sh" "$FIX_BRANC
 
 选择不同步 → 直接进入步骤 7
 
+> **状态文件更新（HARD-GATE）**：进入步骤 7 前**必须**更新 `bug-fix-state.json` 的 `current_step="7"`。会话压缩后智能体凭此字段判断 lint+push 已完成，避免从步骤 6 重复 lint。
+
 ---
 
 ## 步骤 7：合并清理
@@ -714,7 +756,24 @@ bash "$HOME/.trae-cn/skills/shared/scripts/sync-ai-test-worktree.sh" "$FIX_BRANC
 
 ### 7.1 选"合并到原分支"
 
-**先删除状态文件**（在离开工作树前，遵循 [dd-shared-state](../dd-shared-state/SKILL.md) 删除模板，参数 `WORKFLOW_TYPE=bug-fix`）。
+**先更新状态文件标记"合并中"**（HARD-GATE，在离开 worktree 前执行）：
+
+```bash
+# 在 worktree 路径下执行（git-dir 指向 worktree 私有目录）
+git_dir=$(git rev-parse --git-dir)
+python3 -c "
+import json
+state_file = '$git_dir/bug-fix-state.json'
+with open(state_file) as f:
+    state = json.load(f)
+state['current_step'] = '7.1-merging'
+state['merge_in_progress'] = True
+with open(state_file, 'w') as f:
+    json.dump(state, f, indent=2)
+"
+```
+
+此标记确保会话压缩在 `git merge` 执行过程中发生时，智能体能识别"合并中"状态而非误判为"全新开始"。
 
 ```bash
 # 以下命令必须在主仓库路径执行，不在修复 worktree 内执行
@@ -724,6 +783,17 @@ cd "$main_root"
 git checkout "$BASE_BRANCH"
 git merge --no-ff <工作树分支>
 ```
+
+**合并成功后删除状态文件**（HARD-GATE，`git merge` 必须成功才删除）：
+
+```bash
+# 回到 worktree 路径执行删除（worktree 私有 git-dir 才能找到状态文件）
+cd "$WORKTREE_PATH"
+git_dir=$(git rev-parse --git-dir)
+rm -f "$git_dir/bug-fix-state.json"
+```
+
+> **禁止**：在 `git merge` 执行前删除状态文件。删除时机必须在 merge 成功之后，确保会话压缩在 merge 执行期间发生时仍能通过状态文件 `merge_in_progress=true` 字段恢复。
 
 **合并后全量回归验证（CI 优先）**：合并产生新的 commit，必须验证合并后代码在 CI 中通过。
 
@@ -745,6 +815,7 @@ CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 4（合并后 CI
 ### 7.3 选"还有其他问题"
 
 - 接收用户提出的新问题描述
+- **更新状态文件 `current_step="0"`**（HARD-GATE，标识新一轮开始，避免恢复时误以为还在步骤 7）
 - **重新从步骤 0 开始**（需求确认 → 创建工作树 → TDD 调试修复 → ...）
 - **每轮问题不再新建独立工作树**，除非明确要求（在当前工作树中继续）
 - 工作流循环执行
@@ -752,19 +823,23 @@ CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 4（合并后 CI
 ### 7.4 选"暂不处理，保留工作树"
 
 - 不合并、不清理
+- **更新状态文件 `current_step="7.4-paused"`**（HARD-GATE，标识工作流暂停但未结束，便于后续恢复）
 - 工作流结束，工作树保留供后续继续
 
 ### 7.5 中途中断处理
 
 用户在任何步骤中断本工作流 → **AskUserQuestion**：
 - 选项 1（推荐）：保留工作树（便于后续继续）
+  - **更新状态文件 `current_step="<当前步骤>-interrupted"`** 记录中断位置
+  - 不删除状态文件，便于后续恢复
 - 选项 2：立即清理工作树
+  - 删除状态文件 + 删除工作树目录
 
 ### 7.6 步骤 0 选"当前 worktree"时的特殊处理
 
-- 选"合并" → 执行 merge --no-ff（merge-only，禁止 rebase）
-- 选"不合并"/"暂不处理" → **不删除工作树**（因工作树非本流程创建）
-- 选"还有其他问题" → 在当前工作树继续新一轮
+- 选"合并" → 执行 merge --no-ff（merge-only，禁止 rebase），按 7.1 流程更新 `current_step="7.1-merging"` 后再 merge，merge 成功后删除状态文件
+- 选"不合并"/"暂不处理" → **不删除工作树**（因工作树非本流程创建），但需更新状态文件 `current_step` 反映用户选择
+- 选"还有其他问题" → 在当前工作树继续新一轮，更新 `current_step="0"`
 
 ---
 
@@ -801,7 +876,31 @@ CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 4（合并后 CI
 - **跳过步骤 3.2.5 提交后全量回归验证**
 - **使用 git rebase 同步上游或合并分支**（遵循 dd-ai-git-workflow merge-only 原则，禁止 rebase）
 - **在 fix 分支夹带公共文件修改**（公共文件必须开独立分支，加 PublicFile tag）
+- **状态文件 `current_step` 未更新就进入下一步**（每个步骤出口判定成功后必须立即更新，会话压缩后智能体凭此恢复进度）
+- **状态文件不存在时默认从步骤 0 重启**（必须先按「状态文件不存在时的恢复策略」检查 git log 判断进度）
+- **在 `git merge` 执行前删除状态文件**（步骤 7.1 删除时机必须在 merge 成功之后，避免合并中会话压缩导致失忆）
 
 > **CI 相关红线**（分支未 push 降级本地、CI 触发失败降级本地、合并后跳过 CI、"本地合并"作为跳过 CI 理由）遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 红线章节。CI 合理化借口表见 dd-shared-ci。
 
+### 状态文件更新的合理化借口表
+
+| 借口 | 现实 |
+|------|------|
+| "状态文件已经在步骤 1 写过了，不用每步更新" | 步骤 1 写入后 `current_step` 永远停在 1，会话压缩后智能体误以为还在步骤 1 |
+| "会话不会压缩，更新状态文件浪费时间" | 会话压缩不可预测，每次节省 30 秒的写入，失败时浪费整轮 TDD 时间（数十分钟） |
+| "状态文件丢失也没关系，git log 能查" | git log 能查 commit，但查不到「正在步骤 4 等用户确认」这类非提交状态 |
+| "步骤 7.1 删除状态文件后再合并也一样" | merge 执行中会话压缩会让智能体误以为全新开始，重新走完整 TDD 流程 |
+| "状态文件不存在 = 全新开始" | 可能是合并中失忆，必须按「状态文件不存在时的恢复策略」检查 git log 判断是否已有修复 commit |
+| "更新状态文件失败也无所谓" | 失败必须报错并停止，否则会话压缩后无法恢复。重试 1 次仍失败则 AskUserQuestion |
+| "步骤 2 是 TDD 循环没有固定出口" | 步骤 2.6 出口判定是固定出口，XCTest 绿灯后必须更新 `current_step="3"` |
+
 **以上所有都意味着：回到违规步骤重新执行。**
+
+---
+
+## 版本记录
+
+| 版本 | 日期 | 变更 |
+|------|------|------|
+| v1.1 | 2026-07-16 | 修复状态文件管理漏洞：(1) 每个步骤出口判定处新增 `current_step` 更新要求（步骤 0/2/3/4/5/6 出口）；(2) 步骤 7.1 删除时机从「merge 前」改为「merge 成功后」，merge 前先更新 `current_step="7.1-merging"` + `merge_in_progress=true`；(3) 新增「状态文件不存在时的恢复策略」，禁止默认从步骤 0 重启，必须先检查 git log 判断是否已有修复 commit；(4) 步骤 7.3/7.4/7.5/7.6 补充状态文件更新要求；(5) 红线章节新增 3 条状态文件相关红线 + 合理化借口表。修复背景：2026-07-16 真实场景中，会话压缩在步骤 7.1 状态文件已删除但 merge 未执行时发生，智能体误判为全新开始，浪费整轮 TDD 调查。 |
+| v1.0 | 2026-07-15 | 初始版本，建立 8 步严格顺序 bug 修复工作流 |

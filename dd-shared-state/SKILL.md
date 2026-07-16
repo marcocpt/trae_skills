@@ -90,9 +90,10 @@ fi
 ## 写入时机
 
 - **写入**：工作树创建/验证成功后（bug-fix 步骤 1，feature-dev 步骤 1）
-- **更新 `current_step`**：每完成一个步骤，更新此字段
+- **更新 `current_step`**：**每个步骤出口判定成功后必须立即更新**（HARD-GATE）。仅步骤 1 写入一次是不够的，会话压缩后智能体凭此字段恢复进度，停在 1 会让智能体误以为还在步骤 1。
 - **更新 `current_phase`**（仅 feature-development）：每完成一个子计划，更新此字段
-- **删除**：合并清理前（bug-fix 步骤 7，feature-dev 步骤 9），**须在离开 worktree 前执行**，此时 `git-dir` 指向 worktree 私有目录
+- **更新 `merge_in_progress`**：合并操作执行前设置为 `true`，merge 成功后清除或直接删除状态文件
+- **删除**：合并成功后（**禁止 merge 前删除**），须在 `git merge --no-ff` 成功后执行，此时 `git-dir` 指向 worktree 私有目录
 
 ### 写入模板
 
@@ -115,7 +116,62 @@ EOF
 
 feature-development 工作流需追加特有字段（feature_name、spec_path、plan_dir 等）。
 
-### 删除模板
+### 更新 `current_step` 模板（每个步骤出口执行）
+
+```bash
+git_dir=$(git rev-parse --git-dir)
+python3 -c "
+import json
+state_file = '$git_dir/${WORKFLOW_TYPE}-state.json'
+with open(state_file) as f:
+    state = json.load(f)
+state['current_step'] = '<新步骤号或子步骤>'
+with open(state_file, 'w') as f:
+    json.dump(state, f, indent=2)
+"
+```
+
+### 合并中状态标记（仅 bug-fix 步骤 7.1 / feature-dev 合并步骤）
+
+执行 `git merge` 前必须先标记合并中状态，merge 成功后才删除状态文件：
+
+```bash
+# 1. merge 前更新状态文件
+git_dir=$(git rev-parse --git-dir)
+python3 -c "
+import json
+state_file = '$git_dir/${WORKFLOW_TYPE}-state.json'
+with open(state_file) as f:
+    state = json.load(f)
+state['current_step'] = '<合并步骤>-merging'
+state['merge_in_progress'] = True
+with open(state_file, 'w') as f:
+    json.dump(state, f, indent=2)
+"
+
+# 2. 执行 git merge（在主仓库路径）
+cd "$main_root"
+git checkout "$BASE_BRANCH"
+git merge --no-ff <工作树分支>
+
+# 3. merge 成功后回到 worktree 删除状态文件
+cd "$WORKTREE_PATH"
+git_dir=$(git rev-parse --git-dir)
+rm -f "$git_dir/${WORKFLOW_TYPE}-state.json"
+```
+
+### 状态文件不存在时的恢复策略
+
+会话恢复时若状态文件不存在，**禁止默认从步骤 0 重启**。必须按以下顺序判断：
+
+1. 检查当前目录是否在 worktree 中（`git rev-parse --is-inside-work-tree`）
+2. 获取当前分支名（`git rev-parse --abbrev-ref HEAD`）
+3. 若分支名匹配 `fix/F<N>-<描述>` 或 `feature/<F编号>-<描述>` 格式，对比 `git log origin/<BASE_BRANCH>..HEAD` 判断是否有已提交的修复
+4. 若已有 commit：识别为「合并中」状态，询问用户是否继续合并或开新一轮
+5. 若无 commit：识别为「TDD 中」状态，询问用户是否继续修复或重新开始
+6. 仅当无法判断进度时，才从步骤 0 重新开始
+
+### 删除模板（merge 成功后执行）
 
 ```bash
 git_dir=$(git rev-parse --git-dir)
