@@ -1,6 +1,6 @@
 ---
 name: dd-shared-ask
-description: 当需要结构化询问用户、处理 null 输入重问、确认提交边界、询问工作环境（worktree 选择）时使用（被 dd-ai-refactor-workflow、dd-bug-fix-workflow、dd-feature-development-workflow、dd-docreview-grilling、dd-writing-design-specs、dd-later-tracking 等引用）。触发词：AskUserQuestion、null 重问、结构化询问、worktree 选择、新建工作树、当前 worktree。
+description: 当需要结构化询问用户、处理 null 输入重问、确认提交边界、询问工作环境（worktree 选择）时使用（被 dd-ai-refactor-workflow、dd-bug-fix-workflow、dd-feature-development-workflow、dd-docreview-grilling、dd-writing-specs、dd-later-tracking 等引用）。触发词：AskUserQuestion、null 重问、结构化询问、worktree 选择、新建工作树、当前 worktree。
 ---
 
 # dd 共享询问规则
@@ -47,7 +47,7 @@ description: 当需要结构化询问用户、处理 null 输入重问、确认�
 
 ## 文档规则优先
 
-项目存在 `.trae/rules/docs.md`、`docs/CODING_STANDARDS.md`、`docs/AI/trae-xctest-rules.md` 时，写设计规范、计划、检查前先阅读并遵守。
+项目存在 `.trae/rules/docs.md`、`docs/CODING_STANDARDS.md`、`docs/AI/trae-xctest-rules.md` 时，写规格文档套件、计划、检查前先阅读并遵守。
 
 ## 提交边界
 

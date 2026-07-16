@@ -11,7 +11,7 @@ description: 当需要三子代理并行检查时使用（被 dd-ai-refactor-wor
 
 ## 三子代理并行检查规则
 
-工作流中所有"检查"类步骤（设计规范审核 step 2.5、check-plan step 3.5、check-code step 4.4、文档检查 step 7.1）必须采用三子代理并行检查 + 汇总结果的模式，不得由单个子代理独断。
+工作流中所有"检查"类步骤（规格文档套件审核 step 2、check-plan step 3.5、check-code step 4.4、文档检查 step 7.1）必须采用三子代理并行检查 + 汇总结果的模式，不得由单个子代理独断。
 
 ### 调度方式：方向分工 + 关键项冗余
 

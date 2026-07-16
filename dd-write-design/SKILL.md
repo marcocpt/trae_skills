@@ -42,11 +42,11 @@ Design 是整个 AI Coding 项目的"架构契约"。它回答五个问题：有
 
 - 新功能、重大重构、API 迁移前，Requirements 完成后写 Design
 - 用户提到"设计文档"、"Design"、"02_Design"、"写设计"、"架构契约"
-- dd-writing-design-specs 工作流中"写 Design 内容"环节
+- dd-writing-specs 工作流中"写设计文档"环节（步骤 5a）
 - Design 中混入类名/协议名/方法签名等 Implementation 细节
 - 团队把含完整代码的设计文档当 Design 用
 
-**不适用：** Requirements 文档（用 dd-write-requirements）、Implementation Plan（写接口/类/目录）、Code 实现、bug 修复
+**不适用：** Requirements 文档（用 dd-write-requirements）、完整规格文档套件工作流（用 dd-writing-specs）、Implementation Plan（写接口/类/目录）、Code 实现、bug 修复
 
 ## 项目规则优先（强制首步）
 
@@ -130,7 +130,7 @@ Design 文档中**绝不**出现以下内容（属于 Implementation Plan / Code
 
 ## 必须包含的章节
 
-按项目模板优先；无模板时使用以下默认章节：
+按项目模板优先；无模板时使用以下默认 10 章节：
 
 1. **文档定位**：声明 Design 是架构契约，以 Requirements 为唯一需求来源，采用编号引用而非复制
 2. **模块划分**：用中文业务术语命名模块，含模块结构图（mermaid graph）
@@ -141,6 +141,9 @@ Design 文档中**绝不**出现以下内容（属于 Implementation Plan / Code
 7. **关键设计决策**：每条说明"决策 / 原因 / 代价 / 引用需求编号"
 8. **非功能约束落地**：NFR/Constraints 到模块的映射表，只指明"由哪个模块负责保证"
 9. **与 Requirements 的映射**：FR 到负责模块的对应表，确保全覆盖
+10. **风险和待确认问题**：识别架构层面的风险（模块耦合、状态机复杂度、并发协调、性能瓶颈等）和待确认的设计决策，每条说明"风险/问题 + 影响范围 + 缓解方案/待确认事项"
+
+> **注**：AC、测试策略、UI 可观测性矩阵、分阶段设计不属于 Design 章节——它们已迁移到测试用例表或实现规划。Design 只写架构契约。
 
 ## 写作规则（P1）
 
@@ -344,7 +347,7 @@ digraph doc_layers {
 - **Implementation Plan**：允许接口签名、类定义、目录结构、迁移方案
 - **Code**：完整实现
 
-**与 dd-writing-design-specs 的关系：** dd-writing-design-specs 是写设计规范的完整工作流（含 grill/3 子代理审查/git），本 skill 是其中"如何写 Design 内容"的聚焦规则。两者协作：用本 skill 写内容，用 dd-writing-design-specs 跑流程。
+**与 dd-writing-specs 的关系：** dd-writing-specs 是编写整套规格文档套件（需求文档+设计文档+视觉原型+测试用例表）的完整工作流（含 grill/3 子代理审查/git），本 skill 是其中"如何写设计文档内容"的聚焦规则。两者协作：dd-writing-specs 步骤 5a 调用本 skill 写设计文档内容，dd-writing-specs 负责跑完整流程（grill/审查/确认/提交）。独立写设计文档时可直接用本 skill；写完整规格文档套件时用 dd-writing-specs。
 
 ## 输出要求（P2）
 

@@ -1,19 +1,19 @@
 ---
 name: dd-feature-development-workflow
-description: 当实现新功能（设计规范优先的工作流）、UI 重的应用需要可见行为/截图/E2E/XCUITest/Playwright 证据或手动验收记录时使用；或当用户提到"新特性流程"或"feature development workflow"时使用。
+description: 当实现新功能（规格文档套件优先的工作流）、UI 重的应用需要可见行为/截图/E2E/XCUITest/Playwright 证据或手动验收记录时使用；或当用户提到"新特性流程"或"feature development workflow"时使用。
 ---
 
 # 新特性实现工作流
 
 ## 概述
 
-10 步严格顺序工作流：需求确认 → 创建工作树 → 设计规范 → 计划编写 → TDD 实现 → 代码同步(含提交) → 确认是否继续 → 文档检查 → Lint与Push → 合并清理。每步必须在前一步成功后才能继续。
+10 步严格顺序工作流：需求确认 → 创建工作树 → 规格文档套件 → 计划编写 → TDD 实现 → 代码同步(含提交) → 确认是否继续 → 文档检查 → Lint与Push → 合并清理。每步必须在前一步成功后才能继续。
 
 ## 何时使用
 
-- 所有设计驱动变更：新功能、大规模重构、API 迁移
-- 用户提到"新特性流程"、"feature development workflow"、"设计规范先行"、"分阶段计划"
-- 需要先写设计规范，再拆计划、审查计划、按子计划执行
+- 所有规格文档套件优先的设计驱动变更：新功能、大规模重构、API 迁移
+- 用户提到"新特性流程"、"feature development workflow"、"规格文档套件先行"、"分阶段计划"
+- 需要先写规格文档套件（需求文档+设计文档+视觉原型+测试用例表），再拆计划、审查计划、按子计划执行
 
 **不适用：** bug 修复、简单文本修改、纯文档修改、一次性小改动
 
@@ -24,8 +24,8 @@ digraph feature_development_workflow {
     rankdir=TB;
     node [shape=box];
     "0. 需求确认" -> "1. 创建工作树";
-    "1. 创建工作树" -> "2. 设计规范";
-    "2. 设计规范" -> "3. 计划编写" [label="确认后自动"];
+    "1. 创建工作树" -> "2. 规格文档套件";
+    "2. 规格文档套件" -> "3. 计划编写" [label="确认后自动"];
     "3. 计划编写" -> "4. TDD 实现" [label="自动"];
     "4. TDD 实现" -> "4.5 CI 回归验证" [label="提交后"];
     "4.5 CI 回归验证" -> "5. 代码同步";
@@ -33,7 +33,7 @@ digraph feature_development_workflow {
     "6. 确认是否继续" -> "7. 文档检查" [label="继续"];
     "6. 确认是否继续" -> "0. 需求确认" [label="回退到0", style=dashed];
     "6. 确认是否继续" -> "1. 创建工作树" [label="回退到1", style=dashed];
-    "6. 确认是否继续" -> "2. 设计规范" [label="回退到2", style=dashed];
+    "6. 确认是否继续" -> "2. 规格文档套件" [label="回退到2", style=dashed];
     "6. 确认是否继续" -> "3. 计划编写" [label="回退到3", style=dashed];
     "6. 确认是否继续" -> "4. TDD 实现" [label="回退到4", style=dashed];
     "6. 确认是否继续" -> "5. 代码同步" [label="回退到5", style=dashed];
@@ -53,7 +53,7 @@ digraph feature_development_workflow {
 状态持久化遵循 [dd-shared-state](../dd-shared-state/SKILL.md)，参数 `WORKFLOW_TYPE=feature-development`，`BRANCH_FIELD=feature_branch`。
 
 - **状态文件**：`$(git rev-parse --git-dir)/feature-development-state.json`
-- **特有字段**：feature_name、spec_path、review_path、test_case_path、plan_dir、current_phase、total_phases、commits
+- **特有字段**：feature_name、requirements_path、design_path、visual_path、test_case_path、review_path、plan_dir、current_phase、total_phases、commits
 - **写入**：步骤 1（工作树创建/验证成功后）
 - **更新 `current_step`**：**每个步骤出口判定成功后必须立即更新**（步骤 1/2/3/4/5/6/7/8 均强制更新；步骤 9.1 在 `git merge` 成功后更新 `current_step=9.2`，再删除状态文件）
 - **更新 `current_phase`**：每完成一个子计划
@@ -97,7 +97,7 @@ with open(state_file, 'w') as f:
 **通用规则**（结构化询问、null 输入重问、文档规则优先、提交边界）遵循 [dd-shared-ask](../dd-shared-ask/SKILL.md)。
 
 - **UI 可观测性优先**：UI 相关功能必须定义用户可见证据。内部状态、ViewModel、reducer、buffer、layer count 或日志只能作为辅助证据，不能单独证明 UI 已完成。
-- **提交确认**：步骤 2（设计规范）和步骤 5（代码同步）需用户确认后提交；步骤 3-4 按推荐路径自动提交，无需用户确认。提交失败必须修复后重试，不得跳过提交继续下一步。
+- **提交确认**：步骤 2（规格文档套件）和步骤 5（代码同步）需用户确认后提交；步骤 3-4 按推荐路径自动提交，无需用户确认。提交失败必须修复后重试，不得跳过提交继续下一步。**注**：步骤 2 的 git commit 由 dd-writing-specs 内部完成（每步即提交），本工作流步骤 2 的"用户确认"指工作流层面的最终确认（2.3），确认后更新状态文件进入步骤 3。
 - **没有设计不写代码**：步骤 4 之前禁止修改生产代码。若为验证设计临时探索，必须丢弃探索改动后回到当前步骤。
 
 ## 三子代理并行检查规则
@@ -135,7 +135,7 @@ UI 可观测性门禁遵循 [dd-shared-ui](../dd-shared-ui/SKILL.md)。
 7. **验收标准**：可测试的 AC 列表（场景+预期+验证方式，必须有 XCTest/XCUITest 或对应测试框架）。
 8. **阶段拆分**：按功能需求分成哪些 Phase，每个 Phase 的可交付结果是什么？
 9. **UI 证据**（涉及 UI 时）：哪些 AC 需要真实 UI 交互验证？用 E2E/XCUITest/Playwright、截图、日志 marker、手动录屏还是组合证据？
-10. **文档位置与编号**：按项目 `.trae/rules/docs.md` 规则，文档存放于 `docs/planning/P{n}/F{m}/`，需确认功能编号 `F{m}` 和优先级 `P{n}`；编写顺序为设计规范 → 视觉原型（涉及 UI 时）→ 测试用例表；涉及 docs/、功能设计或关键架构决策的 commit 必须在 `historys/` 写日志（`YYYY-MM-DD-修改摘要.md`）。若无项目规则，使用 `docs/superpowers/specs/` 和 `docs/superpowers/plans/`。
+10. **文档位置与编号**：按项目 `.trae/rules/docs.md` 规则，文档存放于 `docs/planning/P{n}/F{m}/`，需确认功能编号 `F{m}` 和优先级 `P{n}`；编写顺序为需求文档 → 设计文档 → 视觉原型（涉及 UI 时）→ 测试用例表；涉及 docs/、功能设计或关键架构决策的 commit 必须在 `historys/` 写日志（`YYYY-MM-DD-修改摘要.md`）。若无项目规则，使用 `docs/superpowers/specs/` 和 `docs/superpowers/plans/`。
 
 ### 0.3 出口判定
 
@@ -145,9 +145,27 @@ UI 可观测性门禁遵循 [dd-shared-ui](../dd-shared-ui/SKILL.md)。
 - 选项 2：需要补充细节
 - 选项 3：理解有误，重新描述
 
-确认正确 → 进入步骤 1。需要补充 → 继续质询。理解有误 → 重述需求，重新执行 0.2。
+确认正确 → 进入 0.4 写入需求摘要文件。需要补充 → 继续质询。理解有误 → 重述需求，重新执行 0.2。
 
-> **状态文件更新（HARD-GATE）**：步骤 0 尚无状态文件，确认正确后将在步骤 1.4 写入。无需在此更新。
+### 0.4 写入需求摘要文件并提交（供步骤 2 跳过判断复用）
+
+用户确认需求摘要后，将 0.2 收敛的 10 项内容（用户问题/目标/成功标准/范围/流程/数据接口/兼容/AC/阶段/UI 证据/文档位置）写入 `.feature-step0-requirements-summary.md`，存放于步骤 0.2 第 10 项确认的文档目录（如 `docs/planning/P{n}/F{m}/.feature-step0-requirements-summary.md`）。
+
+此文件供步骤 2 调用的 [dd-writing-specs](../dd-writing-specs/SKILL.md) 在步骤 1.0 跳过判断时复用——dd-writing-specs 检测到该文件存在则跳过 grill，直接复用本步骤确认的需求摘要。
+
+立即提交：
+
+```bash
+git add docs/planning/P{n}/F{m}/.feature-step0-requirements-summary.md
+git commit -m "docs(feature): record step 0 requirements summary for F{m}"
+```
+
+**禁止**：
+- 跳过本次提交直接进入步骤 1
+- 将该文件命名为其他名称（dd-writing-specs 步骤 1.0 按固定文件名检测）
+- 在该文件中写入技术方案（仅记录需求，不做设计）
+
+> **状态文件更新（HARD-GATE）**：步骤 0 尚无状态文件，确认正确后将在步骤 1.4 写入。无需在此更新。本步骤产出的 `.feature-step0-requirements-summary.md` 路径将在步骤 2 由 dd-writing-specs 复用，并在步骤 9 合并清理时由本工作流清理（dd-writing-specs 不清理此文件）。
 
 ---
 
@@ -168,7 +186,7 @@ UI 可观测性门禁遵循 [dd-shared-ui](../dd-shared-ui/SKILL.md)。
 
 **默认约束（无论用户选择哪个，选中工作环境后都必须遵守）：**
 
-- **仅参考当前 worktree**：设计规范、计划、TDD 实现和文档检查只能参考当前 worktree 上的文档和代码，不得引用主仓库或其他工作树的内容。前置读取（步骤 2.1）的规则文件也以当前 worktree 内的为准。
+- **仅参考当前 worktree**：规格文档套件、计划、TDD 实现和文档检查只能参考当前 worktree 上的文档和代码，不得引用主仓库或其他工作树的内容。前置读取（步骤 2.1 调用 dd-writing-specs 时的规则文件）也以当前 worktree 内的为准。
 - **不得中途切换 worktree**：选中工作环境后，后续所有工作都在该工作树中执行。
 
 违反以上约束视为红线行为，必须停止并回到本步骤重新执行。
@@ -302,160 +320,106 @@ git status  # 必须干净，有未提交变更需先处理
 
 ### 1.4 写入状态文件
 
-工作树创建/验证成功后，持久化关键状态供上下文恢复。遵循 [dd-shared-state](../dd-shared-state/SKILL.md) 写入模板，参数 `WORKFLOW_TYPE=feature-development`，`BRANCH_FIELD=feature_branch`，`current_step=1`。需追加 feature-development 特有字段：feature_name、spec_path、review_path、test_case_path、plan_dir、current_phase、total_phases、commits。
+工作树创建/验证成功后，持久化关键状态供上下文恢复。遵循 [dd-shared-state](../dd-shared-state/SKILL.md) 写入模板，参数 `WORKFLOW_TYPE=feature-development`，`BRANCH_FIELD=feature_branch`，`current_step=1`。需追加 feature-development 特有字段：feature_name、requirements_path、design_path、visual_path、test_case_path、review_path、plan_dir、current_phase、total_phases、commits。
 
 > **状态文件更新（HARD-GATE）**：本步骤是状态文件的**首次写入**点，必须确保 `current_step="1"` + `feature_branch=<分支名>` + `feature_name=<特性名>` 正确写入。后续每个步骤出口判定都需更新 `current_step`。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
 
 ---
 
-## 步骤 2：设计规范
+## 步骤 2：规格文档套件
 
-### 2.1 前置读取
+**通过子代理调用 [dd-writing-specs](../dd-writing-specs/SKILL.md) 完成整套规格文档**：规格文档套件包含 4 篇文档（需求文档+设计文档+视觉原型+测试用例表），由 dd-writing-specs 工作流完整负责"读规则 → grill（含跳过判断）→ 写需求文档 → 3 子代理审 → 确认 → 逐份完成设计文档/视觉原型/测试用例表"全流程。直接在主线程编写会消耗大量 context，调度子代理执行。
 
-**约束**：设计规范只能参考当前 worktree 上的文档和代码，不得引用主仓库或其他工作树的内容。用户未明确说明时，以此约束为准。
+### 2.1 调用 dd-writing-specs
 
-按项目存在情况读取：
+调度子代理，**子代理执行时调用 [dd-writing-specs](../dd-writing-specs/SKILL.md) skill**。传入以下上下文：
+
+- 步骤 0.4 写入的 `.feature-step0-requirements-summary.md` 路径（供 dd-writing-specs 步骤 1.0 跳过判断复用，跳过重复 grill）
+- 步骤 0.2 第 10 项确认的文档目录路径（如 `docs/planning/P{n}/F{m}/`）
+- 步骤 0.2 第 10 项确认的功能编号 `F{m}` 和优先级 `P{n}`
+- 当前 worktree 路径（dd-writing-specs 工作环境询问的特例：被上游调用时不询问，工作环境已由本工作流步骤 1 确定）
+
+**dd-writing-specs 内部完整流程**（由子代理执行，主线程不干预）：
+
+1. 步骤 0：读项目 docs.md + app 功能列表 + 既有规格文档，提取 10 项规则
+2. 步骤 1：grill 拷问（含跳过判断——检测到 `.feature-step0-requirements-summary.md` 存在则跳过 grill，复用上游需求摘要并核对一致性）
+3. 步骤 2：写需求文档（子代理调用 dd-write-requirements，12 章节，P0 铁律）
+4. 步骤 3：3 子代理并行审查需求文档（审查员 A 完整性+一致性+docs.md+P0 铁律；B 可设计性+范围+YAGNI；C 可验证性+UI 可观测性）
+5. 步骤 4：合并总结 + 一次一问确认需求文档
+6. 步骤 5：逐份完成设计文档（调 dd-write-design 10 章节）→ 视觉原型（涉及 UI 时）→ 测试用例表，每篇走"写 → 3 子代理审 → 合并 → 一次一问确认 → 提交"完整流程
+7. 工作流结束：清理 dd-writing-specs 步骤 0、1 的临时笔记文件（`.step0-rules-summary.md` / `.step1-requirements-summary.md` / `.step1-requirements-confirmed.md`），**不清理** `.feature-step0-requirements-summary.md`（该文件归本工作流清理）
+
+**dd-writing-specs 内部每步即提交**：每个步骤产出可保存的工件后，dd-writing-specs 立即 `git add` + `git commit`。所有 4 篇文档及审查结果在 dd-writing-specs 工作流结束时均已提交到 git 历史。
+
+### 2.2 接收产物路径
+
+dd-writing-specs 子代理返回后，主线程接收以下产物路径（由 dd-writing-specs 在工作流结束时输出）：
+
+- `requirements_path`：需求文档路径（`F{N}_{功能名}_需求文档.md`）
+- `design_path`：设计文档路径（`F{N}_{功能名}_设计文档.md`）
+- `visual_path`：视觉原型路径（`F{N}_{功能名}_视觉原型.html`，涉及 UI 时；不涉及时为空）
+- `test_case_path`：测试用例表路径（`F{N}_{功能名}_测试用例表.md`）
+- `review_path`：审查结果路径（`<feature-name>_需求文档_审查结果.md` 及各文档的审查结果与合并总结）
+
+**验证产物已提交**：
 
 ```bash
-test -f .trae/rules/docs.md && cat .trae/rules/docs.md
-test -f docs/CODING_STANDARDS.md && cat docs/CODING_STANDARDS.md
-test -f docs/AI/trae-xctest-rules.md && cat docs/AI/trae-xctest-rules.md
+# 验证 4 篇文档均已提交到 git 历史
+git log --oneline -10
+git status --short  # 应为干净状态（无未提交变更）
 ```
 
-如规则文件很长，必须完整阅读与设计规范、验收标准、测试和回归相关的章节。
+若发现未提交的文档文件 → 返回 2.1 重新调度子代理补提交（dd-writing-specs 红线：任一步骤未提交就进入下一步是违规）。
 
-### 2.2 设计规范
+### 2.3 用户确认
 
-**通过子代理编写**：设计规范是全文最长文档，直接在主线程编写会消耗大量 context。调度子代理，传入步骤 0 的需求摘要、步骤 2.1 读取的规则文件和以下章节要求，由子代理生成设计规范文件。
+展示规格文档套件路径、审查结论和修改摘要，询问用户最终确认：
 
-按项目模板优先；无模板时按 `.trae/rules/docs.md` 规定的格式编写。设计规范文件命名：`F{N}_{功能名}_设计规范.md`。
-
-必须包含以下章节：
-
-1. **背景与目标**：做什么
-2. **非目标**：明确不做什么
-3. **用户流程和交互入口**（mermaid）
-4. **行为规则和状态机**
-5. **数据模型、接口、配置、持久化影响**
-6. **兼容性、迁移和回滚策略**
-7. **可观测性**：日志、埋点、调试开关
-8. **验收标准 AC**：每条必须可验证（场景+预期+验证方式，必须有 XCTest/XCUITest 或对应测试框架）
-9. **测试策略**：单元、集成、UI、回归范围
-10. **UI 可观测性矩阵**（涉及 UI 时）：每个 UI AC 对应真实入口、操作路径、可见结果、证据类型、自动化可行性、手动验收步骤和剩余风险
-11. **分阶段设计**：Phase 0..N，每个 Phase 有目标、范围、交付物、验证方式
-12. **风险和待确认问题**
-
-文档头部必须包含：`> 最后更新：YYYY-MM-DD | 版本：vX.Y`
-
-每次修改同步更新版本号和最后更新日期，最后添加列表格式版本记录。
-
-### 2.3 视觉原型（涉及 UI 时）
-
-**仅当特性涉及 UI 时执行**，不涉及 UI 时跳过本子步。
-
-- 文件命名：`F{N}_{功能名}_视觉原型.html`
-- 浏览器直接打开
-- 编写时调用 `brainstorming` skill 的视觉原型辅助（如当前环境不可用，使用同等方式生成）
-- 页面头部显示最后更新时间与版本信息
-
-涉及 UI 行为变化时，必须同步更新视觉原型。
-
-### 2.4 测试用例表
-
-**通过子代理生成**：需读取已有测试代码并生成矩阵，token 量大。调度子代理，传入设计规范路径和项目代码路径，由子代理生成测试用例表。
-
-基于设计规范验收标准按功能分类生成测试用例矩阵。
-
-- 文件命名：`F{N}_{功能名}_测试用例表.md`
-- 对照代码中已有测试标注覆盖状态（✅ COVERED / 🟡 PARTIAL / ❌ MISSING / ⏸️ DEFERRED）
-- 文档头部版本号须注明对应的设计规范版本：`> 最后更新：YYYY-MM-DD | 版本：vX.Y（基于设计规范 vA.B）`
-
-修改设计规范中的目标、范围、流程、接口、验收标准时，必须同步更新测试用例表。
-
-### 2.5 三子代理并行审核 + 自动修复
-
-按"三子代理并行检查规则"调度 3 个独立子代理并行审核设计规范。3 个子代理使用相同的输入文件（设计规范、视觉原型、测试用例表），但按统一方向框架分工：
-
-| 子代理 | 方向 | 负责的检查项 |
-|--------|------|------------|
-| **A - 覆盖与范围** | 该有的有没有、范围对不对 | 完整性、范围、YAGNI |
-| **B - 一致与正确** | 互相矛盾吗、能拆任务吗 | 一致性、可计划性 |
-| **C - 可验证与可观测** | 能验证吗、UI 有真实证据吗 | 可验证性 |
-| **3 代理必检** | UI 最高风险项，所有代理都查 | UI 可观测性（是否把内部状态误当成 UI 已验证） |
-
-审核检查项明细：
-
-| 类别 | 检查要点 | 方向 |
-|------|----------|------|
-| 完整性 | TODO、TBD、占位符、不完整章节 | A |
-| 一致性 | 需求、AC、Phase、测试策略是否互相冲突 | B |
-| 可计划性 | 是否足够具体，能被拆成任务 | B |
-| 范围 | 是否混入多个独立特性，是否需要拆成多个规格 | A |
-| YAGNI | 是否加入未请求功能或过度设计 | A |
-| 可验证性 | 每个 AC 和 Phase 是否有明确验证方式 | C |
-| UI 可观测性 | UI AC 是否有用户可见证据，是否把内部状态误当成 UI 已验证 | **必检** |
-
-**校准标准**：只标记会在计划编写阶段造成实际问题的事项。缺失的章节、矛盾之处、模糊到可能被两种不同方式理解的需求才是问题。措辞小改进、风格偏好不是。
-
-#### 汇总与处理审核结果
-
-3 个子代理全部返回后，主线程按"三子代理并行检查规则"汇总（方向专属发现直接合并 + UI 必检项 3 票冗余 + 冲突取最严格 → 分类输出）：
-
-- **3 个子代理均通过且无问题**（方向专属 + UI 必检均无发现）→ 记录审核通过
-- **「必须修复」类** → 自动采纳并修复规范，无需 ASK；修复后**重新调度 3 个子代理并行审核**，确保修改未引入新问题
-- **「建议修复」/「可选优化」类** → 仅当涉及重大架构变化、产品功能变化或改动影响很大时，用 `AskUserQuestion` 逐条确认；否则自动跳过并记录到评审摘要
-- **达到 3 次重试上限** → `AskUserQuestion` 升级处理：继续重试 / 跳过该问题 / 停止工作流回退到上一步
-
-设计评审摘要（含各方向代理的关键发现、UI 必检项投票结果和最终汇总结论）保存到设计规范同目录的 `<feature-name>_设计评审摘要.md`。
-
-### 2.6 用户确认
-
-展示设计规范路径、视觉原型路径（如有）、测试用例表路径、审核结论和修改摘要，询问用户确认：
-
-- 选项 1（推荐）：确认设计规范，可以提交
-- 选项 2：需要补充或修改
+- 选项 1（推荐）：确认规格文档套件，可以进入步骤 3
+- 选项 2：需要补充或修改（回到 2.1 重新调度 dd-writing-specs，传入修改要求）
 - 选项 3：方向不对，回到步骤 0
 
-### 2.7 提交
+> **注**：dd-writing-specs 内部已对每篇文档做过"一次一问确认"，本步骤是工作流层面的最终确认，确保用户对整套规格文档套件满意后才进入计划编写。
 
-确认后只暂存设计规范相关文件：
+### 2.4 更新状态文件
+
+用户确认通过后，更新状态文件（无需额外 git commit——4 篇文档及审查结果已由 dd-writing-specs 提交）：
 
 ```bash
-git status --short
-git diff -- <spec-path> <visual-path> <test-case-path> <review-path>
-git add <spec-path> <visual-path> <test-case-path> <review-path>
-git commit -m "$(cat <<'EOF'
-docs: add <feature-name> design spec
-
-- 设计规范: F{N}_{功能名}_设计规范.md
-- 视觉原型: F{N}_{功能名}_视觉原型.html (如有)
-- 测试用例表: F{N}_{功能名}_测试用例表.md
-- 设计评审摘要: <feature-name>_设计评审摘要.md
-EOF
-)"
+git_dir=$(git rev-parse --git-dir)
+python3 -c "
+import json
+state_file = '$git_dir/feature-development-state.json'
+with open(state_file) as f:
+    state = json.load(f)
+state['current_step'] = '2'
+state['requirements_path'] = '<需求文档路径>'
+state['design_path'] = '<设计文档路径>'
+state['visual_path'] = '<视觉原型路径，可为空>'
+state['test_case_path'] = '<测试用例表路径>'
+state['review_path'] = '<审查结果路径>'
+with open(state_file, 'w') as f:
+    json.dump(state, f, indent=2)
+"
 ```
 
-Commit 规范（type 列表、subject 约束、公共文件 `PublicFile:` tag）遵循 [dd-git-merge](../dd-git-merge/SKILL.md) Commit 规范章节。公共文件锁机制（独立分支 `refactor/public-file-{描述}`、`PublicFile:` tag、<1 天合并）遵循 [dd-git-conflict](../dd-git-conflict/SKILL.md) 公共文件锁机制章节。禁止在 feature 分支夹带公共文件修改。提交边界（暂存无关脏文件、提交秘密文件、`--no-verify`、force push）遵循 [dd-shared-ask](../dd-shared-ask/SKILL.md) 提交边界章节。
-
-提交成功后进入步骤 3。
-
-> **状态文件更新（HARD-GATE）**：提交成功后必须更新 `feature-development-state.json`：`current_step="2"`、`spec_path=<设计规范路径>`、`review_path=<评审摘要路径>`、`test_case_path=<测试用例表路径>`。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
+> **状态文件更新（HARD-GATE）**：用户确认通过后必须更新 `feature-development-state.json`：`current_step="2"`、`requirements_path=<需求文档路径>`、`design_path=<设计文档路径>`、`visual_path=<视觉原型路径>`、`test_case_path=<测试用例表路径>`、`review_path=<审查结果路径>`。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
 
 ---
 
 ## 步骤 3：计划编写
 
-### 3.1 读取设计规范和评审摘要
+### 3.1 读取规格文档套件
 
-必须读取已提交的设计规范、设计评审摘要和测试用例表，再编写实现计划。
+必须读取已提交的需求文档、设计文档、视觉原型（如有）、测试用例表和审查结果，再编写实现计划。
 
 ### 3.2 按功能需求划分阶段
 
-设计规范中已按功能需求划分 Phase。计划按 Phase 拆分为子计划。
+需求文档中已按功能需求划分 Phase（dd-writing-specs 步骤 1 grill 的第 8 项）。计划按 Phase 拆分为子计划。
 
 ### 3.3 先写总计划，动态拆子计划
 
-**通过子代理编写**：主计划 + 多个 Phase 子计划是 token 量最大的文档产出。调度子代理（使用 `writing-plans` 技能），传入设计规范、设计评审摘要和测试用例表路径，由子代理生成全部计划文件。
+**通过子代理编写**：主计划 + 多个 Phase 子计划是 token 量最大的文档产出。调度子代理（使用 `writing-plans` 技能），传入需求文档、设计文档、视觉原型（如有）、测试用例表和审查结果路径，由子代理生成全部计划文件。
 
 **先写一个总实现计划**，定义整体目标、架构、Phase 列表和依赖关系。然后根据复杂度动态决定是否拆分子计划：
 
@@ -488,9 +452,15 @@ docs/superpowers/plans/YYYY-MM-DD-<feature-name>/
 
 **技术栈：** [关键技术/库]
 
-**设计规范：** [设计规范路径]
+**需求文档：** [需求文档路径]
 
-**设计评审摘要：** [评审摘要路径]
+**设计文档：** [设计文档路径]
+
+**视觉原型：** [视觉原型路径，如有]
+
+**测试用例表：** [测试用例表路径]
+
+**审查结果：** [审查结果路径]
 
 ---
 
@@ -534,11 +504,11 @@ docs/superpowers/plans/YYYY-MM-DD-<feature-name>/
 
 ### 3.5 check-plan
 
-**通过 3 个独立子代理并行核对**：按"三子代理并行检查规则"调度 3 个独立子代理（均非编写计划的子代理），使用相同的输入文件（计划目录、设计规范、评审摘要），按统一方向框架分工：
+**通过 3 个独立子代理并行核对**：按"三子代理并行检查规则"调度 3 个独立子代理（均非编写计划的子代理），使用相同的输入文件（计划目录、需求文档、设计文档、视觉原型、测试用例表、审查结果），按统一方向框架分工：
 
 | 子代理 | 方向 | 负责的核对项 |
 |--------|------|------------|
-| **A - 覆盖与范围** | 是否符合规格与规则 | 1.是否遵循设计规范和评审摘要 / 2.是否遵循 CODING_STANDARDS / 3.是否遵循 docs.md / 4.是否遵循 xctest-rules |
+| **A - 覆盖与范围** | 是否符合规格与规则 | 1.是否遵循需求文档、设计文档和审查结果 / 2.是否遵循 CODING_STANDARDS / 3.是否遵循 docs.md / 4.是否遵循 xctest-rules |
 | **B - 一致与正确** | 结构是否一致 | 5.主计划和 Phase 子计划是否一致 / 6.每个子计划是否有明确的测试、验证和提交步骤 |
 | **C - 可验证与可观测** | UI 能否真实验证 | 8.是否存在"只测内部状态却声称 UI 已验证"的计划缺陷 |
 | **3 代理必检** | UI 最高风险项，所有代理都查 | 7.UI 子计划是否包含真实入口、真实操作、用户可见断言和证据保存方式 |
@@ -547,7 +517,7 @@ docs/superpowers/plans/YYYY-MM-DD-<feature-name>/
 
 **核对内容**：
 
-1. 是否遵循设计规范和设计评审摘要
+1. 是否遵循需求文档、设计文档和审查结果
 2. 是否遵循 `docs/CODING_STANDARDS.md`
 3. 是否遵循 `.trae/rules/docs.md`
 4. 是否遵循 `docs/AI/trae-xctest-rules.md` 或 `docs/ai/trae-xctest-rules.md`
@@ -558,7 +528,7 @@ docs/superpowers/plans/YYYY-MM-DD-<feature-name>/
 
 **自检**（计划编写者自行执行）：
 
-1. **规格覆盖度**：设计规范每个 AC 是否映射到一个或多个计划任务
+1. **规格覆盖度**：需求文档每个 AC 是否映射到一个或多个计划任务
 2. **占位符扫描**：搜索计划中的红旗——"禁止占位符"章节中的任何模式
 3. **类型一致性**：后续任务中使用的类型、方法签名和属性名是否与前面任务中定义的一致
 
@@ -573,7 +543,7 @@ docs/superpowers/plans/YYYY-MM-DD-<feature-name>/
 
 ### 3.6 自动提交
 
-check-plan 通过后自动提交计划，无需用户确认（设计规范确认后到代码同步前，按推荐路径自动执行）。
+check-plan 通过后自动提交计划，无需用户确认（规格文档套件确认后到代码同步前，按推荐路径自动执行）。
 
 展示主计划路径、子计划列表和自检结论，然后直接提交：
 
@@ -598,13 +568,13 @@ EOF
 
 ### 4.1 执行方式
 
-**默认子代理驱动执行**：每个任务调度新子代理，任务间审查。无需用户确认，直接开始执行（设计规范确认后到代码同步前，按推荐路径自动执行）。
+**默认子代理驱动执行**：每个任务调度新子代理，任务间审查。无需用户确认，直接开始执行（规格文档套件确认后到代码同步前，按推荐路径自动执行）。
 
 ### 4.2 每个子计划的固定节奏
 
 对每个 Phase 子计划按顺序执行：
 
-1. 读取主计划、当前子计划、设计规范和评审摘要
+1. 读取主计划、当前子计划、需求文档、设计文档、视觉原型（如有）、测试用例表和审查结果
 2. 按子计划中的任务顺序执行，遵循 TDD 循环
 3. 当前子计划全部任务完成后，执行 check-code
 4. 根据 check-code 结果修复问题，直到通过
@@ -626,7 +596,7 @@ EOF
 
 **目标：用测试用例定义期望行为。**
 
-- 阅读设计规范的 AC 和子计划的任务描述
+- 阅读需求文档的 AC 和子计划的任务描述
 - 编写最小测试（只测一件事，使用真实代码，避免不必要 mock）
 - **按测试类型决定红灯验证位置**：
   - **XCTest（单元测试）**：可本地验证红灯（快速反馈，无 GUI 依赖），确认测试因正确原因失败而非拼写错误
@@ -634,7 +604,7 @@ EOF
 
 #### 第二步：实现设计（绿灯）
 
-**目标：实现设计规范定义的行为，让测试通过。**
+**目标：实现需求文档定义的行为，让测试通过。**
 
 - 严格按子计划步骤实现（不做"顺便改改"的优化，不捆绑重构）
 
@@ -677,11 +647,11 @@ git commit -m "<type>[scope]: <description>"
 
 ### 4.4 check-code
 
-**通过 3 个独立子代理并行核对**：按"三子代理并行检查规则"调度 3 个独立子代理（均非实现该子计划的子代理），使用相同的输入文件（设计规范、当前 Phase 子计划、代码变更路径），按统一方向框架分工：
+**通过 3 个独立子代理并行核对**：按"三子代理并行检查规则"调度 3 个独立子代理（均非实现该子计划的子代理），使用相同的输入文件（需求文档、设计文档、当前 Phase 子计划、代码变更路径），按统一方向框架分工：
 
 | 子代理 | 方向 | 负责的核对项 |
 |--------|------|------------|
-| **A - 覆盖与范围** | 符合性与覆盖 | 1.代码是否符合设计规范和子计划 / 2.是否遗漏 AC 或实现超范围 / 3.是否符合 CODING_STANDARDS |
+| **A - 覆盖与范围** | 符合性与覆盖 | 1.代码是否符合需求文档、设计文档和子计划 / 2.是否遗漏 AC 或实现超范围 / 3.是否符合 CODING_STANDARDS |
 | **B - 一致与正确** | 测试与质量 | 4.测试是否覆盖新增和受影响旧行为 / 5.日志、错误处理、边界条件 / 8.临时调试代码、未清理 TODO、跳过测试 |
 | **C - 可验证与可观测** | UI 证据 | 6.UI 行为是否有用户可见证据 |
 | **3 代理必检** | UI 最高风险项，所有代理都查 | 7.是否错误地把内部状态、mock、日志、layer count 或组件渲染测试当成完整 UI 验证 |
@@ -690,7 +660,7 @@ git commit -m "<type>[scope]: <description>"
 
 **核对内容**：
 
-1. 代码是否符合设计规范和当前 Phase 子计划
+1. 代码是否符合需求文档、设计文档和当前 Phase 子计划
 2. 是否遗漏 AC 或实现了超范围功能
 3. 是否符合 `docs/CODING_STANDARDS.md`
 4. 测试是否覆盖新增行为和受影响旧行为
@@ -887,7 +857,7 @@ bash "$HOME/.trae-cn/skills/shared/scripts/sync-ai-test-worktree.sh" "$FEATURE_B
 
 ### 7.1 读取测试规则并识别变更
 
-**通过 3 个子代理并行分析**：按"三子代理并行检查规则"调度 3 个子代理，使用相同的输入（`git diff` 输出、设计规范、测试用例表、代码路径、`BASE_BRANCH`、功能编号），按统一方向框架分工。本步骤不涉及 UI 验证，**无必检项**，纯方向分工。3 个子代理只负责"分析与检查"，不负责修改文档——修改由主线程在 7.2 根据汇总结果执行。
+**通过 3 个子代理并行分析**：按"三子代理并行检查规则"调度 3 个子代理，使用相同的输入（`git diff` 输出、需求文档、设计文档、视觉原型、测试用例表、代码路径、`BASE_BRANCH`、功能编号），按统一方向框架分工。本步骤不涉及 UI 验证，**无必检项**，纯方向分工。3 个子代理只负责"分析与检查"，不负责修改文档——修改由主线程在 7.2 根据汇总结果执行。
 
 | 子代理 | 方向 | 负责的分析项 |
 |--------|------|------------|
@@ -913,14 +883,18 @@ git log --oneline "$BASE_BRANCH"..HEAD
 
 ### 7.2 定位并检查目标文档
 
-根据步骤 0 确认的功能编号（如 F1.10），定位设计规范和测试用例表（路径模式 `docs/planning/P0/{功能编号}/`）。
+根据步骤 0 确认的功能编号（如 F1.10），定位需求文档、设计文档、视觉原型（如有）和测试用例表（路径模式 `docs/planning/P0/{功能编号}/`）。
 
 - 目录不存在 → **AskUserQuestion**：新建目录 / 重新输入功能编号 / 终止
 - 无法推断功能编号 → 询问用户
 
-#### 检查设计规范
+#### 检查需求文档
 
-对照代码变更逐项检查：AC 是否需要新增/修改、行为描述是否一致、数据模型是否需要记录、状态机是否有变化、已解决问题是否需要移除。需要更新时直接修改并递增版本号。
+对照代码变更逐项检查：AC 是否需要新增/修改、行为描述是否一致、范围是否需要调整、约束是否需要更新。需要更新时直接修改并递增版本号。
+
+#### 检查设计文档
+
+对照代码变更逐项检查：模块划分是否需要记录、数据流是否有变化、状态机是否有变化、职责边界是否需要调整、已解决风险是否需要移除。需要更新时直接修改并递增版本号。
 
 #### 检查测试用例表
 
@@ -936,7 +910,9 @@ git log --oneline "$BASE_BRANCH"..HEAD
 
 ```markdown
 ## 文档更新摘要
-- 设计规范：[已更新 / 无需更新] — 原因
+- 需求文档：[已更新 / 无需更新] — 原因
+- 设计文档：[已更新 / 无需更新] — 原因
+- 视觉原型：[已更新 / 无需更新 / 不涉及] — 原因
 - 测试用例表：[已更新 / 无需更新] — 原因
 - 代码测试：[已更新 / 无需更新] — 原因
 
@@ -948,7 +924,7 @@ git log --oneline "$BASE_BRANCH"..HEAD
 
 1. 不得仅根据修改文件列表决定回归范围——必须结合调用关系、数据流、共享模型和用户流程判断
 2. 不得为了让测试通过而随意修改旧测试预期——必须先确认需求是否真的改变
-3. 每次更新设计规范或测试用例表时，必须递增版本号
+3. 每次更新需求文档、设计文档或测试用例表时，必须递增版本号
 
 ### 7.5 出口判定
 
@@ -1048,6 +1024,17 @@ with open(state_file, 'w') as f:
 "
 ```
 
+**清理步骤 0.4 的临时需求摘要文件**（合并前清理，避免临时文件进入 BASE_BRANCH）：
+
+```bash
+# 在 worktree 路径下执行
+# .feature-step0-requirements-summary.md 是步骤 0.4 写入的临时文件，不应合并到 BASE_BRANCH
+git rm -f docs/planning/P{n}/F{m}/.feature-step0-requirements-summary.md
+git commit -m "chore(feature): clean up step 0 requirements summary for F{m}"
+```
+
+> **注**：若文件不存在（如步骤 0.4 未执行或已被清理），`git rm -f` 会报错，可忽略并继续。
+
 执行 git merge（在主仓库路径）：
 
 ```bash
@@ -1125,8 +1112,16 @@ with open(state_file, 'w') as f:
 "
 ```
 
+**清理上一轮的临时需求摘要文件**（开新一轮前清理，避免与新一轮的 `.feature-step0-requirements-summary.md` 冲突）：
+
+```bash
+# 清理上一轮步骤 0.4 写入的临时文件（若存在）
+git rm -f docs/planning/P{n}/F{m}/.feature-step0-requirements-summary.md 2>/dev/null || true
+git commit -m "chore(feature): clean up previous round requirements summary" 2>/dev/null || true
+```
+
 - 接收用户提出的新特性需求
-- **重新从步骤 0 开始**
+- **重新从步骤 0 开始**（新一轮会写入新的 `.feature-step0-requirements-summary.md`）
 - 工作流循环执行
 
 ### 9.4 选"暂不处理，保留工作树"
@@ -1213,11 +1208,11 @@ with open(state_file, 'w') as f:
 
 ## 红线 — 停下来重新开始
 
-- 没有执行需求拷问就写设计规范
+- 没有执行需求拷问就写规格文档套件
 - 未经用户明确同意，复用已有 worktree 而非新建
-- 设计规范参考了主仓库或其他 worktree 的文档和代码（用户未明确说明）
-- 用户未确认设计规范就提交或进入审核
-- 未经 3 子代理并行审核就进入计划编写
+- 规格文档套件参考了主仓库或其他 worktree 的文档和代码（用户未明确说明）
+- 用户未确认规格文档套件就进入计划编写
+- 未经 3 子代理并行审核就进入计划编写（dd-writing-specs 内部的 3 子代理审核）
 - 没有主计划和 Phase 子计划就开始实现
 - check-plan 未通过仍开始写代码
 - 子计划完成后跳过 check-code（3 子代理并行核对）
@@ -1229,6 +1224,7 @@ with open(state_file, 'w') as f:
 - **跳过步骤 4.5 提交后全量回归验证**
 - **使用 git rebase 同步上游或合并分支**（遵循 [dd-git-merge](../dd-git-merge/SKILL.md) merge-only 原则，禁止 rebase）
 - **在 feature 分支夹带公共文件修改**（公共文件必须开独立分支，加 PublicFile tag）
+- **步骤 0.4 未写入 `.feature-step0-requirements-summary.md` 就进入步骤 1**（dd-writing-specs 步骤 1.0 跳过判断依赖此文件）
 
 ### 状态文件红线（HARD-GATE）
 
@@ -1250,7 +1246,7 @@ with open(state_file, 'w') as f:
 | "状态文件 `current_step` 已经写过了，不用再写" | `current_step` 是**进度指示器**，每个步骤出口都必须更新到最新值，否则恢复时识别错误步骤 |
 | "merge 前先删状态文件，反正 merge 会成功" | merge 可能失败、冲突、被打断。删了状态文件，会话压缩后失忆，无法识别"合并中"状态 |
 | "工作树目录都要删了，状态文件留着干嘛" | 状态文件在 `.git/` 目录下，工作树删除前必须先标记 `cleanup_in_progress=True`，否则异常中断后无法识别 |
-| "状态文件不存在就从头开始，最安全" | 已实现的 commit 会被丢弃，已写的设计规范/计划/代码全部浪费。必须先按恢复策略判断 |
+| "状态文件不存在就从头开始，最安全" | 已实现的 commit 会被丢弃，已写的规格文档套件/计划/代码全部浪费。必须先按恢复策略判断 |
 | "步骤 9.4 暂停，删除状态文件避免污染" | 删除后无法识别"暂停中"状态，下次会话默认从步骤 0 重启，浪费已有进度 |
 | "中断时记不记状态文件无所谓" | 中断点必须记录 `current_step=<N>-interrupted` + `interrupted_at=<N>`，否则无法精确恢复 |
 | "merge_in_progress 字段是冗余的，current_step 就够了" | `merge_in_progress` 是布尔标记，明确区分"合并中"vs"已合并"，避免误删状态文件 |

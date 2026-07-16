@@ -67,7 +67,7 @@ main
 
 其他 skill 通过 description 字段语义触发本技能：
 
-- `dd-writing-design-specs`：编写设计规范涉及分支创建时引用
+- `dd-writing-specs`：编写规格文档套件涉及分支创建时引用
 - `dd-feature-development-workflow`：功能开发流程涉及合并检查时引用
 - `dd-bug-fix-workflow`：bug 修复流程涉及分支管理时引用
 - `finishing-a-development-branch`：分支收尾涉及合并检查时引用

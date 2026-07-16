@@ -52,15 +52,16 @@ description: 当需要持久化工作流状态、上下文恢复、并发检查�
 ```json
 {
   "feature_name": "<简短特性名>",
-  "spec_path": "<设计规范路径>",
-  "review_path": "<设计评审摘要路径>",
+  "requirements_path": "<需求文档路径>",
+  "design_path": "<设计文档路径>",
+  "visual_path": "<视觉原型路径>",
   "test_case_path": "<测试用例表路径>",
+  "review_path": "<审查结果路径>",
   "plan_dir": "<计划目录路径>",
   "current_phase": "<当前 Phase>",
   "total_phases": "<Phase 总数>",
   "commits": {
-    "design_spec": "<commit-sha>",
-    "design_review": "<commit-sha>",
+    "specs": "<规格文档套件提交 sha>",
     "plans": "<commit-sha>"
   }
 }
@@ -114,7 +115,7 @@ cat > "$git_dir/${WORKFLOW_TYPE}-state.json" <<EOF
 EOF
 ```
 
-feature-development 工作流需追加特有字段（feature_name、spec_path、plan_dir 等）。
+feature-development 工作流需追加特有字段（feature_name、requirements_path、design_path、visual_path、test_case_path、review_path、plan_dir 等）。
 
 ### 更新 `current_step` 模板（每个步骤出口执行）
 

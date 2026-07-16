@@ -1,6 +1,6 @@
 ---
 name: dd-write-requirements
-description: Use when 编写 01_Requirements.md 需求文档，或在 AI Coding 场景下区分 Requirements 与 Design/Implementation 文档层次。触发词：需求文档、Requirements、01_Requirements、写需求、产品合同。症状：Requirements 中出现类名/协议名/方法名/字段名/配置键名/并发原语等代码细节，FR 用"XXXManager 调用 XXXAPI"描述需求，团队把含代码的设计规范当 Requirements 用，用户问"设计规范要不要写代码"，跳过 Terminology 或 Decision Freedom 章节。
+description: Use when 编写 01_Requirements.md 需求文档，或在 AI Coding 场景下区分 Requirements 与 Design/Implementation 文档层次。触发词：需求文档、Requirements、01_Requirements、写需求、产品合同。症状：Requirements 中出现类名/协议名/方法名/字段名/配置键名/并发原语等代码细节，FR 用"XXXManager 调用 XXXAPI"描述需求，团队把含代码的设计文档当 Requirements 用，用户问"设计文档要不要写代码"，跳过 Terminology 或 Decision Freedom 章节。
 ---
 
 # 编写需求文档（01_Requirements.md）
@@ -31,15 +31,15 @@ Requirements 是整个 AI Coding 项目的"产品合同"与"唯一真实需求�
 
 - 新功能、重大重构、API 迁移前，先写 Requirements
 - 用户提到"需求文档"、"Requirements"、"01_Requirements"、"写需求"、"产品合同"
-- dd-feature-development-workflow / dd-writing-design-specs 之前的需求层
-- 团队把含代码的设计规范当 Requirements 用
-- 用户问"设计规范要不要写代码"
+- dd-writing-specs 工作流中"写需求文档"环节（步骤 2）
+- 团队把含代码的设计文档当 Requirements 用
+- 用户问"设计文档要不要写代码"
 
-**不适用：** bug 修复（用 dd-bug-fix-workflow）、设计规范（用 dd-writing-design-specs）、实现指南、纯文档修改
+**不适用：** bug 修复（用 dd-bug-fix-workflow）、独立写设计文档（用 dd-write-design）、完整规格文档套件工作流（用 dd-writing-specs）、实现指南、纯文档修改
 
 ## 项目规则优先（强制首步）
 
-写 Requirements 前，**必须先读取项目的 docs.md**。docs.md 的规则优先于 skill 的默认规则。这与 dd-writing-design-specs 步骤 0 的机制一致。
+写 Requirements 前，**必须先读取项目的 docs.md**。docs.md 的规则优先于 skill 的默认规则。这与 dd-writing-specs 步骤 0 的机制一致。
 
 ### 读取路径（按存在情况尝试）
 
@@ -239,7 +239,7 @@ Constraints-1：模板匹配置信度阈值默认 0.8，支持运行时修改即
 - Terminology 章节把类名/协议名当术语定义
 - 跳过 Terminology 或 Decision Freedom 章节
 - 用"优化"、"改进"、"更好"等模糊词
-- 把含代码的设计规范直接改名当 Requirements
+- 把含代码的设计文档直接改名当 Requirements
 - FR 描述内部状态而非可观察行为
 - **保留英文状态机枚举值**（idle/capturing/recognizing 等）而非中文业务术语
 - **保留算法常量名**（`TM_CCOEFF_NORMED` 等）而非业务术语
@@ -281,11 +281,11 @@ Constraints-1：模板匹配置信度阈值默认 0.8，支持运行时修改即
 
 **处理：** 流程用业务动作描述（"检测文本区域"）。方法名是 Design 层的接口契约，写进 Requirements 等于锁死 API 签名。
 
-### FM-006：复用设计规范当 Requirements
+### FM-006：复用设计文档当 Requirements
 
-**错误推理：** "时间紧，这份含代码的设计规范直接改名当 Requirements 省时间。"
+**错误推理：** "时间紧，这份含代码的设计文档直接改名当 Requirements 省时间。"
 
-**处理：** 含代码的设计规范当 Requirements 等于跳过需求层。下游基于错误前提，返工成本是重写的 10 倍。重写纯业务描述。
+**处理：** 含代码的设计文档当 Requirements 等于跳过需求层。下游基于错误前提，返工成本是重写的 10 倍。重写纯业务描述。
 
 ### FM-007：跳过 Terminology/Decision Freedom
 
@@ -339,7 +339,7 @@ Constraints-1：模板匹配置信度阈值默认 0.8，支持运行时修改即
 | AC 的 Then 写"调用 render() 渲染" | 改为可观察结果："展示层出现，每个元素显示字母标签" |
 | Terminology 定义"TemplateMatchingEngine：模板匹配引擎类" | 改为业务术语："模板匹配：通过预置图像匹配屏幕元素的技术" |
 | Decision Freedom 只写"允许"不写"禁止" | 必须双向：允许（架构/拆类/命名）+ 禁止（改公共 API/数据格式/协议语义） |
-| 把设计规范的 12 章节直接复制到 Requirements | 重写：去除所有代码细节，只保留业务描述 |
+| 把设计文档的章节直接复制到 Requirements | 重写：去除所有代码细节，只保留业务描述 |
 | FR-011 写"状态机包含 idle/capturing/recognizing 状态" | 改为中文业务术语："状态机包含待激活、采集、识别中等状态"，Terminology 建立映射 |
 | NFR 写"使用 NCC 算法（等价于 TM_CCOEFF_NORMED）" | 改为业务术语："使用归一化互相关方法衡量相似度"，常量名放 Design |
 | AC 的 Then 写"source 字段等于 .ocr" | 改为业务描述："该元素的识别来源属性为 OCR 来源" |
