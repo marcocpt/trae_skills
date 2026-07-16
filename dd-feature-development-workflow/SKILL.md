@@ -55,9 +55,42 @@ digraph feature_development_workflow {
 - **状态文件**：`$(git rev-parse --git-dir)/feature-development-state.json`
 - **特有字段**：feature_name、spec_path、review_path、test_case_path、plan_dir、current_phase、total_phases、commits
 - **写入**：步骤 1（工作树创建/验证成功后）
-- **更新 `current_step`**：每完成一个步骤
+- **更新 `current_step`**：**每个步骤出口判定成功后必须立即更新**（步骤 1/2/3/4/5/6/7/8 均强制更新；步骤 9.1 在 `git merge` 成功后更新 `current_step=9.2`，再删除状态文件）
 - **更新 `current_phase`**：每完成一个子计划
-- **删除**：步骤 9 清理工作树前（须在离开 worktree 前执行）
+- **更新 `merge_in_progress`**：步骤 9.1 合并操作执行前设置为 `true`，merge 成功后清除或直接删除状态文件
+- **删除**：步骤 9 合并成功后（须在 `git merge --no-ff` 成功后执行，禁止合并前删除）
+
+### 强制更新规则（HARD-GATE）
+
+每个步骤的「出口判定」章节必须包含更新状态文件的要求。智能体若发现状态文件 `current_step` 与实际进度不符（如 `current_step="1"` 但 `current_phase="2"`），必须先更新再继续下一步，不得跳过。
+
+更新模板（在每个步骤出口执行）：
+
+```bash
+git_dir=$(git rev-parse --git-dir)
+python3 -c "
+import json
+state_file = '$git_dir/feature-development-state.json'
+with open(state_file) as f:
+    state = json.load(f)
+state['current_step'] = '<新步骤号或子步骤>'
+with open(state_file, 'w') as f:
+    json.dump(state, f, indent=2)
+"
+```
+
+### 状态文件不存在时的恢复策略
+
+会话恢复时若状态文件不存在，**禁止默认从步骤 0 重启**。必须先按以下顺序判断：
+
+1. 检查当前目录是否在 worktree 中（`git rev-parse --is-inside-work-tree`）
+2. 获取当前分支名（`git rev-parse --abbrev-ref HEAD`）
+3. 若分支名匹配 `feature/F<N>-<描述>` 格式，对比 `git log origin/<BASE_BRANCH>..HEAD` 判断是否有已提交的特性实现
+4. 若已有实现 commit：识别为「步骤 9.1 合并中」状态，询问用户是否继续合并或开新一轮
+5. 若无实现 commit：识别为「步骤 4 TDD 中」状态，询问用户是否继续实现或重新开始
+6. 仅当无法判断进度时，才从步骤 0 重新开始
+
+> **通用规则**：结构化询问、null 输入重问遵循 [dd-shared-ask](../dd-shared-ask/SKILL.md)。
 
 ## 全局规则
 
@@ -113,6 +146,8 @@ UI 可观测性门禁遵循 [dd-shared-ui](../dd-shared-ui/SKILL.md)。
 - 选项 3：理解有误，重新描述
 
 确认正确 → 进入步骤 1。需要补充 → 继续质询。理解有误 → 重述需求，重新执行 0.2。
+
+> **状态文件更新（HARD-GATE）**：步骤 0 尚无状态文件，确认正确后将在步骤 1.4 写入。无需在此更新。
 
 ---
 
@@ -258,6 +293,8 @@ git status  # 必须干净，有未提交变更需先处理
 
 工作树创建/验证成功后，持久化关键状态供上下文恢复。遵循 [dd-shared-state](../dd-shared-state/SKILL.md) 写入模板，参数 `WORKFLOW_TYPE=feature-development`，`BRANCH_FIELD=feature_branch`，`current_step=1`。需追加 feature-development 特有字段：feature_name、spec_path、review_path、test_case_path、plan_dir、current_phase、total_phases、commits。
 
+> **状态文件更新（HARD-GATE）**：本步骤是状态文件的**首次写入**点，必须确保 `current_step="1"` + `feature_branch=<分支名>` + `feature_name=<特性名>` 正确写入。后续每个步骤出口判定都需更新 `current_step`。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
+
 ---
 
 ## 步骤 2：设计规范
@@ -390,6 +427,8 @@ EOF
 Commit 规范（type 列表、subject 约束、公共文件 `PublicFile:` tag）遵循 [dd-git-merge](../dd-git-merge/SKILL.md) Commit 规范章节。公共文件锁机制（独立分支 `refactor/public-file-{描述}`、`PublicFile:` tag、<1 天合并）遵循 [dd-git-conflict](../dd-git-conflict/SKILL.md) 公共文件锁机制章节。禁止在 feature 分支夹带公共文件修改。提交边界（暂存无关脏文件、提交秘密文件、`--no-verify`、force push）遵循 [dd-shared-ask](../dd-shared-ask/SKILL.md) 提交边界章节。
 
 提交成功后进入步骤 3。
+
+> **状态文件更新（HARD-GATE）**：提交成功后必须更新 `feature-development-state.json`：`current_step="2"`、`spec_path=<设计规范路径>`、`review_path=<评审摘要路径>`、`test_case_path=<测试用例表路径>`。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
 
 ---
 
@@ -540,6 +579,8 @@ EOF
 
 提交成功后进入步骤 4。
 
+> **状态文件更新（HARD-GATE）**：提交成功后必须更新 `feature-development-state.json`：`current_step="3"`、`plan_dir=<计划目录路径>`、`current_phase="0"`、`total_phases=<Phase 总数>`。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
+
 ---
 
 ## 步骤 4：TDD 实现
@@ -686,11 +727,15 @@ CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 2（回归 CI �
 
 更新状态文件的 `current_phase`。
 
+> **状态文件更新（HARD-GATE）**：每个子计划提交成功后必须更新 `feature-development-state.json`：`current_step="4"`、`current_phase=<刚完成的 Phase 编号>`、`commits` 数组追加本次 commit SHA。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
+
 ### 4.6 出口判定
 
 - 所有子计划完成、check-code 通过、工作区干净 → 进入步骤 5
 - 任一子计划阻塞 → 停止并报告阻塞点、已验证事实和建议选项
 - 设计或计划在实现中被证明错误 → 回到步骤 2 或步骤 3，按顺序重新推进
+
+> **状态文件更新（HARD-GATE）**：进入步骤 5 前必须更新 `feature-development-state.json`：`current_step="4.6-completed"`（标记所有子计划已完结，准备进入代码同步）。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
 
 ---
 
@@ -798,6 +843,8 @@ bash "$HOME/.trae-cn/skills/shared/scripts/sync-ai-test-worktree.sh" "$FEATURE_B
 
 选择不同步 → 直接进入步骤 6
 
+> **状态文件更新（HARD-GATE）**：步骤 5 提交成功后（5.4）必须更新 `feature-development-state.json`：`current_step="5"`、`commits` 数组追加本次同步 commit SHA。AI-test 同步成功后（5.5）更新 `current_step="5.5-completed"`。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
+
 ---
 
 ## 步骤 6：确认是否继续
@@ -818,6 +865,8 @@ bash "$HOME/.trae-cn/skills/shared/scripts/sync-ai-test-worktree.sh" "$FEATURE_B
 
 - 选"继续" → 进入步骤 7
 - 选任意回退选项 → 跳转到对应步骤重新执行，后续步骤顺序推进
+
+> **状态文件更新（HARD-GATE）**：用户选择后必须立即更新 `feature-development-state.json`：`current_step="<下一步骤号>"`（如选"继续"则 `current_step="6-completed"` 准备进入步骤 7；选回退则 `current_step="<目标步骤号>"` + `rollback_from="6"`）。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
 
 ---
 
@@ -895,6 +944,8 @@ git log --oneline "$BASE_BRANCH"..HEAD
 - 完成或无需更新 → 进入步骤 8
 - 失败 → **AskUserQuestion**：重试 / 跳过继续 / 停止工作流
 
+> **状态文件更新（HARD-GATE）**：进入步骤 8 前必须更新 `feature-development-state.json`：`current_step="7"`（文档检查已完成）。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
+
 ---
 
 ## 步骤 8：Lint 与 Push
@@ -954,6 +1005,8 @@ CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 3（Push 后等�
 
 - **成功** → 进入步骤 9
 
+> **状态文件更新（HARD-GATE）**：CI 通过后必须更新 `feature-development-state.json`：`current_step="8"`（lint + push + CI 全部完成，准备进入合并清理）。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
+
 ---
 
 ## 步骤 9：合并清理
@@ -967,15 +1020,40 @@ CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 3（Push 后等�
 
 ### 9.1 选"合并到原分支"
 
-**先删除状态文件**（在离开工作树前，遵循 [dd-shared-state](../dd-shared-state/SKILL.md) 删除模板，参数 `WORKFLOW_TYPE=feature-development`）。
+**先更新状态文件标记"合并中"**（HARD-GATE，在离开 worktree 前执行）：
 
 ```bash
-# 以下命令必须在主仓库路径执行
+# 在 worktree 路径下执行
+git_dir=$(git rev-parse --git-dir)
+python3 -c "
+import json
+state_file = '$git_dir/feature-development-state.json'
+with open(state_file) as f:
+    state = json.load(f)
+state['current_step'] = '9.1-merging'
+state['merge_in_progress'] = True
+with open(state_file, 'w') as f:
+    json.dump(state, f, indent=2)
+"
+```
+
+执行 git merge（在主仓库路径）：
+
+```bash
 cd "$main_root"
 
 # 切回原分支并合并（merge-only，禁止 rebase，保留合并记录）
 git checkout "$BASE_BRANCH"
 git merge --no-ff <工作树分支>
+```
+
+**合并成功后删除状态文件**（HARD-GATE，`git merge` 必须成功才删除）：
+
+```bash
+# 回到 worktree 路径
+cd "$WORKTREE_PATH"
+git_dir=$(git rev-parse --git-dir)
+rm -f "$git_dir/feature-development-state.json"
 ```
 
 **合并后全量回归验证（CI 优先）**：合并产生新的 commit，必须验证合并后代码在 CI 中通过。
@@ -988,7 +1066,29 @@ CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 4（合并后 CI
 
 ### 9.2 选"不合并，仅清理工作树"
 
-**先删除状态文件**（在离开工作树前，遵循 [dd-shared-state](../dd-shared-state/SKILL.md) 删除模板，参数 `WORKFLOW_TYPE=feature-development`）。
+**先更新状态文件标记"清理中"**（HARD-GATE，在离开 worktree 前执行，禁止直接删除状态文件）：
+
+```bash
+git_dir=$(git rev-parse --git-dir)
+python3 -c "
+import json
+state_file = '$git_dir/feature-development-state.json'
+with open(state_file) as f:
+    state = json.load(f)
+state['current_step'] = '9.2-cleanup'
+state['cleanup_in_progress'] = True
+with open(state_file, 'w') as f:
+    json.dump(state, f, indent=2)
+"
+```
+
+**清理成功后删除状态文件**（HARD-GATE，工作树删除成功后才执行）：
+
+```bash
+# 工作树目录已删除后，状态文件也一并消失
+# 若 git rev-parse --git-dir 仍可访问，则手动删除：
+rm -f "$git_dir/feature-development-state.json"
+```
 
 - 保留原分支不变
 - 清理工作树：删除工作树目录
@@ -997,11 +1097,45 @@ CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 4（合并后 CI
 
 ### 9.3 选"还有其他特性"
 
+**更新状态文件标记"开新一轮"**（HARD-GATE，进入新一轮前执行；不删除状态文件以便新一轮复用）：
+
+```bash
+git_dir=$(git rev-parse --git-dir)
+python3 -c "
+import json
+state_file = '$git_dir/feature-development-state.json'
+with open(state_file) as f:
+    state = json.load(f)
+state['current_step'] = '0'
+state['previous_phase_completed'] = state.get('current_phase', '')
+state['new_round_pending'] = True
+with open(state_file, 'w') as f:
+    json.dump(state, f, indent=2)
+"
+```
+
 - 接收用户提出的新特性需求
 - **重新从步骤 0 开始**
 - 工作流循环执行
 
 ### 9.4 选"暂不处理，保留工作树"
+
+**更新状态文件标记"暂停"**（HARD-GATE，会话结束前执行；禁止删除状态文件，便于后续恢复）：
+
+```bash
+git_dir=$(git rev-parse --git-dir)
+python3 -c "
+import json
+state_file = '$git_dir/feature-development-state.json'
+with open(state_file) as f:
+    state = json.load(f)
+state['current_step'] = '9.4-paused'
+state['paused_at'] = state.get('current_step', 'unknown')
+state['paused'] = True
+with open(state_file, 'w') as f:
+    json.dump(state, f, indent=2)
+"
+```
 
 - 不合并、不清理
 - 工作流结束，工作树保留供后续继续
@@ -1013,11 +1147,34 @@ CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 4（合并后 CI
 - 选项 1（推荐）：保留工作树（便于后续继续）
 - 选项 2：立即清理工作树
 
+**用户选择后必须更新状态文件**（HARD-GATE，会话结束前执行）：
+
+```bash
+git_dir=$(git rev-parse --git-dir)
+python3 -c "
+import json
+state_file = '$git_dir/feature-development-state.json'
+with open(state_file) as f:
+    state = json.load(f)
+# 记录中断时的步骤，便于恢复
+state['current_step'] = state.get('current_step', 'unknown') + '-interrupted'
+state['interrupted_at'] = '<当前步骤>'
+state['user_choice'] = '<选项1或2>'
+with open(state_file, 'w') as f:
+    json.dump(state, f, indent=2)
+"
+```
+
+- 选项 1：保留工作树，状态文件保留供恢复使用
+- 选项 2：清理工作树前先按 9.2 流程标记 `cleanup_in_progress=True`，删除成功后状态文件随之消失
+
 ### 9.6 步骤 1 选"当前 worktree"时的特殊处理
 
-- 选"合并" → 执行 merge --no-ff（merge-only，禁止 rebase）
-- 选"不合并"/"暂不处理" → **不删除工作树**（因工作树非本流程创建）
-- 选"还有其他特性" → 在当前工作树继续新一轮
+**状态文件已在步骤 1.4 写入，本步骤必须更新 `current_step`**（HARD-GATE）：
+
+- 选"合并" → 执行 9.1 流程（merge 前标记 `merge_in_progress=True` + merge 后删除状态文件）
+- 选"不合并"/"暂不处理" → **不删除工作树**（因工作树非本流程创建），但**必须**按 9.4 流程更新 `current_step="9.4-paused"` + `paused=True`
+- 选"还有其他特性" → 按 9.3 流程更新 `current_step="0"` 后在当前工作树继续新一轮
 
 ---
 
@@ -1062,6 +1219,41 @@ CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 4（合并后 CI
 - **使用 git rebase 同步上游或合并分支**（遵循 dd-ai-git-workflow merge-only 原则，禁止 rebase）
 - **在 feature 分支夹带公共文件修改**（公共文件必须开独立分支，加 PublicFile tag）
 
+### 状态文件红线（HARD-GATE）
+
+- **进入下一步骤前未更新 `current_step`**（必须立即按更新模板写入，禁止"等下次再补"）
+- **状态文件 `current_step` 与实际进度不符但未纠正**（必须先纠正再继续，不得跳过）
+- **步骤 9.1 merge 前删除状态文件**（必须先标记 `merge_in_progress=True` + `current_step="9.1-merging"`，再执行 merge，merge 成功后才删除）
+- **步骤 9.2 清理工作树前删除状态文件**（必须先标记 `cleanup_in_progress=True` + `current_step="9.2-cleanup"`，再清理）
+- **步骤 9.4 暂停时删除状态文件**（必须更新 `current_step="9.4-paused"` + `paused=True`，保留供恢复使用）
+- **会话恢复时状态文件不存在但未按恢复策略判断**（禁止默认从步骤 0 重启，必须按「上下文恢复机制 → 状态文件不存在时的恢复策略」6 步判断）
+- **状态文件不存在时默认从步骤 0 重启**（必须先检查 worktree/分支名/git log 判断进度）
+
 > **CI 相关红线**（分支未 push 降级本地、CI 触发失败降级本地、合并后跳过 CI、"本地合并"作为跳过 CI 理由）遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 红线章节。CI 合理化借口表见 dd-shared-ci。
 
+### 状态文件合理化借口表
+
+| 借口 | 现实 |
+|------|------|
+| "下一步再补状态文件更新" | 下一步永远不来。会话压缩后失忆直接跳步，导致跨步骤执行 |
+| "状态文件 `current_step` 已经写过了，不用再写" | `current_step` 是**进度指示器**，每个步骤出口都必须更新到最新值，否则恢复时识别错误步骤 |
+| "merge 前先删状态文件，反正 merge 会成功" | merge 可能失败、冲突、被打断。删了状态文件，会话压缩后失忆，无法识别"合并中"状态 |
+| "工作树目录都要删了，状态文件留着干嘛" | 状态文件在 `.git/` 目录下，工作树删除前必须先标记 `cleanup_in_progress=True`，否则异常中断后无法识别 |
+| "状态文件不存在就从头开始，最安全" | 已实现的 commit 会被丢弃，已写的设计规范/计划/代码全部浪费。必须先按恢复策略判断 |
+| "步骤 9.4 暂停，删除状态文件避免污染" | 删除后无法识别"暂停中"状态，下次会话默认从步骤 0 重启，浪费已有进度 |
+| "中断时记不记状态文件无所谓" | 中断点必须记录 `current_step=<N>-interrupted` + `interrupted_at=<N>`，否则无法精确恢复 |
+| "merge_in_progress 字段是冗余的，current_step 就够了" | `merge_in_progress` 是布尔标记，明确区分"合并中"vs"已合并"，避免误删状态文件 |
+| "回退到上一步骤不用更新状态文件" | 回退也是状态变更，必须更新 `current_step` + `rollback_from=<当前步骤>`，否则恢复时误判 |
+| "用户要求立即处理新特性，状态文件先不更新" | 状态文件未更新就开新一轮，会话压缩后混淆两轮的进度，必须先标记 `current_step="0"` + `new_round_pending=True` |
+
 **以上任一情况发生时，停止当前步骤，回到违规步骤重新执行。**
+
+---
+
+## 版本记录
+
+| 版本 | 日期 | 变更 |
+|------|------|------|
+| v1.1 | 2026-07-16 | 修复状态文件管理漏洞：(1) 上下文恢复机制强化 `current_step` 更新为 HARD-GATE，新增「强制更新规则」+「状态文件不存在时的恢复策略」6 步判断；(2) 步骤 9.1 删除时机从「merge 前」改为「merge 成功后」，merge 前先更新 `current_step="9.1-merging"` + `merge_in_progress=true`；(3) 步骤 9.2/9.3/9.4/9.5/9.6 各分支补充状态文件更新要求（cleanup/paused/interrupted/新一轮的明确标记）；(4) 各步骤出口判定处（0.3/1.4/2.7/3.6/4.5/4.6/5.5/6/7.5/8.2.1）新增 HARD-GATE 状态文件更新提示；(5) 红线章节新增「状态文件红线」7 条 + 「状态文件合理化借口表」10 条。修复背景：dd-bug-fix-workflow v1.1 同步修复，2026-07-16 真实场景中，会话压缩在步骤 7.1（bug-fix）/9.1（feature-dev）状态文件已删除但 merge 未执行时发生，智能体误判为全新开始，浪费整轮工作。 |
+| v1.0 | 2026-07-15 | 初始版本，建立 10 步严格顺序特性开发工作流 |
+
