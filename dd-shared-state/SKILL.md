@@ -1,6 +1,6 @@
 ---
 name: dd-shared-state
-description: dd 系列技能共享的工作流状态持久化规则，涵盖状态文件位置、参数化字段、恢复流程、写入/删除时机和并发检查。被 dd-bug-fix-workflow、dd-feature-development-workflow 引用。触发词：上下文恢复、状态文件、worktree 恢复、bug-fix-state.json、feature-development-state.json。
+description: 当需要持久化工作流状态、上下文恢复、并发检查时使用（被 dd-bug-fix-workflow、dd-feature-development-workflow 引用）。触发词：上下文恢复、状态文件、worktree 恢复、bug-fix-state.json、feature-development-state.json。
 ---
 
 # dd 共享状态持久化

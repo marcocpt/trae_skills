@@ -1,6 +1,6 @@
 ---
 name: dd-shared-ci
-description: dd 系列技能共享的 CI 验证规则，涵盖基线 CI 复用、回归 CI 触发、push 后等待、合并后验证四类场景，以及 gh run list/watch/workflow run 命令、test-macos.sh 本地测试脚本和 CI 优先红线。被 dd-bug-fix-workflow、dd-feature-development-workflow 引用。触发词：CI 验证、gh run、push 后等待、合并后 CI、test-macos.sh、基线 CI、回归 CI。
+description: 当需要 CI 验证（基线 CI 复用、回归 CI 触发、push 后等待、合并后验证）时使用（被 dd-bug-fix-workflow、dd-feature-development-workflow 引用）。触发词：CI 验证、gh run、push 后等待、合并后 CI、test-macos.sh。
 ---
 
 # dd 共享 CI 验证规则

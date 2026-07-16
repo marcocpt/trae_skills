@@ -1,6 +1,6 @@
 ---
 name: dd-shared-ask
-description: dd 系列技能共享的询问规则，涵盖结构化询问、null 输入重问、文档规则优先和提交边界。被 dd-ai-refactor-workflow、dd-bug-fix-workflow、dd-docreview-grilling、dd-feature-development-workflow、dd-writing-design-specs 引用。触发词：AskUserQuestion、null 重问、结构化询问。
+description: 当需要结构化询问用户、处理 null 输入重问、确认提交边界时使用（被 dd-ai-refactor-workflow、dd-bug-fix-workflow 等引用）。触发词：AskUserQuestion、null 重问、结构化询问。
 ---
 
 # dd 共享询问规则

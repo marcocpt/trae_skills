@@ -1,6 +1,6 @@
 ---
 name: dd-git-branch
-description: Git 分支管理技能，涵盖分支命名规则、一分支一功能原则、Feature Flag 策略。触发词：分支命名、创建分支、feature flag。当需要新建分支或确认分支命名规范时使用。
+description: 当新建分支、确认分支命名规则、配置 Feature Flag 时使用。触发词：分支命名、创建分支、feature flag。
 ---
 
 # Git 分支管理
