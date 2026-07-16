@@ -73,6 +73,24 @@ description: 当重构遗留/屎山代码、用户提到 AI 重构/refactoring�
 - 禁止在 refactor 分支夹带公共文件修改
 - 禁止跳过合并前检查
 
+## 工作环境前置询问（强制）
+
+**进入阶段一前，必须按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 的「工作环境询问」模板询问用户**：
+
+- 选项 1（推荐）：新建隔离工作树（基于 `origin/develop` 最新提交，分支命名 `refactor/{模块}`，遵循 [dd-git-branch](../dd-git-branch/SKILL.md) 与 [dd-git-worktree](../dd-git-worktree/SKILL.md)）
+- 选项 2：在当前 worktree 工作（仅做验证：`git rev-parse --is-inside-work-tree` + 并发检查）
+
+**处理规则**：
+
+- **选「新建」** → 走 [dd-git-worktree](../dd-git-worktree/SKILL.md) 创建流程，调用 `../dd-ai-git-workflow/scripts/create-worktree.sh refactor <模块>` 创建隔离工作树，cd 进入后开始阶段一
+- **选「当前 worktree」** → 仅做验证（确认当前目录在 worktree 中且无同类工作流并发），通过后直接开始阶段一
+- **null 输入** → 按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 的「null 输入重问」规则重新询问，不得默认新建
+- **特例（无需询问）**：上下文恢复后判断已进入工作流中段（已有 refactor 分支活跃且已存在 commit）→ 按 [dd-shared-state](../dd-shared-state/SKILL.md) 恢复机制处理
+
+**选中工作环境后，后续所有阶段（阶段一~阶段四）的工作都在该 worktree 中执行**，不得中途切换 worktree，不得跨 worktree 引用未提交状态。
+
+> **为何此处要询问**：重构涉及大量代码改动，必须保证隔离环境干净；但用户可能已在某个 refactor 分支上做了部分工作，强制新建会丢失上下文。**必须询问**，让用户基于场景判断。
+
 ## 四阶段流程（线性执行，不得跳序）
 
 ### 阶段一：理解与文档化（禁止改代码）

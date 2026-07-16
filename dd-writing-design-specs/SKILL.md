@@ -44,7 +44,25 @@ digraph writing_design_specs {
 
 ## 全局规则
 
-**通用规则**（结构化询问、null 输入重问、文档规则优先、提交边界）遵循 [dd-shared-ask](../dd-shared-ask/SKILL.md)。
+**通用规则**（结构化询问、null 输入重问、文档规则优先、提交边界、**worktree 选择模板**）遵循 [dd-shared-ask](../dd-shared-ask/SKILL.md)（含 worktree 选择模板）。
+
+## 工作环境前置询问（强制，先于步骤 0）
+
+**进入步骤 0 前，必须按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 的「工作环境询问」模板询问用户**：
+
+- 选项 1（推荐）：新建隔离工作树（基于 `origin/develop` 最新提交，分支命名 `docs/{主题}`，遵循 [dd-git-branch](../dd-git-branch/SKILL.md) 与 [dd-git-worktree](../dd-git-worktree/SKILL.md)）
+- 选项 2：在当前 worktree 工作（仅做验证：`git rev-parse --is-inside-work-tree` + 并发检查）
+
+**处理规则**：
+
+- **选「新建」** → 走 [dd-git-worktree](../dd-git-worktree/SKILL.md) 创建流程，调用 `../dd-ai-git-workflow/scripts/create-worktree.sh docs <主题>` 创建隔离工作树，cd 进入后开始步骤 0
+- **选「当前 worktree」** → 仅做验证（确认当前目录在 worktree 中且无同类工作流并发），通过后开始步骤 0
+- **null 输入** → 按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 的「null 输入重问」规则重新询问，不得默认新建
+- **特例（无需询问）**：纯只读探索（用户明确表示不写任何文件、不提交任何 commit）→ 不询问
+
+**选中工作环境后，后续所有步骤（0~5）的工作都在该 worktree 中执行**，不得中途切换 worktree。
+
+> **为何此处要询问**：步骤 0 就会写"规则与参考摘要"到临时笔记文件，步骤 2 写设计规范，步骤 3 写审查结果——首步即修改文件。必须先确定工作环境，避免在错误分支上累积未提交变更。
 
 - **一次一个文档**：设计规范、视觉原型、测试用例表必须**逐份**完成（写 → 审 → 确认），禁止并行调度或一次写多份后批量确认。
 - **没有拷问不写规范**：步骤 1 未完成禁止进入步骤 2。

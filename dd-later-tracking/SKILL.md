@@ -36,6 +36,26 @@ description: 用户延后工作时使用（"稍后/以后/回头/晚点/先跳�
 
 **红线：** 用户说"以后再说"时用 TodoWrite 记录 = 失败。TodoWrite 会话结束即丢失，延后事项会无声消失。
 
+## 工作环境询问（强制，先于核心流程）
+
+**首次即将写入或修改 `/docs/AI/LATER.md` 前，必须按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 的「工作环境询问」模板询问用户**：
+
+- 选项 1（推荐）：新建隔离工作树（基于 `origin/develop` 最新提交，分支命名 `docs/later-tracking`，遵循 [dd-git-branch](../dd-git-branch/SKILL.md) 与 [dd-git-worktree](../dd-git-worktree/SKILL.md)）
+- 选项 2：在当前 worktree 工作（仅做验证：`git rev-parse --is-inside-work-tree` + 并发检查）
+
+**处理规则**：
+
+- **选「新建」** → 走 [dd-git-worktree](../dd-git-worktree/SKILL.md) 创建流程，调用 `../dd-ai-git-workflow/scripts/create-worktree.sh docs later-tracking` 创建隔离工作树，cd 进入后开始核心流程
+- **选「当前 worktree」** → 仅做验证（确认当前目录在 worktree 中且无同类工作流并发），通过后开始核心流程
+- **null 输入** → 按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 的「null 输入重问」规则重新询问，不得默认新建
+- **特例（无需询问）**：
+  - 纯查询 LATER.md（用户只要求回顾，不新增/不修改）→ 不询问
+  - 仅标记 `- [x]` 完成态（一行修改，且用户明确表态这是收尾）→ 不询问，但需提交
+
+**选中工作环境后，后续所有 LATER.md 读写、提交都在该 worktree 中执行**，不得中途切换 worktree。
+
+> **为何此处要询问**：LATER.md 是项目级追踪文件，写入即修改项目状态。若直接在主仓库或无关分支上追加，会污染当前分支的 commit。询问让用户基于场景判断：是新建隔离分支提交 LATER 变更，还是在当前 worktree 中作为附带提交。
+
 ## 核心流程
 
 ```dot

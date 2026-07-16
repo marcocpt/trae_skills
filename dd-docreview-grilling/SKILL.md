@@ -36,6 +36,24 @@ description: 用户想逐条交互式审核文档时使用。触发词："审核
 
 ## 核心协议
 
+### 0. 工作环境询问（强制，先于启动审核）
+
+**进入「1. 启动审核」前，必须按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 的「工作环境询问」模板询问用户**：
+
+- 选项 1（推荐）：新建隔离工作树（基于 `origin/develop` 最新提交，分支命名 `docs/{主题}`，遵循 [dd-git-branch](../dd-git-branch/SKILL.md) 与 [dd-git-worktree](../dd-git-worktree/SKILL.md)）
+- 选项 2：在当前 worktree 工作（仅做验证：`git rev-parse --is-inside-work-tree` + 并发检查）
+
+**处理规则**：
+
+- **选「新建」** → 走 [dd-git-worktree](../dd-git-worktree/SKILL.md) 创建流程，调用 `../dd-ai-git-workflow/scripts/create-worktree.sh docs <主题>` 创建隔离工作树，cd 进入后开始启动审核
+- **选「当前 worktree」** → 仅做验证（确认当前目录在 worktree 中且无同类工作流并发），通过后开始启动审核
+- **null 输入** → 按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 的「null 输入重问」规则重新询问，不得默认新建
+- **特例（无需询问）**：纯查询/只读审核（用户明确表示不写 TODO、不改 LATER、不进入批量修复）→ 不询问
+
+**选中工作环境后，后续所有审核成果（TODO 文件、LATER 文件、验证摘要文档、批量修复 commit）都在该 worktree 中执行**，不得中途切换 worktree。
+
+> **为何此处要询问**：审核流程中会写 TODO 文件、追加 LATER、生成验证摘要文档，并在 7.2 逐批修复时改代码——这些都属于修改文件。必须先确定工作环境，避免在错误分支上累积未提交变更。
+
 ### 1. 启动审核
 
 收到触发词后，第一步必须：
