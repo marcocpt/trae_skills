@@ -28,11 +28,21 @@ case "$BRANCH_TYPE" in
     ;;
 esac
 
-# worktree 目录名：分支名斜杠替换为连字符
-WORKTREE_NAME="${BRANCH_NAME//\//-}"
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-REPO_PARENT="$(dirname "$REPO_ROOT")"
-WORKTREE_PATH="${REPO_PARENT}/${WORKTREE_NAME}"
+# worktree 目录名：保留分支名中的斜杠，按分支类型分子目录
+# 示例：fix/F3.1-hotkey-conflict → worktrees/fix/F3.1-hotkey-conflict/
+# 示例：feature/F3.1-ocr-acceleration → worktrees/feature/F3.1-ocr-acceleration/
+
+# 基于主仓库位置计算（避免在 worktree 内调用时项目名识别错误）
+# 使用 git-common-dir 定位主仓库，而非 show-toplevel（后者在 worktree 内返回 worktree 根）
+COMMON_DIR="$(git rev-parse --git-common-dir)"
+MAIN_ROOT="$(cd "$(dirname "$COMMON_DIR")" && pwd)"
+PROJECT="$(basename "$MAIN_ROOT")"
+WORKTREE_DIR="$(dirname "$MAIN_ROOT")/${PROJECT}-worktrees"
+
+# 自动创建 worktrees 子目录（不存在时创建，已存在时不报错）
+mkdir -p "$WORKTREE_DIR/$BRANCH_TYPE"
+
+WORKTREE_PATH="${WORKTREE_DIR}/${BRANCH_NAME}"
 
 if [ -d "$WORKTREE_PATH" ]; then
   echo "ERROR: worktree path already exists: $WORKTREE_PATH" >&2

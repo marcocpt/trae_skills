@@ -79,9 +79,10 @@ bash ../dd-ai-git-workflow/scripts/create-worktree.sh refactor core-state-machin
 
 ### worktree 命名规则
 
-- worktree 目录名 = 分支名（斜杠 `/` 替换为连字符 `-`）
-- 示例：分支 `feature/F3.1-ocr-acceleration` → worktree 目录 `feature-F3.1-ocr-acceleration`
-- worktree 目录与仓库根目录同级，便于 `ls` 一目了然
+- worktree 目录名 = 分支名（保留斜杠 `/`，按分支类型嵌套子目录）
+- 示例：分支 `feature/F3.1-ocr-acceleration` → worktree 目录 `${project}-worktrees/feature/F3.1-ocr-acceleration`
+- 示例：分支 `fix/F3.1-hotkey-conflict` → worktree 目录 `${project}-worktrees/fix/F3.1-hotkey-conflict`
+- worktree 目录位于仓库同级的 `${project}-worktrees` 下，按分支类型分类
 
 ## Feature Flag
 

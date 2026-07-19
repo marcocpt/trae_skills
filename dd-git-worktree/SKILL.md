@@ -12,7 +12,7 @@ worktree 遵循"一个分支一个 worktree"原则，禁止跨分支共享工作
 ## worktree 创建规则
 
 - **一个分支一个 worktree**：禁止跨分支共享工作区
-- **路径位置**：worktree 创建在仓库同级目录下，便于统一管理
+- **路径位置**：worktree 创建在仓库同级目录下的 `${project}-worktrees` 子目录中，按分支类型分子目录
 - **基线分支**：基于 `origin/develop` 最新提交创建
 - **创建即同步**：创建后立即 `git fetch origin` 确保基线最新
 
@@ -28,9 +28,10 @@ worktree 遵循"一个分支一个 worktree"原则，禁止跨分支共享工作
 
 ## worktree 命名规则
 
-- worktree 目录名 = 分支名（斜杠 `/` 替换为连字符 `-`）
-- 示例：分支 `feature/F3.1-ocr-acceleration` → worktree 目录 `feature-F3.1-ocr-acceleration`
-- worktree 目录与仓库根目录同级，便于 `ls` 一目了然
+- worktree 目录名 = 分支名（保留斜杠 `/`，按分支类型嵌套子目录）
+- 示例：分支 `feature/F3.1-ocr-acceleration` → worktree 目录 `${project}-worktrees/feature/F3.1-ocr-acceleration`
+- 示例：分支 `fix/F3.1-hotkey-conflict` → worktree 目录 `${project}-worktrees/fix/F3.1-hotkey-conflict`
+- worktree 目录位于仓库同级的 `${project}-worktrees` 下，按分支类型分类，便于统一管理
 
 ## worktree 状态同步
 
