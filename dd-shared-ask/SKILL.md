@@ -29,7 +29,7 @@ description: 当需要结构化询问用户、处理 null 输入重问、确认�
 
 **处理规则**：
 
-- **选「新建隔离工作树」** → 走该 skill 内的工作树创建流程（基于 `origin/develop` 最新提交，使用 [dd-git-worktree](../dd-git-worktree/SKILL.md) 规则与 [dd-ai-git-workflow](../dd-ai-git-workflow/SKILL.md) 的 `create-worktree.sh` 脚本）
+- **选「新建隔离工作树」** → 走该 skill 内的工作树创建流程（基于 `origin/develop`、本地 `develop` 最新提交，使用 [dd-git-worktree](../dd-git-worktree/SKILL.md) 规则与 [dd-ai-git-workflow](../dd-ai-git-workflow/SKILL.md) 的 `create-worktree.sh` 脚本）
 - **选「在当前 worktree 工作」** → 仅做验证：
   1. 检查当前目录是否在 worktree 中（`git rev-parse --is-inside-work-tree`）
   2. 检查当前 worktree 是否已有活跃的同类工作流（遵循 [dd-shared-state](../dd-shared-state/SKILL.md) 并发检查），有则禁止并发，要求重新选择

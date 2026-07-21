@@ -68,6 +68,16 @@ bash ../dd-ai-git-workflow/scripts/daily-sync.sh
 # 冲突时输出冲突文件清单并以退出码 2 退出
 ```
 
+### 触发时机
+
+新分支不设置 upstream（不 tracking develop），但 Agent 必须在以下时机主动调用 `daily-sync.sh` 同步 develop 改动到当前 feature 分支：
+
+- **进入 worktree 开始工作前**：Agent 切入 worktree 准备编码前，先跑 `daily-sync.sh`，避免基于过期的 develop 工作
+- **push 前**：执行 `git push` 推送 feature 分支前，先跑 `daily-sync.sh`，避免推送落后于 develop 的分支
+- **每日开工**：每日首次进入工作流时，运行健康度检查 + `daily-sync.sh`
+
+冲突时（退出码 2）按 [dd-git-conflict](../dd-git-conflict/SKILL.md) 流程处理，禁止在 develop 上直接解决。
+
 ## branch-health.sh 用法
 
 **健康度检查脚本**：`../dd-ai-git-workflow/scripts/branch-health.sh`

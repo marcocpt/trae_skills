@@ -13,7 +13,7 @@ worktree 遵循"一个分支一个 worktree"原则，禁止跨分支共享工作
 
 - **一个分支一个 worktree**：禁止跨分支共享工作区
 - **路径位置**：worktree 创建在仓库同级目录下的 `${project}-worktrees` 子目录中，按分支类型分子目录
-- **基线分支**：基于 `origin/develop` 最新提交创建
+- **基线分支**：基于 `origin/develop`、本地 `develop` 最新提交（取两者中更新的）创建，新分支不设置 upstream（首次 push 用 `git push -u origin <branch>` 建立独立 tracking）
 - **创建即同步**：创建后立即 `git fetch origin` 确保基线最新
 
 **创建脚本**：`../dd-ai-git-workflow/scripts/create-worktree.sh`

@@ -40,7 +40,7 @@ description: 用户延后工作时使用（"稍后/以后/回头/晚点/先跳�
 
 **首次即将写入或修改 `/docs/AI/LATER.md` 前，必须按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 的「工作环境询问」模板询问用户**：
 
-- 选项 1（推荐）：新建隔离工作树（基于 `origin/develop` 最新提交，分支命名 `docs/later-tracking`，遵循 [dd-git-branch](../dd-git-branch/SKILL.md) 与 [dd-git-worktree](../dd-git-worktree/SKILL.md)）
+- 选项 1（推荐）：新建隔离工作树（基于 `origin/develop`、本地 `develop` 最新提交，分支命名 `docs/later-tracking`，遵循 [dd-git-branch](../dd-git-branch/SKILL.md) 与 [dd-git-worktree](../dd-git-worktree/SKILL.md)）
 - 选项 2：在当前 worktree 工作（仅做验证：`git rev-parse --is-inside-work-tree` + 并发检查）
 
 **处理规则**：

@@ -40,7 +40,7 @@ description: 用户想逐条交互式审核文档时使用。触发词："审核
 
 **进入「1. 启动审核」前，必须按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 的「工作环境询问」模板询问用户**：
 
-- 选项 1（推荐）：新建隔离工作树（基于 `origin/develop` 最新提交，分支命名 `docs/{主题}`，遵循 [dd-git-branch](../dd-git-branch/SKILL.md) 与 [dd-git-worktree](../dd-git-worktree/SKILL.md)）
+- 选项 1（推荐）：新建隔离工作树（基于 `origin/develop`、本地 `develop` 最新提交，分支命名 `docs/{主题}`，遵循 [dd-git-branch](../dd-git-branch/SKILL.md) 与 [dd-git-worktree](../dd-git-worktree/SKILL.md)）
 - 选项 2：在当前 worktree 工作（仅做验证：`git rev-parse --is-inside-work-tree` + 并发检查）
 
 **处理规则**：

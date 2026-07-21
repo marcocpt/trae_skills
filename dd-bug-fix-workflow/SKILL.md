@@ -213,17 +213,19 @@ bash "$SKILL_DIR/scripts/create-worktree.sh" fix <F编号> <描述>
 # 示例：bash "$SKILL_DIR/scripts/create-worktree.sh" fix F3.1 hotkey-conflict
 ```
 
-或手动创建（基于 origin/develop 最新提交）：
+或手动创建（基于 origin/develop、本地 develop 最新提交）：
 
 ```bash
 BRANCH="fix/<F编号>-<描述>"  # 示例：fix/F3.1-hotkey-conflict
 git fetch origin develop
 path="$worktree_dir/$BRANCH"
-git worktree add "$path" -b "$BRANCH" origin/develop
+# --no-track: 不设置 upstream，新分支保持独立（不 tracking develop）
+# 首次推送时使用 `git push -u origin <branch>` 建立独立 tracking
+git worktree add --no-track "$path" -b "$BRANCH" origin/develop
 cd "$path"
 ```
 
-**基线分支**：默认基于 `origin/develop` 最新提交创建（遵循 dd-git-branch）。若需基于其他分支，需在步骤 0 明确说明并获得用户确认。
+**基线分支**：默认基于 `origin/develop`、本地 `develop` 最新提交（取两者中更新的）创建，新分支不设置 upstream（首次 push 用 `git push -u origin <branch>` 建立独立 tracking，遵循 dd-git-branch）。若需基于其他分支，需在步骤 0 明确说明并获得用户确认。
 
 #### 1.2.4 运行项目设置
 

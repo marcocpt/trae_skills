@@ -77,7 +77,7 @@ description: 当重构遗留/屎山代码、用户提到 AI 重构/refactoring�
 
 **进入阶段一前，必须按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 的「工作环境询问」模板询问用户**：
 
-- 选项 1（推荐）：新建隔离工作树（基于 `origin/develop` 最新提交，分支命名 `refactor/{模块}`，遵循 [dd-git-branch](../dd-git-branch/SKILL.md) 与 [dd-git-worktree](../dd-git-worktree/SKILL.md)）
+- 选项 1（推荐）：新建隔离工作树（基于 `origin/develop`、本地 `develop` 最新提交，分支命名 `refactor/{模块}`，遵循 [dd-git-branch](../dd-git-branch/SKILL.md) 与 [dd-git-worktree](../dd-git-worktree/SKILL.md)）
 - 选项 2：在当前 worktree 工作（仅做验证：`git rev-parse --is-inside-work-tree` + 并发检查）
 
 **处理规则**：
