@@ -643,6 +643,54 @@ git commit -m "chore(spec): clean up temporary notes for F{m}"
 
 **禁止**：保留临时笔记文件不清理（会污染 docs 目录）。
 
+#### 5.7.1 规格文档提交合并（可选）
+
+清理完成后，用 `AskUserQuestion` 询问用户是否合并本技能产出的所有规格文档提交为一个 commit：
+
+- 选项 1（推荐）：保留当前提交历史（每篇文档独立 commit，便于追溯每步变更）
+- 选项 2：合并所有规格文档提交为一个 commit（squash，简洁历史，便于整体审查）
+
+**选"合并"时的执行流程**：
+
+1. 确定规格文档提交的起点 commit（本技能首个提交的父 commit）：
+
+```bash
+# 查找本技能产出的所有 commit（从首个规格文档提交到清理提交）
+git log --oneline --grep="docs(spec)" --grep="chore(spec)" -- docs/planning/P{n}/F{m}/
+```
+
+2. 使用 soft reset 合并所有规格文档提交（保留工作区内容）：
+
+```bash
+# <squash-base> = 本技能首个提交之前的 commit SHA
+git reset --soft <squash-base>
+git commit -m "$(cat <<'EOF'
+docs(spec): complete specification suite for F{m} - <feature-name>
+
+- 需求文档: <路径>
+- 设计文档: <路径>
+- 视觉原型: <路径>（如有）
+- 测试用例表: <路径>
+- 审查结果: <路径>
+- 临时笔记: 已清理
+EOF
+)"
+```
+
+3. 合并后 push（需 force push，因为重写了历史）：
+
+```bash
+git push --force-with-lease origin <当前分支>
+```
+
+**合并注意事项**：
+- **仅限本技能产出的规格文档提交**，不合并其他工作流的提交（如上游 dd-feature-development-workflow 的 worktree 创建提交）
+- **合并前确认起点**：`<squash-base>` 必须是本技能首个提交之前的 commit，合并错了会丢失其他工作流的提交
+- **force push 风险**：合并会重写历史，已 push 的分支需 `--force-with-lease` 推送。多人协作分支禁止合并
+- **与漏提交补救的区别**：L660 的"禁止合并成单次 commit"针对漏提交的补救场景（必须按步骤逐个补提交）；本节的合并是正常完成后的用户可选操作，两者不矛盾
+
+> **红线**：合并时必须确认 `<squash-base>` 正确。合并错误会导致其他工作流的提交丢失。
+
 ---
 
 ## 违规补救路径
@@ -657,7 +705,7 @@ git commit -m "chore(spec): clean up temporary notes for F{m}"
 | 步骤 3 用 1 个子代理审 | 重新调度 3 个子代理并行审（无需重写需求文档） | 旧审查结果作废，以新 3 审为准 |
 | 步骤 3 串行调度 3 个子代理 | 重新在同一消息中并行调度 3 个 | 旧审查结果作废 |
 | 步骤 4 一次问多个问题 | 改为一次一问，重新走确认 | 已回答的内容可记录，但确认流程重走 |
-| 任一步骤未提交就进入下一步 | 立即对当前步骤产出执行 `git add` + `git commit`，再进入下一步。**多步漏提交时按步骤顺序逐个补提交，禁止合并成单次 commit** | 已产出物保留，补提交即可 |
+| 任一步骤未提交就进入下一步 | 立即对当前步骤产出执行 `git add` + `git commit`，再进入下一步。**多步漏提交时按步骤顺序逐个补提交，禁止合并成单次 commit**（此处的"禁止合并"针对漏提交补救；正常完成后步骤 5.7.1 的可选合并不受此限制） | 已产出物保留，补提交即可 |
 | 步骤 2 需求文档未提交就进入步骤 3 审查 | 步骤 3 审查结果**无效**（审查基线不可追溯）。先补提交需求文档（2.6），再重新调度 3 子代理审查 | 旧审查结果作废 |
 | 步骤 5 并行写多篇/批量确认 | **丢弃**未确认的下游文档，回到首个未确认文档走完整流程 | 下游文档作废（基于未确认上游，等于赌对） |
 | 步骤 5 跳过单篇文档确认直接提交 | 回到该文档走"确认 → 提交"流程（用 AskUserQuestion 提供显式选项，见 5.2.1）；若已进入下游文档，**丢弃**下游文档，回到未确认文档重新确认 | 未确认文档保留但需补确认；下游文档作废 |
@@ -701,6 +749,9 @@ git commit -m "chore(spec): clean up temporary notes for F{m}"
 | "步骤 5.2 的'一次一问确认'是模板，可根据情况裁剪" | 步骤 5.2.1 的 AskUserQuestion 选项模板是强制性的，不可裁剪。规则无例外。 |
 | "下游文档基于已确认的需求文档，cascade 正确性已保证" | 每篇文档都可能有与需求文档不一致的地方（审查未发现的设计缺陷）。逐篇确认是 cascade 的逐层保障，不能只靠上游。 |
 | "提交后用户还能在 git 历史里看到，事前确认非必需" | git 历史是事后追溯，不是事前知情。确认是让用户在提交前知道并决定，事后审查 ≠ 事前同意。 |
+| "漏提交了，直接合并成一个 commit 补上更快" | 漏提交必须按步骤逐个补提交，禁止合并。合并会丢失步骤边界，无法追溯哪步漏了。正常完成后步骤 5.7.1 的可选合并不适用于补救场景。 |
+| "规格文档提交太多，不问用户直接 squash" | squash 会重写历史（force push），必须用 AskUserQuestion 让用户显式选择。不得擅自合并。见 5.7.1。 |
+| "squash 会重写历史，与 merge-only 原则矛盾，所以不提供这个选项" | merge-only 原则针对分支合并策略（禁止 rebase 合并分支）；squash 是本技能结束后的可选历史整理，仅影响本技能产出的 commit，不涉及分支合并。见 5.7.1 例外说明。 |
 
 ## Git 工作流合规（强制）
 
@@ -721,6 +772,7 @@ git commit -m "chore(spec): clean up temporary notes for F{m}"
 - 禁止使用 `git rebase`（必须 merge-only）
 - 禁止在 docs 分支夹带公共文件修改
 - 禁止跳过合并前检查
+- **squash 例外**：步骤 5.7.1 的可选提交合并不受 merge-only 限制。squash 使用 `git reset --soft` + `git commit`（非 rebase），仅整理本技能产出的 commit 历史，不涉及分支合并。合并前必须用 AskUserQuestion 让用户显式选择，不得擅自执行。多人协作分支禁止 squash（force push 风险）。
 
 ---
 
@@ -744,6 +796,10 @@ git commit -m "chore(spec): clean up temporary notes for F{m}"
 - 审查时未检查 dd-write-requirements/dd-write-design P0 铁律（审查员 A 漏查代码符号）
 - **被上游调用时跳过判断未检查 `.feature-step0-requirements-summary.md`**（必须检查存在性 + 核对一致性）
 - **需求文档/设计文档违反 P0 铁律**（写代码符号）
+- **漏提交时合并成单次 commit**（必须按步骤逐个补提交；正常完成后步骤 5.7.1 的可选合并不受此限制）
+- **squash 合并时未确认 `<squash-base>` 正确性就执行 `git reset --soft`**（合并错误会导致其他工作流提交丢失）
+- **squash 合并未用 AskUserQuestion 让用户显式选择就擅自执行**（必须提供"保留历史/合并提交"选项，见 5.7.1）
+- **多人协作分支执行 squash**（force push 会覆盖他人提交，见 5.7.1 注意事项）
 - **设计文档包含 AC/测试策略/UI 可观测性矩阵/分阶段设计**（已迁移到测试用例表或实现规划）
 - **使用 `git rebase`**（必须 merge-only，禁止 rebase、rebase -i、pull --rebase）
 - **在 docs 分支夹带与规格文档无关的公共文件修改**（公共文件修改必须单独分支 + PublicFile tag）
