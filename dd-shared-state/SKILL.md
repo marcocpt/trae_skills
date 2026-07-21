@@ -60,12 +60,16 @@ description: 当需要持久化工作流状态、上下文恢复、并发检查�
   "plan_dir": "<计划目录路径>",
   "current_phase": "<当前 Phase>",
   "total_phases": "<Phase 总数>",
+  "merged_phases": ["<已合并到 develop 的 Phase 编号列表>"],
+  "phase_merge_in_progress": false,
   "commits": {
     "specs": "<规格文档套件提交 sha>",
     "plans": "<commit-sha>"
   }
 }
 ```
+
+> **增量交付约束**：feature-development 工作流要求每完成一个 phase 就合并到 develop。`merged_phases` 记录已合并的 phase 列表，`phase_merge_in_progress` 标记当前 phase 是否正在合并中（会话中断恢复时用于判断是否需要重复合并）。
 
 ## 恢复流程
 
@@ -93,6 +97,8 @@ fi
 - **写入**：工作树创建/验证成功后（bug-fix 步骤 1，feature-dev 步骤 1）
 - **更新 `current_step`**：**每个步骤出口判定成功后必须立即更新**（HARD-GATE）。仅步骤 1 写入一次是不够的，会话压缩后智能体凭此字段恢复进度，停在 1 会让智能体误以为还在步骤 1。
 - **更新 `current_phase`**（仅 feature-development）：每完成一个子计划，更新此字段
+- **更新 `merged_phases`**（仅 feature-development）：每完成一个 phase 的合并到 develop，追加当前 phase 编号到此数组
+- **更新 `phase_merge_in_progress`**（仅 feature-development）：phase merge 执行前设置为 `true`，merge 成功后清除为 `false`（会话中断恢复时通过此字段判断是否需要重复合并）
 - **更新 `merge_in_progress`**：合并操作执行前设置为 `true`，merge 成功后清除或直接删除状态文件
 - **删除**：合并成功后（**禁止 merge 前删除**），须在 `git merge --no-ff` 成功后执行，此时 `git-dir` 指向 worktree 私有目录
 
