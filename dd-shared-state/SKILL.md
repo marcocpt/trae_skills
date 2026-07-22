@@ -60,8 +60,10 @@ description: 当需要持久化工作流状态、上下文恢复、并发检查�
   "plan_dir": "<计划目录路径>",
   "current_phase": "<当前 Phase>",
   "total_phases": "<Phase 总数>",
-  "merged_phases": ["<已合并到 develop 的 Phase 编号列表>"],
-  "phase_merge_in_progress": false,
+  "completed_phases": ["<已完成本地验证的 Phase 编号列表>"],
+  "smoke_ci_phases": ["<触发过远程 UI Smoke CI 的 Phase 编号列表>"],
+  "final_candidate_branch": "<最终合并候选分支名>",
+  "final_ci_passed": false,
   "commits": {
     "specs": "<规格文档套件提交 sha>",
     "plans": "<commit-sha>"
@@ -69,7 +71,7 @@ description: 当需要持久化工作流状态、上下文恢复、并发检查�
 }
 ```
 
-> **增量交付约束**：feature-development 工作流要求每完成一个 phase 就合并到 develop。`merged_phases` 记录已合并的 phase 列表，`phase_merge_in_progress` 标记当前 phase 是否正在合并中（会话中断恢复时用于判断是否需要重复合并）。
+> **三层增量验证约束**：feature-development 工作流采用三层验证。`completed_phases` 记录已通过本地快速验证的 phase 列表，`smoke_ci_phases` 记录触发过远程 UI Smoke CI 的 phase 列表，`final_candidate_branch` 和 `final_ci_passed` 跟踪最终合并候选的状态。
 
 ## 恢复流程
 
@@ -97,8 +99,10 @@ fi
 - **写入**：工作树创建/验证成功后（bug-fix 步骤 1，feature-dev 步骤 1）
 - **更新 `current_step`**：**每个步骤出口判定成功后必须立即更新**（HARD-GATE）。仅步骤 1 写入一次是不够的，会话压缩后智能体凭此字段恢复进度，停在 1 会让智能体误以为还在步骤 1。
 - **更新 `current_phase`**（仅 feature-development）：每完成一个子计划，更新此字段
-- **更新 `merged_phases`**（仅 feature-development）：每完成一个 phase 的合并到 develop，追加当前 phase 编号到此数组
-- **更新 `phase_merge_in_progress`**（仅 feature-development）：phase merge 执行前设置为 `true`，merge 成功后清除为 `false`（会话中断恢复时通过此字段判断是否需要重复合并）
+- **更新 `completed_phases`**（仅 feature-development）：每完成一个 phase 的本地验证，追加当前 phase 编号到此数组
+- **更新 `smoke_ci_phases`**（仅 feature-development）：每触发一次远程 UI Smoke CI，追加当前 phase 编号到此数组
+- **更新 `final_candidate_branch`**（仅 feature-development）：步骤 5 创建最终合并候选分支时记录
+- **更新 `final_ci_passed`**（仅 feature-development）：步骤 5 完整远程 CI 通过时设置为 `true`
 - **更新 `merge_in_progress`**：合并操作执行前设置为 `true`，merge 成功后清除或直接删除状态文件
 - **删除**：合并成功后（**禁止 merge 前删除**），须在 `git merge --no-ff` 成功后执行，此时 `git-dir` 指向 worktree 私有目录
 
@@ -174,7 +178,7 @@ rm -f "$git_dir/${WORKFLOW_TYPE}-state.json"
 1. 检查当前目录是否在 worktree 中（`git rev-parse --is-inside-work-tree`）
 2. 获取当前分支名（`git rev-parse --abbrev-ref HEAD`）
 3. 若分支名匹配 `fix/F<N>-<描述>` 或 `feature/<F编号>-<描述>` 格式，对比 `git log origin/<BASE_BRANCH>..HEAD` 判断是否有已提交的修复
-4. 若已有 commit：识别为「合并中」状态，询问用户是否继续合并或开新一轮
+4. 若已有 commit：识别为「合并中」或「TDD 中」状态，询问用户是否继续或开新一轮。feature-dev 额外检查是否存在 `ci/F*-final-candidate` 分支判断是否在步骤 5 候选阶段
 5. 若无 commit：识别为「TDD 中」状态，询问用户是否继续修复或重新开始
 6. 仅当无法判断进度时，才从步骤 0 重新开始
 

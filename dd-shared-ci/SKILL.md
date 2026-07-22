@@ -14,9 +14,9 @@ dd-bug-fix-workflow 和 dd-feature-development-workflow 共享的 CI 验证逻�
 | 场景 | bug-fix 步骤 | feature-dev 步骤 | 语义 |
 |------|--------------|------------------|------|
 | 基线 CI 验证 | 1.2.5 / 1.3 | 1.2.5 / 1.3 | 确认起点 commit 干净 |
-| 回归 CI 验证 | 3.3.5 | 4.5 | 提交后全量回归 + XCUITest 验证 |
+| 回归 CI 验证 | 3.3.5 | 4.5b / 5.5 | Smoke CI（4.5b 高风险 phase）或最终完整 CI（5.5） |
 | Push 后等待 CI | 6.2.1 | 8.2.1 | Lint+Push 后等待 CI 结果 |
-| 合并后 CI 验证 | 7.1 | 9.1 | 合并产生新 commit 必须验证 |
+| 合并后 CI 验证 | 7.1 | 5.5-5.6 | 候选分支 CI 通过后推进到 develop |
 
 ## 场景 1：基线 CI 验证
 

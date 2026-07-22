@@ -7,7 +7,7 @@ description: 当实现新功能（规格文档套件优先的工作流）、UI �
 
 ## 概述
 
-10 步严格顺序工作流：需求确认 → 创建工作树 → 规格文档套件 → 计划编写 → TDD 实现（每 phase 合并到 develop）→ 最终同步检查 → 确认是否继续 → 文档检查 → Lint与Push → 清理工作树。每步必须在前一步成功后才能继续。**核心增量交付约束：每完成一个 phase 必须 merge --no-ff 到 develop 并通过 develop CI 验证后，才能开始下一个 phase。**
+10 步严格顺序工作流：需求确认 → 创建工作树 → 规格文档套件 → 计划编写 → TDD 实现（三层增量验证）→ 最终合并候选 + 完整 CI → 确认是否继续 → 文档检查 → Lint与Push → 清理工作树。每步必须在前一步成功后才能继续。**核心增量验证约束（三层验证）**：每个 phase 完成后必须通过本地快速验证（lint + build + 相关 XCTest + XCUITest 编译检查）；高风险节点可触发远程 UI Smoke CI；所有 phase 完成后，基于最新 develop 创建最终合并候选提交，对该准确提交执行一次完整远程 CI，通过后才允许推进到 develop。
 
 ## 何时使用
 
@@ -27,19 +27,23 @@ digraph feature_development_workflow {
     "1. 创建工作树" -> "2. 规格文档套件";
     "2. 规格文档套件" -> "3. 计划编写" [label="确认后自动"];
     "3. 计划编写" -> "4. TDD 实现" [label="自动"];
-    "4. TDD 实现" -> "4.5 CI 回归验证" [label="phase 提交后"];
-    "4.5 CI 回归验证" -> "4.6 合并当前 phase 到 develop" [label="CI 通过"];
-    "4.6 合并当前 phase 到 develop" -> "4.7 develop CI 验证" [label="merge 后"];
-    "4.7 develop CI 验证" -> "4. TDD 实现" [label="CI 通过，下一 phase"];
-    "4.7 develop CI 验证" -> "5. 最终同步检查" [label="所有 phase 完成"];
-    "5. 最终同步检查" -> "6. 确认是否继续";
+    "4. TDD 实现" -> "4.5 phase 本地验证" [label="phase 提交后"];
+    "4.5 phase 本地验证" -> "4.5a 风险判断" [label="本地验证通过"];
+    "4.5a 风险判断" -> "4.5b 远程 UI Smoke CI" [label="高风险"];
+    "4.5a 风险判断" -> "4. TDD 实现" [label="普通风险，下一 phase"];
+    "4.5b 远程 UI Smoke CI" -> "4. TDD 实现" [label="Smoke 通过，下一 phase"];
+    "4.5a 风险判断" -> "5. 最终合并候选" [label="所有 phase 完成"];
+    "4.5b 远程 UI Smoke CI" -> "5. 最终合并候选" [label="所有 phase 完成"];
+    "5. 最终合并候选" -> "5.1 完整远程 CI" [label="候选提交已创建"];
+    "5.1 完整远程 CI" -> "5.2 推进到 develop" [label="CI 通过"];
+    "5.2 推进到 develop" -> "6. 确认是否继续";
     "6. 确认是否继续" -> "7. 文档检查" [label="继续"];
     "6. 确认是否继续" -> "0. 需求确认" [label="回退到0", style=dashed];
     "6. 确认是否继续" -> "1. 创建工作树" [label="回退到1", style=dashed];
     "6. 确认是否继续" -> "2. 规格文档套件" [label="回退到2", style=dashed];
     "6. 确认是否继续" -> "3. 计划编写" [label="回退到3", style=dashed];
     "6. 确认是否继续" -> "4. TDD 实现" [label="回退到4", style=dashed];
-    "6. 确认是否继续" -> "5. 最终同步检查" [label="回退到5", style=dashed];
+    "6. 确认是否继续" -> "5. 最终合并候选" [label="回退到5", style=dashed];
     "7. 文档检查" -> "8. Lint 与 Push";
     "8. Lint 与 Push" -> "9. 清理工作树";
     "9. 清理工作树" -> "0. 需求确认" [label="还有其他特性", style=dashed];
@@ -49,7 +53,7 @@ digraph feature_development_workflow {
 <HARD-GATE>
 严格按 0→1→2→3→4→5→6→7→8→9 顺序执行。禁止跳步、禁止先写代码、禁止未通过检查就开始下一步。步骤 2 确认后到步骤 5 之间按推荐路径自动执行，无需用户确认。步骤 6 可回退到任意步骤(0-5)。任一步骤失败自动回退到上一步骤重新执行。
 
-**增量交付约束（每 phase 循环）**：步骤 4 内部按 phase 循环执行 4.1→4.2→4.3→4.4→4.5→4.6→4.7，每个 phase 必须 merge 到 develop 且 develop CI 通过后才能进入下一 phase。所有 phase 完成后才进入步骤 5。
+**三层增量验证约束**：步骤 4 内部按 phase 循环执行 4.1→4.2→4.3→4.4→4.5，每个 phase 完成后必须通过本地快速验证；高风险节点触发远程 UI Smoke CI；所有 phase 完成后进入步骤 5 创建最终合并候选提交，执行一次完整远程 CI，通过后才推进到 develop。**禁止**：累积多个 phase 后未经最终完整 CI 就合并到 develop；跳过本地快速验证就进入下一 phase。
 </HARD-GATE>
 
 ## 上下文恢复机制
@@ -57,13 +61,14 @@ digraph feature_development_workflow {
 状态持久化遵循 [dd-shared-state](../dd-shared-state/SKILL.md)，参数 `WORKFLOW_TYPE=feature-development`，`BRANCH_FIELD=feature_branch`。
 
 - **状态文件**：`$(git rev-parse --git-dir)/feature-development-state.json`
-- **特有字段**：feature_name、requirements_path、design_path、visual_path、test_case_path、review_path、plan_dir、current_phase、total_phases、commits、merged_phases（已合并到 develop 的 phase 列表）、phase_merge_in_progress（布尔，标记当前 phase 正在合并到 develop）
+- **特有字段**：feature_name、requirements_path、design_path、visual_path、test_case_path、review_path、plan_dir、current_phase、total_phases、commits、completed_phases（已完成本地验证的 phase 列表）、smoke_ci_phases（触发过远程 UI Smoke CI 的 phase 列表）、final_candidate_branch（最终合并候选分支名，如 `ci/F3.2-final-candidate`）、final_ci_passed（布尔，标记最终完整 CI 是否通过）
 - **写入**：步骤 1（工作树创建/验证成功后）
-- **更新 `current_step`**：**每个步骤出口判定成功后必须立即更新**（步骤 1/2/3/4/5/6/7/8 均强制更新；步骤 4.6 在 phase merge 成功后更新 `current_step="4.6"` + `phase_merge_in_progress=False`；步骤 9.1 在清理工作树成功后删除状态文件）
+- **更新 `current_step`**：**每个步骤出口判定成功后必须立即更新**（步骤 1/2/3/4/5/6/7/8 均强制更新；步骤 9.1 在清理工作树成功后删除状态文件）
 - **更新 `current_phase`**：每完成一个子计划（步骤 4.5 提交后）
-- **更新 `merged_phases`**：每完成一个 phase 的合并到 develop（步骤 4.6.6 执行）
-- **更新 `phase_merge_in_progress`**：步骤 4.6.2 phase merge 执行前设置为 `true`，merge 成功后清除（4.6.6）
-- **更新 `merge_in_progress`**：保留用于步骤 5.4 最终文档合并（执行前设置为 `true`，merge 成功后清除）
+- **更新 `completed_phases`**：每完成一个 phase 的本地验证（步骤 4.5 执行）
+- **更新 `smoke_ci_phases`**：每触发一次远程 UI Smoke CI（步骤 4.5b 执行）
+- **更新 `final_candidate_branch`**：步骤 5 创建最终合并候选分支时
+- **更新 `final_ci_passed`**：步骤 5.1 完整远程 CI 通过时设置为 `true`
 - **删除**：步骤 9.1 清理工作树成功后（须在工作树删除成功后执行，禁止清理前删除）
 
 ### 强制更新规则（HARD-GATE）
@@ -93,8 +98,8 @@ with open(state_file, 'w') as f:
 2. 获取当前分支名（`git rev-parse --abbrev-ref HEAD`）
 3. 若分支名匹配 `feature/F<N>-<描述>` 格式，对比 `git log origin/<BASE_BRANCH>..HEAD` 判断是否有已提交的特性实现
 4. 检查 `origin/develop` 是否已包含本特性的 phase commit（`git log origin/develop --oneline | grep "phase"` 或对比 feature 分支与 develop 的 merge 记录）：
-   - **develop 已包含所有 phase commit**：识别为「步骤 9.1 清理中」状态，询问用户是否继续清理工作树或开新一轮
-   - **develop 包含部分 phase commit**：识别为「步骤 4.6 phase 合并中」状态，询问用户是否继续合并剩余 phase 或重新开始
+   - **develop 已包含本特性的 merge commit（最终合并已推进）**：识别为「步骤 9.1 清理中」状态，询问用户是否继续清理工作树或开新一轮
+   - **存在 `ci/F*-final-candidate` 分支**：识别为「步骤 5 最终合并候选中」状态，询问用户是否继续 CI 验证或重新开始
    - **develop 无本特性 commit**：识别为「步骤 4 TDD 中」状态，询问用户是否继续实现或重新开始
 5. 若无实现 commit：识别为「步骤 4 TDD 中」状态，询问用户是否继续实现或重新开始
 6. 仅当无法判断进度时，才从步骤 0 重新开始
@@ -331,7 +336,7 @@ git status  # 必须干净，有未提交变更需先处理
 
 ### 1.4 写入状态文件
 
-工作树创建/验证成功后，持久化关键状态供上下文恢复。遵循 [dd-shared-state](../dd-shared-state/SKILL.md) 写入模板，参数 `WORKFLOW_TYPE=feature-development`，`BRANCH_FIELD=feature_branch`，`current_step=1`。需追加 feature-development 特有字段：feature_name、requirements_path、design_path、visual_path、test_case_path、review_path、plan_dir、current_phase、total_phases、commits、merged_phases（初始化为空数组 `[]`）、phase_merge_in_progress（初始化为 `false`）。
+工作树创建/验证成功后，持久化关键状态供上下文恢复。遵循 [dd-shared-state](../dd-shared-state/SKILL.md) 写入模板，参数 `WORKFLOW_TYPE=feature-development`，`BRANCH_FIELD=feature_branch`，`current_step=1`。需追加 feature-development 特有字段：feature_name、requirements_path、design_path、visual_path、test_case_path、review_path、plan_dir、current_phase、total_phases、commits、completed_phases（初始化为空数组 `[]`）、smoke_ci_phases（初始化为空数组 `[]`）、final_candidate_branch（初始化为空字符串）、final_ci_passed（初始化为 `false`）。
 
 > **状态文件更新（HARD-GATE）**：本步骤是状态文件的**首次写入**点，必须确保 `current_step="1"` + `feature_branch=<分支名>` + `feature_name=<特性名>` 正确写入。后续每个步骤出口判定都需更新 `current_step`。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
 
@@ -593,15 +598,14 @@ EOF
 5. 对 UI 子计划执行真实路径验证或手动验收，保存截图/录屏/日志/测试输出
 6. 运行子计划要求的验证命令（按 test-location-strategy skill 决策测试位置）：
    - **XCTest 单测试文件验证**（代码未提交，本地执行）：仅运行当前子计划相关的 XCTest，确认 TDD 绿灯。无 GUI 依赖，本地快速反馈合理
-   - **XCUITest 验证**：禁止本地执行，延迟到步骤 4.5 提交后走 CI（UI 测试依赖 GUI 会话、Accessibility 权限等环境状态，本地不可靠）
-   - **全量回归验证**：延迟到步骤 4.5 提交后按 test-location-strategy 走 CI 优先（先 push 再触发 CI）
-   - **禁止**：在步骤 4.2.6 本地跑全量回归或本地执行 XCUITest——代码未提交，本地通过不能替代 CI 的跨环境验证；不得以"CI 不可用"或"用户明确要求"为由本地降级
+   - **XCUITest 验证**：禁止本地执行，延迟到步骤 4.5a 风险判断后可能触发远程 Smoke CI，或最终步骤 5 完整 CI（UI 测试依赖 GUI 会话、Accessibility 权限等环境状态，本地不可靠）
+   - **全量回归验证**：延迟到步骤 5 最终完整 CI
+   - **禁止**：在步骤 4.2 本地跑全量回归或本地执行 XCUITest——代码未提交，本地通过不能替代 CI 的跨环境验证；不得以"CI 不可用"或"用户明确要求"为由本地降级
 7. 提交当前子计划相关代码、测试、文档、证据记录（步骤 4.5）
 8. 更新状态文件的 `current_phase`（步骤 4.5）
-9. **合并当前 phase 到 develop**（步骤 4.6：merge --no-ff + push develop）
-10. **develop CI 验证**（步骤 4.7：CI 通过后才继续）
-11. 更新状态文件的 `merged_phases`
-12. 进入下一个子计划（如所有 phase 已完成，进入步骤 5）
+9. **本地快速验证**（步骤 4.5：lint + build + 相关 XCTest + XCUITest 编译检查）
+10. **风险判断**（步骤 4.5a）：高风险 → 触发远程 UI Smoke CI；普通风险 → 直接进入下一 phase
+11. 进入下一个子计划（如所有 phase 已完成，进入步骤 5）
 
 ### 4.3 TDD 循环
 
@@ -695,9 +699,9 @@ git commit -m "<type>[scope]: <description>"
 - **「建议修复」/「可选优化」类** → 仅当涉及重大架构变化、产品功能变化或改动影响很大时，用 `AskUserQuestion` 逐条确认；否则自动跳过并记录到核对摘要
 - **达到 3 次重试上限** → `AskUserQuestion` 升级处理：继续重试 / 跳过该问题 / 停止工作流回退到上一步
 
-### 4.5 子计划提交
+### 4.5 子计划提交 + 本地快速验证
 
-check-code 通过后提交：
+check-code 通过后提交并执行本地快速验证：
 
 ```bash
 git status --short
@@ -715,163 +719,105 @@ EOF
 
 如果实现任务已经按计划产生了多个 commit，确保当前子计划结束时没有未提交变更；如 check-code 后没有新增变更，记录最后一个属于该子计划的 commit SHA 作为完成点，不创建空提交。
 
-**提交后全量回归验证（CI 优先，必须 push）**：本步是步骤 4.3 延迟的 XCUITest 验证 + 全量 XCTest 回归的唯一执行点（XCTest 单测试文件绿灯已在步骤 4.3 本地验证）。
+**提交后本地快速验证（第一层）**：不干扰桌面工作的本地检查，快速反馈 TDD 质量：
 
-CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 2（回归 CI 验证）。按顺序执行：检查 push → 检查 CI 已有结果 → 触发 CI 并等待 → CI 失败处理。
+```bash
+# 1. Lint
+swiftlint lint --strict  # Swift 项目；其他项目用对应 lint 命令
 
-> **红线**：不得跳过本验证。步骤 4.3 的 XCUITest 验证 + 全量回归已延迟到此处，跳过等于放弃 UI 测试和全量回归验证。CI 相关红线遵循 dd-shared-ci 红线章节。
+# 2. 编译 App（不运行 UI 测试）
+xcodebuild \
+  -project <Project>.xcodeproj \
+  -scheme <Scheme> \
+  -configuration Debug \
+  build
 
-更新状态文件的 `current_phase`。
+# 3. 只运行当前 phase 相关的 XCTest
+xcodebuild test \
+  -project <Project>.xcodeproj \
+  -scheme <Scheme>Tests \
+  -only-testing:<Scheme>Tests/<CurrentFeature>Tests
 
-> **状态文件更新（HARD-GATE）**：每个子计划提交成功后必须更新 `feature-development-state.json`：`current_step="4.5"`、`current_phase=<刚完成的 Phase 编号>`、`commits` 数组追加本次 commit SHA。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
+# 4. 检查 XCUITest Target 是否可编译（不实际启动 App）
+xcodebuild build-for-testing \
+  -project <Project>.xcodeproj \
+  -scheme <Scheme>UITests
+```
 
-CI 通过后进入步骤 4.6 合并当前 phase 到 develop。
+**本地快速验证失败** → 修复后重新执行，不得跳过（循环直到通过）。
+
+**本地快速验证通过** → 更新状态文件，进入 4.5a 风险判断。
+
+> **红线**：不得跳过本地快速验证。每个 phase 完成后必须 lint + build + 相关 XCTest + XCUITest 编译检查通过，才能进入下一 phase。
+
+> **状态文件更新（HARD-GATE）**：每个子计划提交成功且本地验证通过后必须更新 `feature-development-state.json`：`current_step="4.5"`、`current_phase=<刚完成的 Phase 编号>`、`commits` 数组追加本次 commit SHA、`completed_phases` 数组追加当前 phase 编号。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
 
 ---
 
-### 4.6 合并当前 phase 到 develop
+### 4.5a 风险判断（是否触发远程 UI Smoke CI）
 
-**增量交付核心步骤**：每个 phase 在 feature 分支 CI 通过后，必须立即合并到 develop 分支。禁止累积多个 phase 后一次性合并。
+每个 phase 本地验证通过后，判断是否需要触发远程 UI Smoke CI（第二层）。**默认不触发远程 CI**，仅在以下高风险情况触发：
 
-#### 4.6.1 前置检查：同步 develop 最新状态
+**高风险触发条件**（满足任一即触发）：
 
-```bash
-# 切回主仓库路径
-cd "$main_root"
-git fetch origin
-git checkout develop
-git pull origin develop
-```
+- 修改 App 启动流程、AppDelegate、SceneDelegate
+- 修改主窗口、设置窗口、Toolbar、菜单栏
+- 修改 Accessibility 权限相关代码
+- 修改全局快捷键
+- 修改 XCUITest 基础设施（PageObject、辅助函数、启动参数）
+- 修改共享导航或窗口管理代码
+- 当前 phase 无法通过 XCTest 或静态证据验证
+- 单个功能开发跨度超过 2~3 天
+- 连续修改多个 UI 页面
 
-#### 4.6.2 标记合并中（HARD-GATE，在离开 worktree 前执行）
+**非高风险** → 直接进入下一 phase（或所有 phase 完成后进入步骤 5）。
 
-```bash
-cd "$WORKTREE_PATH"
-git_dir=$(git rev-parse --git-dir)
-python3 -c "
-import json
-state_file = '$git_dir/feature-development-state.json'
-with open(state_file) as f:
-    state = json.load(f)
-state['current_step'] = '4.6-merging'
-state['phase_merge_in_progress'] = True
-state['merging_phase'] = state.get('current_phase', 'unknown')
-with open(state_file, 'w') as f:
-    json.dump(state, f, indent=2)
-"
-```
-
-#### 4.6.3 执行 merge（merge-only，禁止 rebase）
-
-在主仓库路径执行：
-
-```bash
-cd "$main_root"
-git checkout develop
-git merge --no-ff <工作树分支> -m "Merge feature/<F编号>-<描述> phase <N> into develop"
-```
-
-合并策略遵循 [dd-git-merge](../dd-git-merge/SKILL.md) merge-only 原则。**禁止使用 rebase**。
-
-#### 4.6.4 冲突处理
-
-如发生冲突，冲突处理流程遵循 [dd-git-conflict](../dd-git-conflict/SKILL.md) 长分支冲突处理流程章节（在 feature 分支解决冲突后重新合并）。
-
-**冲突无法解决** → **AskUserQuestion**：
-
-- 选项 1（推荐）：`git merge --abort` 中止合并，回到步骤 4 在 develop 最新代码上重新实现当前 phase
-- 选项 2：继续手动解决冲突
-- 选项 3：放弃本次实现，清理工作树
-
-#### 4.6.5 合并成功后 push develop
-
-```bash
-cd "$main_root"
-git push origin develop
-```
-
-**禁止**：
-- 使用 `git push --force` / `git push -f`（除非用户明确要求）
-- 跳过 push 直接进入 4.7
-
-#### 4.6.6 更新状态文件（HARD-GATE，merge 成功后执行）
-
-```bash
-cd "$WORKTREE_PATH"
-git_dir=$(git rev-parse --git-dir)
-python3 -c "
-import json
-state_file = '$git_dir/feature-development-state.json'
-with open(state_file) as f:
-    state = json.load(f)
-state['current_step'] = '4.6'
-state['phase_merge_in_progress'] = False
-state['merged_phases'] = state.get('merged_phases', []) + [state.get('current_phase', 'unknown')]
-state.pop('merging_phase', None)
-with open(state_file, 'w') as f:
-    json.dump(state, f, indent=2)
-"
-```
-
-> **状态文件更新（HARD-GATE）**：merge 成功且 push 后必须更新状态文件：`current_step="4.6"`、`phase_merge_in_progress=False`、`merged_phases` 数组追加当前 phase 编号。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
-
-进入步骤 4.7 develop CI 验证。
+**高风险** → 触发远程 UI Smoke CI（4.5b）。
 
 ---
 
-### 4.7 develop CI 验证
+### 4.5b 远程 UI Smoke CI
 
-合并产生新的 develop commit，必须验证 develop 分支在 CI 中通过。
+仅运行 5~10 个核心用例，验证 App 基本功能不受影响：
 
-CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 4（合并后 CI 验证，此时针对 develop 分支）。CI 失败时的 AskUserQuestion 选项遵循 dd-shared-ci 场景 4。
+```text
+App 能启动
+主窗口能显示
+设置窗口能打开
+当前新增功能入口能进入
+新增功能最核心路径能完成
+App 能正常退出
+```
 
-- **成功** → 进入 4.8 出口判定
-- **失败** → **AskUserQuestion**：
-  - 选项 1（推荐）：回退 develop merge（`git revert -m 1 <merge-commit>`），回到步骤 4 修复当前 phase
-  - 选项 2：在 develop 上直接修复（仅限小修复，大修复必须回退）
-  - 选项 3：停止工作流
+**执行方式**：push feature 分支到远端，触发 CI（仅运行 Smoke 测试集，非全量）。
 
-> **红线**：不得跳过本验证。develop 分支合并后必须 CI 通过，才能开始下一个 phase。CI 相关红线遵循 dd-shared-ci 红线章节。
+CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 2（回归 CI 验证）。若 CI 配置支持选择性测试集，使用 `--only-testing` 参数限定范围；否则运行完整 CI 但只关注核心用例结果。
 
-> **状态文件更新（HARD-GATE）**：CI 通过后必须更新 `feature-development-state.json`：`current_step="4.7"`。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
+- **Smoke CI 通过** → 更新状态文件 `smoke_ci_phases`，进入下一 phase（或步骤 5）
+- **Smoke CI 失败** → **AskUserQuestion**：
+  - 选项 1（推荐）：拉取 CI 日志分析失败原因，回到 TDD 步骤修复，修复后重新运行 Smoke CI
+  - 选项 2：运行定向 CI（仅失败用例组），定向修复后重新 Smoke CI
+  - 选项 3：跳过 Smoke 继续（不推荐，风险自担）
+
+> **状态文件更新（HARD-GATE）**：Smoke CI 通过后必须更新 `feature-development-state.json`：`smoke_ci_phases` 数组追加当前 phase 编号。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
 
 ---
 
-### 4.8 出口判定
+### 4.6 出口判定
 
 - **仍有未完成的 phase** → 切回工作树路径 `cd "$WORKTREE_PATH"`，回到步骤 4.1 执行下一个 phase
-- **所有 phase 完成**（`merged_phases` 长度等于 `total_phases`）、develop CI 全部通过 → 进入步骤 5 最终同步检查
-- 任一 phase 的 develop CI 失败且未修复 → 停止并报告阻塞点、已验证事实和建议选项
+- **所有 phase 完成**（`completed_phases` 长度等于 `total_phases`）→ 进入步骤 5 最终合并候选
 - 设计或计划在实现中被证明错误 → 回到步骤 2 或步骤 3，按顺序重新推进
 
-> **状态文件更新（HARD-GATE）**：进入步骤 5 前必须更新 `feature-development-state.json`：`current_step="4.8-completed"`（标记所有 phase 已合并到 develop，准备进入最终同步检查）。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
+> **状态文件更新（HARD-GATE）**：进入步骤 5 前必须更新 `feature-development-state.json`：`current_step="4.6-completed"`（标记所有 phase 本地验证已完成，准备进入最终合并候选）。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
 
 ---
 
-## 步骤 5：最终同步检查
+## 步骤 5：最终合并候选 + 完整 CI
 
-**所有 phase 已合并到 develop 后的最终文档补充与同步**。由于每个 phase 在步骤 4.6 已合并到 develop，本步骤不再做上游同步（develop 已是最新基线），仅做最终文档补充、提交与合并。
+**所有 phase 本地验证完成后的最终合并与验证**。创建合并候选分支，执行一次完整远程 CI，通过后才推进到 develop。
 
-### 5.1 检查 develop 最新状态
-
-```bash
-cd "$main_root"
-git fetch origin
-git checkout develop
-git pull origin develop
-cd "$WORKTREE_PATH"
-```
-
-如发现 develop 有其他开发者的更新（非本特性 phase 合并），需在 feature 分支合并 develop 最新代码后再补充文档：
-
-```bash
-cd "$WORKTREE_PATH"
-git merge --no-ff origin/develop -m "Sync develop before final documentation"
-```
-
-冲突处理遵循 [dd-git-conflict](../dd-git-conflict/SKILL.md) 长分支冲突处理流程章节。
-
-### 5.2 添加详细日志
+### 5.1 添加详细日志与文档补充
 
 给相关代码添加正式运行日志，带功能标签前缀（如 `[F1.10]`）便于检索。如步骤 4 各 phase 已添加完整日志，本步仅做补充检查。
 
@@ -881,16 +827,14 @@ git merge --no-ff origin/develop -m "Sync develop before final documentation"
 
 如果项目 `CODING_STANDARDS.md` 中定义了日志规范，以项目规范为准。
 
-### 5.3 编写流程图和时序图
+### 5.2 编写流程图和时序图
 
 - **流程图**：描述特性涉及的代码执行流程，标注关键节点与分支条件
 - **时序图**：描述特性涉及的组件交互顺序，标注关键消息与状态转换
 
 使用 mermaid 格式，兼容 9.1.2，不使用中文标点、符号。
 
-### 5.4 提交变更并合并到 develop
-
-提交当前变更（含日志 + 文档），然后合并到 develop（与步骤 4.6 流程一致）。
+### 5.3 提交文档补充
 
 ```bash
 cd "$WORKTREE_PATH"
@@ -898,46 +842,122 @@ git add <files-for-current-sync>
 git commit -m "<type>[scope]: final documentation and logging"
 ```
 
-提交后执行合并到 develop（遵循步骤 4.6.1-4.6.6 流程）：
+### 5.4 创建最终合并候选分支
+
+**关键原则：必须测试"即将进入 develop 的准确提交"，而不是测试旧 feature commit 后再产生一个未经测试的新 merge commit。**
 
 ```bash
 cd "$main_root"
-git checkout develop
-git merge --no-ff <工作树分支> -m "Merge feature/<F编号>-<描述> final documentation into develop"
+git fetch origin
+
+# 基于最新 develop 创建候选分支
+git switch -c ci/<F编号>-final-candidate origin/develop
+
+# 合并 feature 分支（merge-only，禁止 rebase）
+git merge --no-ff <工作树分支> -m "Merge feature/<F编号>-<描述> final candidate"
+
+# 推送候选分支到远端
+git push -u origin ci/<F编号>-final-candidate
+```
+
+冲突处理遵循 [dd-git-conflict](../dd-git-conflict/SKILL.md) 长分支冲突处理流程章节。
+
+**冲突无法解决** → **AskUserQuestion**：
+
+- 选项 1（推荐）：在 feature 分支合并 develop 最新代码后重新创建候选
+- 选项 2：继续手动解决冲突
+- 选项 3：放弃本次实现，清理工作树
+
+**更新状态文件**（HARD-GATE，候选分支创建成功后执行）：
+
+```bash
+cd "$WORKTREE_PATH"
+git_dir=$(git rev-parse --git-dir)
+python3 -c "
+import json
+state_file = '$git_dir/feature-development-state.json'
+with open(state_file) as f:
+    state = json.load(f)
+state['current_step'] = '5.4-candidate-created'
+state['final_candidate_branch'] = 'ci/<F编号>-final-candidate'
+with open(state_file, 'w') as f:
+    json.dump(state, f, indent=2)
+"
+```
+
+### 5.5 完整远程 CI（第三层）
+
+对候选分支执行一次完整远程 CI，包括：
+
+```text
+SwiftLint
+完整编译
+全部 XCTest
+全部 XCUITest
+关键截图或证据检查
+安装、启动、退出测试
+```
+
+CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 2（回归 CI 验证，针对候选分支）。
+
+- **完整 CI 通过** → 更新状态文件 `final_ci_passed=True`，进入 5.6 推进到 develop
+- **完整 CI 失败** → **定向修复循环**：
+  1. 拉取 CI 日志（`gh run view <run-id> --log-failed`）分析失败原因
+  2. 回到 feature 分支修复
+  3. **仅运行失败测试或相关测试组**（定向验证）：
+     ```bash
+     xcodebuild test-without-building \
+       -xctestrun <Project>UITests.xctestrun \
+       -only-testing:<Project>UITests/<FailedTestGroup>
+     ```
+  4. 修复后重新创建候选分支并推送
+  5. 重新触发完整 CI
+  6. 通常流程：一次完整 CI 发现问题 → 若干次定向修复 → 最后一次完整 CI 做最终确认
+  7. 不得每次修一个小问题都重新跑整套——先定向验证稳定后再跑完整 CI
+
+> **红线**：不得跳过完整远程 CI。这是 XCUITest 和全量回归验证的唯一执行点。CI 相关红线遵循 dd-shared-ci 红线章节。
+
+> **状态文件更新（HARD-GATE）**：完整 CI 通过后必须更新 `feature-development-state.json`：`current_step="5.5-ci-passed"`、`final_ci_passed=True`。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
+
+### 5.6 推进到 develop
+
+**关键：推进的是已通过 CI 验证的同一个 merge commit，而不是重新执行一次不同的 merge。**
+
+```bash
+cd "$main_root"
+git switch develop
+git pull --ff-only origin develop
+git merge --ff-only ci/<F编号>-final-candidate
 git push origin develop
 ```
 
-**合并后 develop CI 验证**：CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 4（合并后 CI 验证，针对 develop 分支）。
+**如果 CI 期间 develop 又有了新提交** → 候选提交已过期，需要回到 5.4 重新生成候选并重新验证。
 
-- **成功** → 进入 5.5 同步 AI-test 工作树
-- **失败** → **AskUserQuestion**：回退 merge 重新修复 / 在 develop 上直接修复（仅限小修复）/ 停止工作流
+**推进成功后删除候选分支**：
 
-### 5.5 同步 AI-test 测试工作树
+```bash
+git branch -d ci/<F编号>-final-candidate
+git push origin --delete ci/<F编号>-final-candidate
+```
 
-提交变更后同步 AI-test 工作树，确保其复位到最新特性分支。
+### 5.7 同步 AI-test 测试工作树
+
+提交变更后同步 AI-test 工作树，确保其复位到最新 develop。
 
 **AskUserQuestion**：是否同步 AI-test 工作树
 
-- 选项 1（推荐）：同步（使用 `reset --hard` 复位到最新修复分支）
+- 选项 1（推荐）：同步（使用 `reset --hard` 复位到最新 develop）
 - 选项 2：不同步，结束步骤 5
 
 选择同步时：
 
 ```bash
-FEATURE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-bash "$HOME/.trae-cn/skills/shared/scripts/sync-ai-test-worktree.sh" "$FEATURE_BRANCH" "$worktree_dir"
+bash "$HOME/.trae-cn/skills/shared/scripts/sync-ai-test-worktree.sh" develop "$worktree_dir"
 ```
-
-- **返回码 0**（成功）：AI-test 工作树 HEAD 等于当前特性分支最新 commit，工作区干净
-- **返回码 2**（未提交变更）：AI-test 工作树存在未提交变更，询问用户处理方式
-- **其他失败** → **AskUserQuestion**：
-  - 选项 1（推荐）：重试
-  - 选项 2：跳过继续
-  - 选项 3：停止工作流
 
 选择不同步 → 直接进入步骤 6
 
-> **状态文件更新（HARD-GATE）**：步骤 5 提交成功后（5.4）必须更新 `feature-development-state.json`：`current_step="5"`、`commits` 数组追加本次同步 commit SHA、`merged_phases` 数组追加 `"final-doc"`。AI-test 同步成功后（5.5）更新 `current_step="5.5-completed"`。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
+> **状态文件更新（HARD-GATE）**：步骤 5 推进到 develop 成功后必须更新 `feature-development-state.json`：`current_step="5"`。AI-test 同步成功后更新 `current_step="5.7-completed"`。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
 
 ---
 
@@ -1148,26 +1168,30 @@ git commit -m "chore(feature): clean up step 0 requirements summary for F{m}" 2>
 
 > **注**：若文件不存在（如步骤 0.4 未执行或已被清理），`git rm -f` 会报错，可忽略并继续。
 
-**验证所有 phase 已合并到 develop**（HARD-GATE，清理前必须确认）：
+**验证最终合并已完成**（HARD-GATE，清理前必须确认）：
 
 ```bash
-# 检查 merged_phases 是否覆盖所有 phase
+# 检查 final_ci_passed 和 completed_phases
 git_dir=$(git rev-parse --git-dir)
 python3 -c "
 import json
 with open('$git_dir/feature-development-state.json') as f:
     state = json.load(f)
-merged = state.get('merged_phases', [])
+completed = state.get('completed_phases', [])
 total = state.get('total_phases', 0)
-if len(merged) < total:
-    print(f'❌ 还有 {total - len(merged)} 个 phase 未合并到 develop，禁止清理')
+ci_passed = state.get('final_ci_passed', False)
+if len(completed) < total:
+    print(f'❌ 还有 {total - len(completed)} 个 phase 未完成，禁止清理')
+    exit(1)
+elif not ci_passed:
+    print(f'❌ 最终完整 CI 未通过，禁止清理')
     exit(1)
 else:
-    print(f'✅ 所有 {total} 个 phase 已合并到 develop')
+    print(f'✅ 所有 {total} 个 phase 已完成，最终 CI 已通过')
 "
 ```
 
-如有未合并的 phase → 禁止清理，回到步骤 4 完成剩余 phase。
+如有未完成的 phase 或最终 CI 未通过 → 禁止清理，回到步骤 4 完成剩余 phase 或步骤 5 完成最终合并。
 
 **删除工作树和 feature 分支**（在主仓库路径执行）：
 
@@ -1175,6 +1199,9 @@ else:
 cd "$main_root"
 git worktree remove "$WORKTREE_PATH" --force
 git branch -d <工作树分支>  # 已合并到 develop，可安全删除
+# 清理候选分支（如存在，步骤 5.6 推进后通常已删除）
+git branch -D ci/<F编号>-final-candidate 2>/dev/null || true
+git push origin --delete ci/<F编号>-final-candidate 2>/dev/null || true
 ```
 
 **清理成功后删除状态文件**（HARD-GATE，工作树删除成功后才执行）：
@@ -1314,21 +1341,20 @@ with open(state_file, 'w') as f:
 - 没有启动真实 app/浏览器或没有手动验收证据，却声称 UI 已验证
 - 审查发现问题但继续下一个子计划
 - 将多个阶段的无关变更混在同一个 commit
-- **在步骤 4.3 中本地执行 UI 测试（XCUITest）**（必须延迟到步骤 4.5 走 CI；XCTest 单测试文件可本地执行快速反馈）
-- **跳过步骤 4.5 提交后全量回归验证**
-- **跳过步骤 4.6 合并当前 phase 到 develop**（增量交付约束：每个 phase 必须 merge 到 develop 后才能开始下一个 phase）
-- **累积多个 phase 后一次性合并到 develop**（违背增量交付原则；必须每 phase 独立合并）
-- **跳过步骤 4.7 develop CI 验证就开始下一个 phase**（develop 合并后必须 CI 通过）
+- **在步骤 4.3 中本地执行 UI 测试（XCUITest）**（必须延迟到步骤 4.5b Smoke CI 或步骤 5.5 完整 CI；XCTest 单测试文件可本地执行快速反馈）
+- **跳过步骤 4.5 本地快速验证**（每个 phase 必须通过 lint + build + 相关 XCTest + XCUITest 编译检查才能进入下一 phase）
+- **跳过步骤 5.5 完整远程 CI 就推进到 develop**（最终合并候选必须通过完整 CI 才能推进；这是 XCUITest 和全量回归验证的唯一执行点）
+- **未经最终完整 CI 验证的 merge commit 推进到 develop**（必须测试"即将进入 develop 的准确提交"；禁止先 merge 再测试）
 - **使用 git rebase 同步上游或合并分支**（遵循 [dd-git-merge](../dd-git-merge/SKILL.md) merge-only 原则，禁止 rebase）
 - **在 feature 分支夹带公共文件修改**（公共文件必须开独立分支，加 PublicFile tag）
 - **步骤 0.4 未写入 `.feature-step0-requirements-summary.md` 就进入步骤 1**（dd-writing-specs 步骤 1.0 跳过判断依赖此文件）
-- **步骤 9.1 清理工作树前未验证所有 phase 已合并到 develop**（必须确认 `merged_phases` 长度等于 `total_phases`）
+- **步骤 9.1 清理工作树前未验证最终合并已完成**（必须确认 `final_ci_passed=True` 且 `completed_phases` 长度等于 `total_phases`）
 
 ### 状态文件红线（HARD-GATE）
 
 - **进入下一步骤前未更新 `current_step`**（必须立即按更新模板写入，禁止"等下次再补"）
 - **状态文件 `current_step` 与实际进度不符但未纠正**（必须先纠正再继续，不得跳过）
-- **步骤 4.6 phase merge 前删除状态文件**（必须先标记 `phase_merge_in_progress=True` + `current_step="4.6-merging"`，再执行 merge，merge 成功后才更新 `phase_merge_in_progress=False`）
+- **步骤 5.4 创建候选分支前未更新状态文件**（必须先记录 `final_candidate_branch` + `current_step="5.4-candidate-created"`，再推送候选分支）
 - **步骤 9.1 清理工作树前删除状态文件**（必须先标记 `cleanup_in_progress=True` + `current_step="9.1-cleanup"`，再清理）
 - **步骤 9.3 暂停时删除状态文件**（必须更新 `current_step="9.3-paused"` + `paused=True`，保留供恢复使用）
 - **会话恢复时状态文件不存在但未按恢复策略判断**（禁止默认从步骤 0 重启，必须按「上下文恢复机制 → 状态文件不存在时的恢复策略」6 步判断）
@@ -1342,18 +1368,18 @@ with open(state_file, 'w') as f:
 |------|------|
 | "下一步再补状态文件更新" | 下一步永远不来。会话压缩后失忆直接跳步，导致跨步骤执行 |
 | "状态文件 `current_step` 已经写过了，不用再写" | `current_step` 是**进度指示器**，每个步骤出口都必须更新到最新值，否则恢复时识别错误步骤 |
-| "merge 前先删状态文件，反正 merge 会成功" | merge 可能失败、冲突、被打断。删了状态文件，会话压缩后失忆，无法识别"合并中"状态 |
+| "本地快速验证只是形式，跳过也行" | 本地验证是 TDD 快速反馈的关键环节；lint/build/XCTest 失败说明代码有缺陷，跳过等于带病进入下一 phase |
+| "高风险判断太主观，每个 phase 都跑 Smoke CI 更安全" | 每个 phase 跑 Smoke CI 会恢复原来的串行瓶颈；高风险触发条件已覆盖最危险场景，普通 phase 本地验证足够 |
+| "最终完整 CI 太慢，先 merge 再补 CI" | 必须测试"即将进入 develop 的准确提交"；先 merge 再 CI 等于把未验证代码推入 develop，违背核心原则 |
+| "Smoke CI 通过了，最终完整 CI 可以跳过" | Smoke CI 只覆盖 5~10 个核心用例，不是全量验证；XCUITest 全量和边缘用例只能由最终完整 CI 覆盖 |
+| "候选分支多此一举，直接在 develop 上测" | 直接在 develop 上测试 = 先 merge 再测试 = 未验证代码已入 develop；候选分支确保 CI 测试的就是最终进入 develop 的代码 |
+| "CI 期间 develop 又有新提交，候选过期了，直接 merge 算了" | 候选过期说明基线已变化，必须重新生成候选并验证；直接 merge 会引入未验证的合并结果 |
+| "定向修复太繁琐，直接全量重跑 CI" | 全量重跑每次修复都在浪费等待时间；定向修复 → 稳定 → 再全量确认，是更高效的流程 |
 | "工作树目录都要删了，状态文件留着干嘛" | 状态文件在 `.git/` 目录下，工作树删除前必须先标记 `cleanup_in_progress=True`，否则异常中断后无法识别 |
 | "状态文件不存在就从头开始，最安全" | 已实现的 commit 会被丢弃，已写的规格文档套件/计划/代码全部浪费。必须先按恢复策略判断 |
 | "步骤 9.3 暂停，删除状态文件避免污染" | 删除后无法识别"暂停中"状态，下次会话默认从步骤 0 重启，浪费已有进度 |
-| "中断时记不记状态文件无所谓" | 中断点必须记录 `current_step=<N>-interrupted` + `interrupted_at=<N>`，否则无法精确恢复 |
-| "merge_in_progress 字段是冗余的，current_step 就够了" | `merge_in_progress` / `phase_merge_in_progress` 是布尔标记，明确区分"合并中"vs"已合并"，避免误删状态文件 |
 | "回退到上一步骤不用更新状态文件" | 回退也是状态变更，必须更新 `current_step` + `rollback_from=<当前步骤>`，否则恢复时误判 |
 | "用户要求立即处理新特性，状态文件先不更新" | 状态文件未更新就开新一轮，会话压缩后混淆两轮的进度，必须先标记 `current_step="0"` + `new_round_pending=True` |
-| "多个 phase 累积后一次性合并 develop 更高效" | 违背增量交付原则；累积合并风险更大、回滚更难；必须每 phase 独立合并 |
-| "当前 phase 还没完全完成，先不合并到 develop" | 步骤 4.5 已通过 CI 验证即视为 phase 完成，必须立即合并；"完全完成"是合理化借口 |
-| "develop CI 失败了，先跳过继续下一个 phase" | develop CI 失败必须修复或回退 merge 后才能继续；跳过会导致 develop 处于不稳定状态 |
-| "phase_merge_in_progress 字段是冗余的" | 明确区分"phase 合并中"vs"已合并"，会话中断后避免误判是否需要重复合并 |
 
 **以上任一情况发生时，停止当前步骤，回到违规步骤重新执行。**
 
