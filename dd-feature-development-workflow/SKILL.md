@@ -719,29 +719,45 @@ EOF
 
 如果实现任务已经按计划产生了多个 commit，确保当前子计划结束时没有未提交变更；如 check-code 后没有新增变更，记录最后一个属于该子计划的 commit SHA 作为完成点，不创建空提交。
 
-**提交后本地快速验证（第一层）**：不干扰桌面工作的本地检查，快速反馈 TDD 质量：
+**提交后本地快速验证（第一层）**：不干扰桌面工作的本地检查，快速反馈 TDD 质量。
+
+> **证书规范（HARD-GATE）**：Swift / Xcode 项目编译必须遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) Xcode 编译证书规范——禁止走 "Automatically manage signing" 默认行为。下方命令中的 `XC_ARG` / `DEVELOPMENT_TEAM` / `CODE_SIGN_IDENTITY` 由前置步骤读取（详见 [dd-shared-ci](../dd-shared-ci/SKILL.md) 步骤 1-2）。
 
 ```bash
+# 0. 检测项目类型 + 从 pbxproj 提取证书（详见 dd-shared-ci 步骤 1-2）
+#    优先 .xcworkspace，否则 .xcodeproj
+#    XC_ARG = (-workspace <ws>) 或 (-project <proj>)
+#    DEVELOPMENT_TEAM / CODE_SIGN_IDENTITY 从 pbxproj 读取
+
 # 1. Lint
 swiftlint lint --strict  # Swift 项目；其他项目用对应 lint 命令
 
-# 2. 编译 App（不运行 UI 测试）
+# 2. 编译 App（不运行 UI 测试，必须显式传入证书参数）
 xcodebuild \
-  -project <Project>.xcodeproj \
+  "${XC_ARG[@]}" \
   -scheme <Scheme> \
   -configuration Debug \
+  CODE_SIGN_STYLE=Manual \
+  DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+  CODE_SIGN_IDENTITY="$CODE_SIGN_IDENTITY" \
   build
 
-# 3. 只运行当前 phase 相关的 XCTest
+# 3. 只运行当前 phase 相关的 XCTest（同样追加证书参数）
 xcodebuild test \
-  -project <Project>.xcodeproj \
+  "${XC_ARG[@]}" \
   -scheme <Scheme>Tests \
-  -only-testing:<Scheme>Tests/<CurrentFeature>Tests
+  -only-testing:<Scheme>Tests/<CurrentFeature>Tests \
+  CODE_SIGN_STYLE=Manual \
+  DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+  CODE_SIGN_IDENTITY="$CODE_SIGN_IDENTITY"
 
-# 4. 检查 XCUITest Target 是否可编译（不实际启动 App）
+# 4. 检查 XCUITest Target 是否可编译（不实际启动 App，同样追加证书参数）
 xcodebuild build-for-testing \
-  -project <Project>.xcodeproj \
-  -scheme <Scheme>UITests
+  "${XC_ARG[@]}" \
+  -scheme <Scheme>UITests \
+  CODE_SIGN_STYLE=Manual \
+  DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+  CODE_SIGN_IDENTITY="$CODE_SIGN_IDENTITY"
 ```
 
 **本地快速验证失败** → 修复后重新执行，不得跳过（循环直到通过）。

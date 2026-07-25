@@ -502,11 +502,31 @@ bash "$HOME/.trae-cn/skills/shared/scripts/sync-ai-test-worktree.sh" "$FIX_BRANC
 根据项目类型在 worktree 路径下启动 app：
 
 - **Swift / Xcode 项目**：
+
+  > **证书规范（HARD-GATE）**：必须遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) Xcode 编译证书规范——禁止走 "Automatically manage signing" 默认行为。完整流程：检测 `.xcworkspace`/`.xcodeproj` → 从 `project.pbxproj` 提取 `DEVELOPMENT_TEAM` + `CODE_SIGN_IDENTITY` → 显式传入 `CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=... CODE_SIGN_IDENTITY=...` 编译 → 探测真实产物路径启动。详见 [dd-shared-ci](../dd-shared-ci/SKILL.md)「Xcode 编译证书规范」步骤 1-4。
+
   ```bash
-  # 构建产物（scheme 根据实际项目调整）
-  xcodebuild -scheme <scheme> -destination 'platform=macOS' -derivedDataPath build build
-  # 启动 app（根据实际产物路径）
-  open "build/Build/Products/Debug/<AppName>.app"
+  # 1. 检测项目类型 + 从 pbxproj 提取证书（详见 dd-shared-ci 步骤 1-2）
+  #    优先 .xcworkspace，否则 .xcodeproj
+  #    DEVELOPMENT_TEAM / CODE_SIGN_IDENTITY 从 pbxproj 读取
+  #    XC_ARG = (-workspace <ws>) 或 (-project <proj>)
+
+  # 2. 编译（必须显式传入证书参数，禁止省略）
+  xcodebuild \
+    "${XC_ARG[@]}" \
+    -scheme <scheme> \
+    -configuration Debug \
+    -destination 'platform=macOS' \
+    -derivedDataPath build \
+    CODE_SIGN_STYLE=Manual \
+    DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+    CODE_SIGN_IDENTITY="$CODE_SIGN_IDENTITY" \
+    build
+
+  # 3. 探测真实产物名（不假设 AppName == scheme）并启动
+  APP_PATH=$(find build/Build/Products/Debug -maxdepth 1 -name '*.app' -type d 2>/dev/null | head -1)
+  [ -z "$APP_PATH" ] && { echo "❌ 未找到 .app 产物"; exit 1; }
+  open "$APP_PATH"
   ```
 - **Node.js / Web 项目**：执行 `npm run dev` 或对应启动命令
 - **Python 项目**：执行 `python -m <module>` 或对应启动命令
