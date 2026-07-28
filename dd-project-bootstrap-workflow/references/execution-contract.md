@@ -284,7 +284,8 @@ Trae：
 1. Exit Gate 与 Handoff 完成后禁止直接结束；
 2. ASK `结束本次任务` / `还有其他任务`；
 3. “还有其他任务”继续接收；
-4. “结束本次任务”先持久化 completed，再最终摘要。
+4. ASK 前先持久化 completed，必要时写 Completion Receipt；
+5. “结束本次任务”后输出最终摘要。
 
 Codex：
 

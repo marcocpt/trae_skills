@@ -28,7 +28,13 @@ description: 当需要跨 Trae/Codex 结构化询问用户、处理 null 输入�
 
 ## Trae 会话结束合同
 
-当调用方声明 `host=trae` 且工作流达到最终完成 Gate 时：
+先判定调用所有权：
+
+- 直接承接用户目标的顶层编排器：`invocation_mode=standalone`，拥有 Host Close；
+- 被父工作流调用的阶段型 Skill：`invocation_mode=child`，只返回父工作流；
+- 原子/共享/Git/CI Skill：`invocation_mode=helper`，只返回调用方。
+
+只有调用方声明 `host=trae`、`invocation_mode=standalone` 且工作流达到最终完成 Gate 时：
 
 1. 先持久化 `status=completed`；若活动状态会随 worktree 清理消失，先按 [dd-shared-workflow-runtime](../dd-shared-workflow-runtime/SKILL.md) 写 Completion Receipt；
 2. 禁止先输出最终摘要并直接结束会话；
@@ -40,6 +46,8 @@ description: 当需要跨 Trae/Codex 结构化询问用户、处理 null 输入�
 6. null 输入必须重新询问，不能把 null 当作结束。
 
 Codex 和其他宿主不强制无意义的结束确认，除非用户或项目规则明确要求。
+
+`child/helper` 禁止执行最终结束 ASK，也不得输出“任务已最终完成”式宿主摘要，避免嵌套会话重复收尾。
 
 ## null 输入重问
 

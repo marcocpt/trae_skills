@@ -26,6 +26,7 @@ description: 当 dd 系列工作流需要跨 Trae/Codex 长时间稳定执行、
 ```yaml
 workflow_type: feature-development
 host: auto
+invocation_mode: standalone
 requested_entry: implementation
 state_file: /absolute/or/resolvable/path
 worktree_path: null
@@ -37,6 +38,14 @@ delivery_policy: project-rules
 ```
 
 `host=auto` 时按运行环境识别 Trae、Codex 或 other。只有宿主差异会阻塞执行且无法识别时才询问。
+
+`invocation_mode` 决定会话所有权：
+
+- `standalone`：本工作流拥有状态、最终摘要与 Host Close；
+- `child`：复用父工作流环境和已解决事实，完成后返回结果，不执行 Host Close；
+- `helper`：完成原子动作后立即返回调用方，不创建独立会话结束流程。
+
+未显式传入时，只有直接响应用户目标的顶层编排器可推断为 `standalone`；被其他 Skill 调用时必须是 `child` 或 `helper`。禁止嵌套工作流重复 ASK “是否结束”。
 
 首次进入或恢复时读取 [runtime-contract.md](references/runtime-contract.md) 的 Preflight、State、Recovery 和 Stage Contract。进入最终完成 Gate 时再读取其中的 Completion Receipt 与 Host Close；不要为普通阶段预加载整份 reference。
 
@@ -125,7 +134,9 @@ Delivery 失败必须记录和处理，但不得倒推为已经验证的领域�
 
 ## 宿主结束合同
 
-完成所有 Workflow 与必需 Delivery Gate 后，先持久化 `status=completed`。若活动状态会随 worktree 清理而消失，必须先写 Completion Receipt。
+只有 `invocation_mode=standalone` 的会话所有者执行本节。`child/helper` 完成后向调用方返回 `status`、产物、证据、blocker 与下一建议动作，不输出宿主最终摘要、不执行 Host Close。
+
+会话所有者完成所有 Workflow 与必需 Delivery Gate 后，先持久化 `status=completed`。若活动状态会随 worktree 清理而消失，必须先写 Completion Receipt。
 
 Trae：
 
@@ -149,5 +160,6 @@ Codex：
 - 未持久化就跨 Stage；
 - 用“最新 commit 不是当前产物”否定已通过的 Workflow Gate；
 - 为省 token 删除质量检查或用户可见证据；
+- child/helper 抢占父工作流的 Host Close；
 - 在 Trae 完成后直接结束；
 - 在外部动作成功前删除唯一状态。

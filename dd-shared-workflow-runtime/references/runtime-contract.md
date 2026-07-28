@@ -20,6 +20,7 @@
 ```yaml
 workflow_type: bug-fix
 host: auto
+invocation_mode: standalone
 requested_entry: diagnosis
 state_file: /absolute/path/bug-fix-state.json
 worktree_path: null
@@ -31,6 +32,14 @@ delivery_policy: project-rules
 ```
 
 调用方可增加领域字段，但不得改变 `status`、Stage Gate 和 Host Close 的含义。
+
+`invocation_mode` 只能是：
+
+- `standalone`：直接承接用户目标的会话所有者；
+- `child`：有父编排器，继承 worktree、状态事实和交付边界；
+- `helper`：无独立阶段生命周期的原子能力。
+
+父工作流调用子 Skill 时必须显式传入 `child` 或 `helper`。子 Skill 返回结果给父工作流，由父工作流决定后续 Stage 和最终 Host Close。
 
 ## 2. Host and Capability Detection
 
@@ -205,6 +214,8 @@ open_non_blocking_items: []
 Receipt 使用原子写入，成功后才允许删除活动状态或 worktree。Receipt 是完成证明，不阻塞下一工作流。
 
 ## 10. Host Close
+
+仅 `invocation_mode=standalone` 执行。`child/helper` 在产物验证后返回调用方，禁止触发最终 ASK。
 
 顺序固定：
 

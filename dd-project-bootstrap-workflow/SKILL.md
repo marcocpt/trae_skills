@@ -9,7 +9,7 @@ description: 当需要从零创建 Greenfield 项目、为 Brownfield 项目重�
 
 把 Greenfield 或 Brownfield repository 推进到可由 [dd-feature-development-workflow](../dd-feature-development-workflow/SKILL.md) 稳定开发首个 Feature 的状态。
 
-本 skill 只负责编排、状态、Gate 和 Handoff。具体产物由原子 writer 编写；详细政策按需读取 references。
+本 skill 只负责编排、状态、Gate 和 Handoff。具体产物由原子 writer 编写；长流程运行遵循 [dd-shared-workflow-runtime](../dd-shared-workflow-runtime/SKILL.md)，详细政策按需读取 references。
 
 ## 不适用
 
@@ -31,7 +31,7 @@ description: 当需要从零创建 Greenfield 项目、为 Brownfield 项目重�
 
 ## 首步：Preflight
 
-读取 [execution-contract.md](references/execution-contract.md) 的 Preflight、State、Gap Scan 和 Node Contract，然后：
+以 `workflow_type=project-bootstrap`、`invocation_mode=standalone` 调用共享运行时，并读取 [execution-contract.md](references/execution-contract.md) 的 Bootstrap Node 与 Handoff 差异：
 
 1. 检测适用规则、Git/worktree 和宿主能力；
 2. 恢复或重建 `project-bootstrap-state.json`；
@@ -190,6 +190,8 @@ delivery_policy: project-rules
 
 子 skill 必须消费上游事实，不得重复询问已解决内容。只允许询问缺失 blocker 或该产物特有的新决策。发现上游冲突时返回 blocker，不在下游另写一套规则。
 
+所有子 skill 一律传 `invocation_mode=child`（原子 Git/CI/shared 能力传 `helper`），完成后返回本编排器；不得自行执行最终 Host Close。
+
 询问和 worktree 选择遵循 [dd-shared-ask](../dd-shared-ask/SKILL.md)。
 
 ## 审查与 Gate
@@ -248,12 +250,13 @@ Brownfield：
 
 遵循 [dd-shared-ask](../dd-shared-ask/SKILL.md)。
 
-Trae：
+仅 `invocation_mode=standalone` 执行 Host Close。Trae：
 
 - Exit Gate 与 Handoff 完成后禁止直接结束；
+- 先原子持久化 `status=completed`，必要时写 Completion Receipt；
 - 必须 ASK `结束本次任务` / `还有其他任务`；
 - 选择“还有其他任务”时继续；
-- 选择“结束本次任务”后先持久化 `completed`，再最终摘要。
+- 选择“结束本次任务”后输出最终摘要。
 
 Codex：
 
