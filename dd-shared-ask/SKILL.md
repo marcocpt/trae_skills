@@ -1,6 +1,6 @@
 ---
 name: dd-shared-ask
-description: 当需要结构化询问用户、处理 null 输入重问、确认提交边界、询问工作环境（worktree 选择）时使用（被 dd-ai-refactor-workflow、dd-bug-fix-workflow、dd-feature-development-workflow、dd-docreview-grilling、dd-writing-specs、dd-later-tracking 等引用）。触发词：AskUserQuestion、null 重问、结构化询问、worktree 选择、新建工作树、当前 worktree。
+description: 当需要跨 Trae/Codex 结构化询问用户、处理 null 输入、确认提交边界、选择 worktree 或控制会话结束时使用。被 dd 系列工作流引用；触发词：AskUserQuestion、request_user_input、null 重问、结构化询问、worktree 选择、会话结束确认。
 ---
 
 # dd 共享询问规则
@@ -12,6 +12,33 @@ description: 当需要结构化询问用户、处理 null 输入重问、确认�
 ## 结构化询问
 
 需要用户决策时，在 Trae 中使用 `AskUserQuestion`；在 Codex 中使用 `request_user_input`（如可用）或带清晰选项的简短文本问题。**一次只问一个问题**——每个 `AskUserQuestion` 调用只包含一个问题，等用户回答后再问下一个。
+
+## 决策协议
+
+需要用户决策时：
+
+1. 优先使用宿主当前可用的结构化询问机制；
+2. 提供 2–4 个互斥选项，有充分理由时标记推荐项；
+3. 结构化工具不可用时，使用包含相同选项的简短文本；
+4. 一次只问一个阻塞决策；
+5. 已存在于上游状态或已批准文档中的事实不得重复询问；
+6. happy path 不为形式确认而暂停，只有歧义、失败、冲突或风险分支才 ASK。
+
+调用方只依赖上述语义，不得把 `AskUserQuestion`、`request_user_input` 或其他宿主工具名写成跨宿主硬依赖。
+
+## Trae 会话结束合同
+
+当调用方声明 `host=trae` 且工作流达到最终完成 Gate 时：
+
+1. 禁止直接结束会话；
+2. 必须使用 Trae 的结构化 ASK 询问：
+   - `结束本次任务`
+   - `还有其他任务`
+3. 选择“还有其他任务”时接收新任务并继续；
+4. 选择“结束本次任务”后，先持久化 `status=completed`，再输出最终摘要；
+5. null 输入必须重新询问，不能把 null 当作结束。
+
+Codex 和其他宿主不强制无意义的结束确认，除非用户或项目规则明确要求。
 
 ## null 输入重问
 
@@ -55,6 +82,6 @@ description: 当需要结构化询问用户、处理 null 输入重问、确认�
 
 ## 被其他 skill 引用方式
 
-各 dd 技能在全局规则中引用本技能，替换重复的询问规则内容。引用格式：`询问规则遵循 [dd-shared-ask](../dd-shared-ask/SKILL.md)（含 worktree 选择模板）`
+各 dd 技能在全局规则中引用本技能，替换重复的询问规则内容。引用格式：`询问与会话结束规则遵循 [dd-shared-ask](../dd-shared-ask/SKILL.md)`
 
 各 dd 技能在「即将首次修改文件前」显式调用本技能的「工作环境询问」模板，引用格式：`首次修改文件前，按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 的「工作环境询问」模板询问用户`
