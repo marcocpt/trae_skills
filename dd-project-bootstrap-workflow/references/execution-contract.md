@@ -235,6 +235,10 @@ Greenfield/Brownfield 统一交给 `dd-feature-development-workflow`。
 Payload：
 
 ```yaml
+handoff_version: 1
+source_workflow: project-bootstrap
+source_state_path: /absolute/path/project-bootstrap-state.json
+worktree_path: /absolute/path
 goal: ""
 scope: []
 project_mode: greenfield
@@ -242,18 +246,34 @@ selected_feature_or_phase: F0
 required_reading: []
 relevant_files: []
 constraints: []
-acceptance_criteria_or_requirements_seed: []
+requirements_seed: []
+acceptance_criteria: []
 verification: []
 out_of_scope: []
 resolved_decisions: []
 open_non_blocking_items: []
+blocking_questions: []
 baseline_path: null
+phase_contract_path: null
+phase_contract_status: null
+review_level: standard
+delivery_policy: project-rules
+```
+
+Greenfield 必须携带非空 Requirements Seed，`phase_contract_path=null`。Brownfield 必须携带 Baseline 与 approved Phase Contract，`phase_contract_status=approved`；已知缺陷不得自动进入 `acceptance_criteria`。
+
+Handoff 写入 Bootstrap state 并设 `status=handoff-ready`。`dd-feature-development-workflow` 验证 payload、路径和工作树，先写入自己的 Bootstrap 消费字段，再把 Bootstrap state 改为 `completed`。
+
+下游状态必须记录：
+
+```yaml
+bootstrap_handoff_consumed: true
+bootstrap_state_path: /absolute/path/project-bootstrap-state.json
+requirements_seed_source: bootstrap-requirements-seed
 phase_contract_path: null
 ```
 
-Greenfield 默认携带 Requirements Seed；Brownfield 必须携带 Baseline 与 approved Phase Contract。
-
-Handoff 写入 Bootstrap state 并设 `status=handoff-ready`。下游验证并接收后改为 `completed`。
+不得同时向 Greenfield 暴露 `dd-writing-specs` 直达出口；Feature workflow 是唯一消费者，由其内部按需调用规格 writer。
 
 ## 10. Host Close
 

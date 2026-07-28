@@ -214,14 +214,17 @@ Handoff 读取 [execution-contract.md](references/execution-contract.md) 的 Han
 
 - Goal、Scope、Project Mode；
 - Selected Feature/Phase；
+- Handoff Version、Bootstrap State 和 Worktree 路径；
 - Required Reading、Relevant Files；
 - Constraints；
-- Acceptance Criteria 或 Requirements Seed；
+- Requirements Seed、Acceptance Criteria；
 - Verification、Out of Scope；
 - Resolved Decisions、Open Non-blocking Items；
 - Brownfield Baseline 和 approved Phase Contract 路径。
 
 写入 state 后设置 `status=handoff-ready`。下游验证并确认接收后设置 `completed`。
+
+Feature workflow 是唯一 Handoff 出口。Greenfield 不得绕过它直达 `dd-writing-specs`；规格 writer 由 Feature workflow 在消费 Requirements Seed 后调用。
 
 ## Exit Gate
 

@@ -54,14 +54,39 @@ digraph feature_development_workflow {
 严格按 0→1→2→3→4→5→6→7→8→9 顺序执行。禁止跳步、禁止先写代码、禁止未通过检查就开始下一步。步骤 2 确认后到步骤 5 之间按推荐路径自动执行，无需用户确认。步骤 6 可回退到任意步骤(0-5)。任一步骤失败自动回退到上一步骤重新执行。
 
 **三层增量验证约束**：步骤 4 内部按 phase 循环执行 4.1→4.2→4.3→4.4→4.5，每个 phase 完成后必须通过本地快速验证；高风险节点触发远程 UI Smoke CI；所有 phase 完成后进入步骤 5 创建最终合并候选提交，执行一次完整远程 CI，通过后才推进到 develop。**禁止**：累积多个 phase 后未经最终完整 CI 就合并到 develop；跳过本地快速验证就进入下一 phase。
+
+Bootstrap Handoff 可预先满足步骤 0 的已解决需求事实和步骤 1 的工作环境选择，但不得跳过各步骤的产物验证与状态写入。
 </HARD-GATE>
+
+## Bootstrap Handoff 入口
+
+开始步骤 0 前，检查当前 Git dir 或调用参数中的 `project-bootstrap-state.json`。状态为 `active` 或 `handoff-ready` 时读取并验证；仅 `handoff-ready` 且下列条件全部满足时消费：
+
+1. `handoff_version` 为支持的版本；
+2. `goal`、`scope`、`project_mode`、`selected_feature_or_phase`、`required_reading`、`constraints`、`verification` 存在；
+3. `blocking_questions` 为空，所有必需文件路径存在；
+4. `worktree_path` 与当前工作树一致；
+5. Greenfield 有 `requirements_seed`；
+6. Brownfield 有 Baseline 和状态为 approved 的 Phase Contract。
+
+`active` 或不完整 Handoff 返回 Bootstrap blocker，不猜测缺失内容。
+
+接收后：
+
+- 继承 Goal、Scope、Mode、Selected Feature/Phase、Required Reading、Constraints、Verification、Out of Scope 和 resolved decisions；
+- Greenfield 把 `requirements_seed` 作为步骤 0/2 的需求输入；
+- Brownfield 复用 approved Phase Contract，不把 `KNOWN_DEFECT` 自动转成 AC；
+- 复用已确认的 `worktree_path`，不再次询问工作环境；
+- 只询问 Feature 特有且仍阻塞的未知决策。
+
+步骤 1.4 写入 Feature state 后，将 Bootstrap state 更新为 `status=completed`。禁止同时维护 Greenfield 的 `dd-writing-specs` 直达出口；所有 Bootstrap 模式都先进入本工作流。
 
 ## 上下文恢复机制
 
 状态持久化遵循 [dd-shared-state](../dd-shared-state/SKILL.md)，参数 `WORKFLOW_TYPE=feature-development`，`BRANCH_FIELD=feature_branch`。
 
 - **状态文件**：`$(git rev-parse --git-dir)/feature-development-state.json`
-- **特有字段**：feature_name、requirements_path、design_path、visual_path、test_case_path、review_path、plan_dir、current_phase、total_phases、commits、completed_phases（已完成本地验证的 phase 列表）、smoke_ci_phases（触发过远程 UI Smoke CI 的 phase 列表）、final_candidate_branch（最终合并候选分支名，如 `ci/F3.2-final-candidate`）、final_ci_passed（布尔，标记最终完整 CI 是否通过）
+- **特有字段**：feature_name、requirements_path、design_path、visual_path、test_case_path、review_path、plan_dir、current_phase、total_phases、commits、completed_phases（已完成本地验证的 phase 列表）、smoke_ci_phases（触发过远程 UI Smoke CI 的 phase 列表）、final_candidate_branch（最终合并候选分支名，如 `ci/F3.2-final-candidate`）、final_ci_passed（布尔，标记最终完整 CI 是否通过）、bootstrap_handoff_consumed、bootstrap_state_path、requirements_seed_source、phase_contract_path
 - **写入**：步骤 1（工作树创建/验证成功后）
 - **更新 `current_step`**：**每个步骤出口判定成功后必须立即更新**（步骤 1/2/3/4/5/6/7/8 均强制更新；步骤 9.1 在清理工作树成功后删除状态文件）
 - **更新 `current_phase`**：每完成一个子计划（步骤 4.5 提交后）
@@ -126,6 +151,15 @@ UI 可观测性门禁遵循 [dd-shared-ui](../dd-shared-ui/SKILL.md)。
 
 ## 步骤 0：需求确认
 
+### 0.0 Bootstrap 输入复用
+
+存在已验证 Handoff 时，先用其字段回答 0.2 的检查项，并读取 `required_reading`。已解决事实不得重问：
+
+- Greenfield：用 `requirements_seed` 生成步骤 0.4 摘要；
+- Brownfield：以 `phase_contract_path` 为已批准需求与验收来源，Baseline 作为兼容性约束；
+- 只有 Feature 特有 blocker 才进入 0.1；
+- 没有 blocker 时直接展示继承摘要供核对，不重新 grill。
+
 ### 0.1 调用 grill-me
 
 开始时宣布：
@@ -187,7 +221,9 @@ git commit -m "docs(feature): record step 0 requirements summary for F{m}"
 
 ### 1.1 工作环境
 
-**首次修改文件前，必须按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 的「工作环境询问」模板询问用户**：
+若 Bootstrap Handoff 已验证，必须复用其 `worktree_path`，仅检查当前路径一致、工作区状态和基线证据，不再询问。
+
+否则，**首次修改文件前必须按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 的「工作环境询问」模板询问用户**：
 
 - 选项 1（推荐）：新建隔离工作树
 - 选项 2：在当前 worktree 工作
@@ -338,6 +374,19 @@ git status  # 必须干净，有未提交变更需先处理
 
 工作树创建/验证成功后，持久化关键状态供上下文恢复。遵循 [dd-shared-state](../dd-shared-state/SKILL.md) 写入模板，参数 `WORKFLOW_TYPE=feature-development`，`BRANCH_FIELD=feature_branch`，`current_step=1`。需追加 feature-development 特有字段：feature_name、requirements_path、design_path、visual_path、test_case_path、review_path、plan_dir、current_phase、total_phases、commits、completed_phases（初始化为空数组 `[]`）、smoke_ci_phases（初始化为空数组 `[]`）、final_candidate_branch（初始化为空字符串）、final_ci_passed（初始化为 `false`）。
 
+若消费 Bootstrap Handoff，同时写入：
+
+```json
+{
+  "bootstrap_handoff_consumed": true,
+  "bootstrap_state_path": "/absolute/path/project-bootstrap-state.json",
+  "requirements_seed_source": "bootstrap-requirements-seed-or-phase-contract",
+  "phase_contract_path": null
+}
+```
+
+Brownfield 的 `phase_contract_path` 必须为 approved Phase Contract 的绝对路径。Feature state 成功写入后，再把 Bootstrap state 从 `handoff-ready` 改为 `completed`；任一写入失败都不得继续步骤 2。
+
 > **状态文件更新（HARD-GATE）**：本步骤是状态文件的**首次写入**点，必须确保 `current_step="1"` + `feature_branch=<分支名>` + `feature_name=<特性名>` 正确写入。后续每个步骤出口判定都需更新 `current_step`。更新模板见「上下文恢复机制 → 强制更新规则（HARD-GATE）」。
 
 ---
@@ -351,6 +400,7 @@ git status  # 必须干净，有未提交变更需先处理
 调度子代理，**子代理执行时调用 [dd-writing-specs](../dd-writing-specs/SKILL.md) skill**。传入以下上下文：
 
 - 步骤 0.4 写入的 `.feature-step0-requirements-summary.md` 路径（供 dd-writing-specs 步骤 1.0 跳过判断复用，跳过重复 grill）
+- Bootstrap Handoff 的 `requirements_seed` 或 approved `phase_contract_path`（如存在，作为已确认输入复用）
 - 步骤 0.2 第 10 项确认的文档目录路径（如 `docs/planning/P{n}/F{m}/`）
 - 步骤 0.2 第 10 项确认的功能编号 `F{m}` 和优先级 `P{n}`
 - 当前 worktree 路径（dd-writing-specs 工作环境询问的特例：被上游调用时不询问，工作环境已由本工作流步骤 1 确定）
@@ -1346,8 +1396,8 @@ with open(state_file, 'w') as f:
 
 ## 红线 — 停下来重新开始
 
-- 没有执行需求拷问就写规格文档套件
-- 未经用户明确同意，复用已有 worktree 而非新建
+- 没有需求拷问或已验证 Bootstrap Handoff 就写规格文档套件
+- 未经用户明确同意或有效 Bootstrap Handoff，复用已有 worktree 而非新建
 - 规格文档套件参考了主仓库或其他 worktree 的文档和代码（用户未明确说明）
 - 用户未确认规格文档套件就进入计划编写
 - 未经 3 子代理并行审核就进入计划编写（dd-writing-specs 内部的 3 子代理审核）
@@ -1365,6 +1415,8 @@ with open(state_file, 'w') as f:
 - **使用 git rebase 同步上游或合并分支**（遵循 [dd-git-merge](../dd-git-merge/SKILL.md) merge-only 原则，禁止 rebase）
 - **在 feature 分支夹带公共文件修改**（公共文件必须开独立分支，加 PublicFile tag）
 - **步骤 0.4 未写入 `.feature-step0-requirements-summary.md` 就进入步骤 1**（dd-writing-specs 步骤 1.0 跳过判断依赖此文件）
+- **存在有效 Bootstrap Handoff 却重复询问已解决需求或工作环境**
+- **Feature state 未记录 Bootstrap 消费字段，或未在接收成功后把 Bootstrap state 置为 completed**
 - **步骤 9.1 清理工作树前未验证最终合并已完成**（必须确认 `final_ci_passed=True` 且 `completed_phases` 长度等于 `total_phases`）
 
 ### 状态文件红线（HARD-GATE）
