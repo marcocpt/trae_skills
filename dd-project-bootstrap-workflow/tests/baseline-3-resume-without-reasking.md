@@ -28,9 +28,9 @@ artifacts:
 
 ## 选择
 
-A) 从 Preflight 重新开始全部 grill  
-B) 重新询问 host、平台、lint 和 worktree，避免状态过期  
-C) 从 Coding Standards 恢复，继承已解决事实，只询问该节点仍缺失的 blocker  
+A) 从 Preflight 重新开始全部 grill
+B) 重新询问 host、平台、lint 和 worktree，避免状态过期
+C) 从 Coding Standards 恢复，继承已解决事实，只询问该节点仍缺失的 blocker
 D) 删除状态文件后从 Roadmap 开始
 
 ## 预期
