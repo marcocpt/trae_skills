@@ -1,6 +1,6 @@
 ---
 name: dd-shared-state
-description: 当需要持久化工作流状态、上下文恢复、并发检查时使用（被 dd-bug-fix-workflow、dd-feature-development-workflow 引用）。触发词：上下文恢复、状态文件、worktree 恢复、bug-fix-state.json、feature-development-state.json。
+description: 当需要持久化 dd 工作流状态、跨会话恢复、验证已记录产物或检查 worktree 并发时使用。支持 bug-fix、feature-development 和 project-bootstrap；触发词：上下文恢复、状态文件、worktree 恢复、project-bootstrap-state.json。
 ---
 
 # dd 共享状态持久化
@@ -19,10 +19,11 @@ description: 当需要持久化工作流状态、上下文恢复、并发检查�
 
 调用方按工作流类型选择参数：
 
-| 工作流 | `WORKFLOW_TYPE` | 文件名 | `BRANCH_FIELD` |
-|--------|-----------------|--------|----------------|
-| bug 修复 | `bug-fix` | `bug-fix-state.json` | `fix_branch` |
-| 新特性 | `feature-development` | `feature-development-state.json` | `feature_branch` |
+| 工作流 | `WORKFLOW_TYPE` | 文件名 | 进度字段 |
+|--------|-----------------|--------|----------|
+| bug 修复 | `bug-fix` | `bug-fix-state.json` | `current_step` |
+| 新特性 | `feature-development` | `feature-development-state.json` | `current_step` |
+| 项目启动 | `project-bootstrap` | `project-bootstrap-state.json` | `current_node` |
 
 ## 状态文件位置
 
@@ -36,7 +37,9 @@ description: 当需要持久化工作流状态、上下文恢复、并发检查�
 
 ```json
 {
-  "workflow_type": "<bug-fix|feature-development>",
+  "schema_version": 1,
+  "workflow_type": "<bug-fix|feature-development|project-bootstrap>",
+  "status": "active",
   "worktree_path": "/absolute/path/to/worktree",
   "base_branch": "main",
   "<BRANCH_FIELD>": "<当前分支名>",
@@ -46,6 +49,10 @@ description: 当需要持久化工作流状态、上下文恢复、并发检查�
   "created_at": "<ISO 时间>"
 }
 ```
+
+`<BRANCH_FIELD>` 对 bug-fix / feature-development 分别为 `fix_branch` / `feature_branch`；project-bootstrap 不要求分支专用字段，使用 `worktree_path` 和 `base_branch` 即可。
+
+`status` 使用 `active`、`handoff-ready`、`completed` 或 `paused`。已有调用方未写入 `schema_version` 或 `status` 时，恢复逻辑按 schema 0 / active 兼容读取，不得直接判为损坏。
 
 ### feature-development 特有字段
 
@@ -73,9 +80,38 @@ description: 当需要持久化工作流状态、上下文恢复、并发检查�
 
 > **三层增量验证约束**：feature-development 工作流采用三层验证。`completed_phases` 记录已通过本地快速验证的 phase 列表，`smoke_ci_phases` 记录触发过远程 UI Smoke CI 的 phase 列表，`final_candidate_branch` 和 `final_ci_passed` 跟踪最终合并候选的状态。
 
+### project-bootstrap 特有字段
+
+```json
+{
+  "project_mode": "brownfield",
+  "host": "trae",
+  "requested_entry": "roadmap",
+  "current_node": "preflight",
+  "completed_nodes": ["preflight"],
+  "artifacts": {},
+  "decisions": [],
+  "blocking_gaps": ["brownfield-baseline"],
+  "deferred_gaps": [],
+  "handoff": {}
+}
+```
+
+- `project_mode` 只能是 `greenfield` 或 `brownfield`；
+- `decisions` 保存用户已批准或由仓库证据确认的事实，子 skill 不得重复询问；
+- `artifacts` 记录路径、状态和最后验证时间，不把“路径曾存在”当成当前有效；
+- `handoff` 在下游确认接收前保留；
+- `status=completed` 的状态文件不阻塞新的工作流。
+
 ## 恢复流程
 
-每个步骤开始前，若不确定当前工作上下文，执行以下恢复：
+每个步骤或节点开始前，若不确定当前工作上下文，执行恢复。读取状态后必须验证：
+
+1. `worktree_path` 与当前 Git worktree 匹配；
+2. 状态中记录的必需产物仍存在；
+3. 适用的项目规则没有与已记录决策发生冲突；
+4. `current_step` / `current_node` 与完成产物一致；
+5. 状态为 `completed` 时只作历史参考，不恢复为 active。
 
 ```bash
 git_dir=$(git rev-parse --git-dir)
@@ -94,6 +130,8 @@ else
 fi
 ```
 
+Bootstrap 没有状态文件时，先从仓库中的 `docs.md`、Roadmap、Architecture、Standards、`AGENTS.md` 和 Baseline 重建 artifact map；只有无法从事实判断时才重新询问，禁止默认从头 grill。
+
 ## 写入时机
 
 - **写入**：工作树创建/验证成功后（bug-fix 步骤 1，feature-dev 步骤 1）
@@ -105,6 +143,8 @@ fi
 - **更新 `final_ci_passed`**（仅 feature-development）：步骤 5 完整远程 CI 通过时设置为 `true`
 - **更新 `merge_in_progress`**：合并操作执行前设置为 `true`，merge 成功后清除或直接删除状态文件
 - **删除**：合并成功后（**禁止 merge 前删除**），须在 `git merge --no-ff` 成功后执行，此时 `git-dir` 指向 worktree 私有目录
+- **Bootstrap 写入**：Preflight 结束后写入；每个节点 Gate 通过后更新 `current_node`、`completed_nodes`、`artifacts` 和 gaps
+- **Bootstrap 完成**：Handoff 准备后设为 `handoff-ready`；下游确认接收或 Trae 用户选择结束后设为 `completed`，不立即删除
 
 ### 写入模板
 
@@ -191,19 +231,30 @@ rm -f "$git_dir/${WORKFLOW_TYPE}-state.json"
 
 ## 并发检查
 
-新工作流开始前（在当前 worktree 验证阶段），禁止同一 worktree 上同时运行多个工作流：
+新工作流开始前（在当前 worktree 验证阶段），禁止同一 worktree 上同时运行多个 active/paused/handoff-ready 工作流；`completed` 状态不阻塞：
 
 ```bash
 git_dir=$(git rev-parse --git-dir)
-for f in "$git_dir"/bug-fix-state.json "$git_dir"/feature-development-state.json; do
+for f in \
+  "$git_dir"/bug-fix-state.json \
+  "$git_dir"/feature-development-state.json \
+  "$git_dir"/project-bootstrap-state.json; do
   if [ -f "$f" ]; then
-    existing_type=$(python3 -c "import json; print(json.load(open('$f')).get('workflow_type','unknown'))")
-    echo "❌ 当前 worktree 已有活跃的 ${existing_type} 工作流，禁止并发"
-    exit 1
+    existing=$(python3 -c "
+import json
+d=json.load(open('$f'))
+print(d.get('workflow_type','unknown'), d.get('status','active'))
+")
+    existing_type="${existing% *}"
+    existing_status="${existing##* }"
+    if [ "$existing_status" != "completed" ]; then
+      echo "当前 worktree 已有 ${existing_status} 的 ${existing_type} 工作流，禁止并发"
+      exit 1
+    fi
   fi
 done
 ```
 
 ## 被其他 skill 引用方式
 
-各 dd 工作流技能在"上下文恢复机制"章节引用本技能，替换重复的状态文件规则。引用格式：`状态持久化遵循 [dd-shared-state](../dd-shared-state/SKILL.md)，参数 WORKFLOW_TYPE=<bug-fix|feature-development>，BRANCH_FIELD=<fix_branch|feature_branch>`
+各 dd 工作流技能在“上下文恢复机制”章节引用本技能，替换重复的状态文件规则。调用方声明 `WORKFLOW_TYPE`，并使用对应的 `current_step` 或 `current_node` 进度字段。

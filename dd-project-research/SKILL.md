@@ -9,7 +9,7 @@ description: Use when 编写项目级技术调研文档或产出 ADR 候选，�
 
 **项目调研只回答"该不该做、用什么做、风险在哪"，不写代码原型，不写最终架构决策。**
 
-dd-project-research 是项目级调研子 skill，被 dd-project-bootstrap-workflow（流程 skill）步骤 3 调度，也可独立触发。产出技术调研文档与 ADR 候选草稿，为后续 dd-write-roadmap（步骤 4 参考）与 dd-write-architecture-contract（步骤 5 批准 ADR 候选）提供输入。
+dd-project-research 是项目级调研子 skill，被 dd-project-bootstrap-workflow 的 Research / Technical Validation 节点按风险调度，也可独立触发。产出技术调研文档与 ADR 候选草稿，为后续 dd-write-roadmap 与 dd-write-architecture-contract 提供输入。
 
 **调研产出的是"候选与依据"，不是"拍板的决策"。** 最终架构决策由 dd-write-architecture-contract 阶段批准；本 skill 只提供候选草稿与对比依据。
 
@@ -19,11 +19,25 @@ dd-project-research 是项目级调研子 skill，被 dd-project-bootstrap-workf
 
 - 新项目创建、技术栈迁移、重大重构前的可行性论证
 - 用户提到"项目调研"、"技术调研"、"技术选型"、"竞品分析"、"可行性评估"、"风险识别"、"ADR 候选"
-- dd-project-bootstrap-workflow 步骤 3 调度本 skill
+- dd-project-bootstrap-workflow 的 Research / Technical Validation 节点调度本 skill
 - 项目核心方向未定，需要对比候选技术栈
 - 关键技术决策存在分歧，需要 ADR 候选留档
 
 **不适用：** 功能级规格文档（用 dd-writing-specs）、bug 修复（用 dd-bug-fix-workflow）、写架构契约最终文档（用 dd-write-architecture-contract）、写 roadmap（用 dd-write-roadmap）、POC 代码原型（属于后续阶段）
+
+## 上游上下文与触发协议
+
+被 `dd-project-bootstrap-workflow` 调用时，先读取 `project_mode`、`host`、`worktree_path`、`resolved_decisions`、`artifact_paths`、`review_level` 和 `delivery_policy`。
+
+- 已解决事实不得重复询问；
+- 先读取 Gap Scan、Baseline、已有调研和可靠外部证据；
+- 只询问本产物仍缺失的 blocker；
+- 上游冲突返回 blocker，不在调研中另写一套决策；
+- 工作环境已确定时不得再次询问 worktree。
+
+调研是**风险触发节点**，不是每次 Bootstrap 的固定步骤。仅在未验证假设可能改变 Roadmap/Architecture、外部证据不足或用户明确要求时执行；可靠证据已覆盖时，记录证据路径并返回 `skipped-with-evidence`。
+
+独立调用时执行最小 Preflight，补齐上述输入后再继续。
 
 ## 项目规则优先（强制首步）
 
@@ -58,20 +72,20 @@ test -f docs.md && cat docs.md
 digraph project_research {
     rankdir=TB;
     node [shape=box];
-    "0. 读 docs.md + 项目既有资料" -> "1. grill 拷问（一次一问）";
-    "1. grill 拷问（一次一问）" -> "2. 写技术调研文档";
+    "0. 读 docs.md + 上游证据" -> "1. 补齐阻塞决策（按需）";
+    "1. 补齐阻塞决策（按需）" -> "2. 写技术调研文档";
     "2. 写技术调研文档" -> "3. 写 ADR 候选（按主题）";
-    "3. 写 ADR 候选（按主题）" -> "4. 3 子代理并行审查";
-    "4. 3 子代理并行审查" -> "5. 合并总结 + 一次一问确认";
+    "3. 写 ADR 候选（按主题）" -> "4. 风险分级审查";
+    "4. 风险分级审查" -> "5. 合并总结 + 一次一问确认";
     "5. 合并总结 + 一次一问确认" -> "结束" [label="确认通过"];
     "5. 合并总结 + 一次一问确认" -> "2. 写技术调研文档" [label="需修改", style=dashed];
 }
 ```
 
 <HARD-GATE>
-严格按 0→1→2→3→4→5 顺序执行。禁止跳过 grill，禁止跳过审查，禁止并行执行不同步骤，禁止合并多份产出一次确认，禁止跳过单篇产出确认直接提交。
+存在调研必要性时按 0→1→2→3→4→5 执行。步骤 1 只补齐 blocker，可以因上游上下文完整而无提问；步骤 3 没有 ADR 主题时可跳过。不得跳过适用 `review_level` 的审查。
 
-**进入下一步前置断言**：每进入下一步前，必须自查"上一步产物已在 git 历史中"（`git log --oneline -1` 可见对应 commit）。未提交则禁止进入下一步，先补提交。
+节点通过要求产物存在、已验证、阻塞决策归零并写入上游状态。是否逐步 commit 属于 Delivery Policy，不得把“尚未 commit”误判为调研内容未完成。
 </HARD-GATE>
 
 ## 全局规则
@@ -80,7 +94,7 @@ digraph project_research {
 
 ## 工作环境前置询问（强制，先于步骤 0）
 
-**进入步骤 0 前，必须按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 的「工作环境询问」模板询问用户**：
+独立调用且工作环境未知时，按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 的「工作环境询问」模板询问用户：
 
 - 问题：本次调研将在哪个工作环境进行？
 - 选项 1（推荐）：新建隔离工作树
@@ -88,7 +102,7 @@ digraph project_research {
 
 选中工作环境后，后续所有工作都在该 worktree 中执行，不得中途切换。
 
-> **为何此处要询问**：步骤 0 会写"规则与参考摘要"到临时笔记文件，步骤 2 写调研文档——首步即修改文件。必须先确定工作环境，避免在错误分支上累积未提交变更。
+> Bootstrap 已传入 `worktree_path` 时直接继承；独立调用只有在即将修改文件且环境未知时才询问。
 
 ## 步骤 0：读 docs.md + 项目既有资料（强制首步）
 
@@ -104,15 +118,13 @@ digraph project_research {
 - 已有 roadmap 或架构文档（如存在）
 - 最近提交的调研或设计文档（学习风格与深度）
 
-### 0.3 提交临时笔记
+### 0.3 记录规则摘要
 
-将"规则与参考摘要"写入临时笔记文件（如 `docs/planning/.research-step0-summary.md`）并提交。
+仅当后续需要跨会话恢复时，将“规则与参考摘要”写入状态或临时笔记；不要为已存在于上游状态的事实再复制一份文件。
 
 ## 步骤 1：grill 拷问（一次一问）
 
-**必需子技能：** 使用 grilling 技能进行拷问。
-
-**一次一问**，每问用 `AskUserQuestion` 单独提出，等用户回答后再问下一个。null 输入按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 重问规则处理。
+只对证据和上游上下文无法回答的 blocker 使用 grilling。**一次一问**，每问用 `AskUserQuestion` 单独提出；已解决问题不得因进入本 skill 而重问。
 
 ### 1.1 拷问范围
 
@@ -127,7 +139,7 @@ digraph project_research {
 
 ### 1.2 拷问产物
 
-将"grill 调研摘要"写入临时笔记文件（如 `docs/planning/.research-step1-summary.md`）并提交。
+把新增决策合并进上游状态；独立调用且需要跨会话恢复时才写临时摘要。
 
 ## 步骤 2：写技术调研文档
 
@@ -139,7 +151,7 @@ digraph project_research {
 
 ### 2.2 必含章节
 
-1. **调研背景与目标**：基于步骤 1 grill 摘要，一句话核心目标 + 调研边界
+1. **调研背景与目标**：基于上游上下文与步骤 1 新增决策，一句话核心目标 + 调研边界
 2. **技术栈选型对比**：列出候选技术栈，按维度对比（成熟度/社区活跃度/许可证/性能/与现有栈兼容性），给出推荐与理由
 3. **竞品分析**：列出竞品，对比功能/架构/优劣势，提炼对本项目的启示（不止列名字）
 4. **可行性评估**：
@@ -157,9 +169,9 @@ digraph project_research {
 - **无模糊词**：禁止"优化/改进/更好"，风险等级与可行性必须可判断
 - **中文标点**，英文术语保持原文，不使用 emoji
 
-### 2.4 提交
+### 2.4 验证与交付
 
-写完技术调研文档后提交。
+写完后验证引用、结论与风险表。是否提交遵循 `delivery_policy`。
 
 ## 步骤 3：写 ADR 候选（按主题）
 
@@ -185,13 +197,13 @@ digraph project_research {
 
 **ADR 候选不预写最终内容，只提供候选草稿。** 最终决策与批准由 dd-write-architecture-contract 步骤 5 完成。本 skill 产出的候选文件标注"待批准"状态。
 
-### 3.4 提交
+### 3.4 验证与交付
 
-写完所有 ADR 候选文件后提交。
+写完后验证候选状态与调研结论一致。是否提交遵循 `delivery_policy`。
 
-## 步骤 4：3 子代理并行审查
+## 步骤 4：风险分级审查
 
-三子代理并行检查规则遵循 [dd-shared-subagent](../dd-shared-subagent/SKILL.md)。
+按上游 `review_level` 调用 [dd-shared-subagent](../dd-shared-subagent/SKILL.md)；独立调用默认 `standard`。Level 决定执行成本，不改变 A/B/C 语义。
 
 ### 4.1 方向分工映射
 
@@ -209,7 +221,7 @@ digraph project_research {
 
 ### 5.1 合并
 
-合并 3 子代理发现，分为「必须修复」「建议修复」「可选优化」三类。
+合并适用审查等级的发现，分为「必须修复」「建议修复」「可选优化」三类。
 
 ### 5.2 一次一问确认
 
@@ -219,7 +231,7 @@ digraph project_research {
 - 选项 1（推荐）：确认通过，进入下一阶段
 - 选项 2：需要修改（修复后重新审查）
 
-**确认通过后**提交合并总结，工作流结束。
+**确认通过后**按 `delivery_policy` 交付合并总结，工作流结束。
 
 **需修改** → 返回步骤 2 修订后重新走步骤 4-5。
 
@@ -240,10 +252,10 @@ digraph project_research {
 
 ## 与其他 skill 的关系
 
-- **被调用**：[dd-project-bootstrap-workflow](../dd-project-bootstrap-workflow/SKILL.md) 步骤 3（可选步骤）调度本 skill
+- **被调用**：[dd-project-bootstrap-workflow](../dd-project-bootstrap-workflow/SKILL.md) 的风险触发调研节点
 - **下游消费**：
-  - 产出的技术调研供 [dd-write-roadmap](../dd-write-roadmap/SKILL.md) 步骤 4 参考
-  - 产出的 ADR 候选供 [dd-write-architecture-contract](../dd-write-architecture-contract/SKILL.md) 步骤 5 批准
+  - 产出的技术调研供 [dd-write-roadmap](../dd-write-roadmap/SKILL.md) 参考
+  - 产出的 ADR 候选供 [dd-write-architecture-contract](../dd-write-architecture-contract/SKILL.md) 批准
 - **不替代**：功能级规格文档（用 [dd-writing-specs](../dd-writing-specs/SKILL.md)）、架构契约最终文档（用 dd-write-architecture-contract）
 
 ## 输出要求
@@ -271,7 +283,7 @@ digraph project_research {
 - [ ] 文档头部格式正确（`> 最后更新：YYYY-MM-DD | 版本：vX.Y`）
 - [ ] 中文标点，英文术语保持原文，无 emoji
 - [ ] 无"优化/改进/更好"等模糊词
-- [ ] 3 子代理审查已执行，必须修复项已处理
+- [ ] 适用 `review_level` 的审查已执行，必须修复项已处理
 - [ ] 用户已通过一次一问确认
 
 **任一项失败，修订后重新验证。**

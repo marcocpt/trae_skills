@@ -1,6 +1,6 @@
 ---
 name: dd-brownfield-baseline
-description: Use when 对老项目（brownfield）做基线盘点，产出能力清单、使用关系清单、保留/适配/替换矩阵、Characterization Test 清单。触发词：基线盘点、brownfield、老项目迁移、能力清单、Characterization Test、保留适配替换。症状：用户要迁移老项目但没盘点现有能力，团队不清楚哪些能力必须保留，迁移前没有行为基线测试，dd-project-bootstrap-workflow 在 brownfield 分支需要基线输入。
+description: Use when 对老项目（Brownfield）做基线盘点，产出能力清单、使用关系清单、处置矩阵与 Characterization Test 清单。触发词：基线盘点、brownfield、老项目迁移、能力清单、Characterization Test、保留适配替换。症状：用户要迁移老项目但没盘点现有能力，团队不清楚哪些能力必须保留，迁移前没有行为基线测试，dd-project-bootstrap-workflow 在 Brownfield 分支需要基线输入。
 ---
 
 # 老项目基线盘点（dd-brownfield-baseline）
@@ -9,9 +9,9 @@ description: Use when 对老项目（brownfield）做基线盘点，产出能力
 
 **基线盘点只盘点不修改——只读现有代码与文档，不改动产品代码。**
 
-dd-brownfield-baseline 是项目级基线盘点子 skill，用于在 brownfield（已有代码资产）场景下，系统化盘点项目对外能力、内部使用关系、保留/适配/替换分类与行为基线测试。产出作为后续架构契约 allowlist、第一阶段需求与验收 Constraints、roadmap 功能状态标注的输入。
+dd-brownfield-baseline 是项目级基线盘点子 skill，用于在 Brownfield 场景下，系统化盘点项目对外能力、内部使用关系、处置分类与行为基线测试。Brownfield 的判定依据是**存在必须解释的兼容性、历史行为、发布用户、数据迁移或公共接口义务**，不是源文件数量。产出作为后续架构契约 allowlist、阶段合同与 roadmap 功能状态标注的输入。
 
-**基线盘点必须完整——能力级与原子级双层盘点，不漏盘。** 每条保留/适配/替换分类必须有理由与影响范围；每个 Characterization Test 必须有明确语义分类。
+**基线盘点必须完整——能力级与原子级双层盘点，不漏盘。** 每条处置分类必须有理由与影响范围；每个 Characterization Test 必须有明确语义分类。
 
 **基线盘点产物是后续所有迁移决策的事实基础。** 盘点遗漏会导致架构契约漏掉必须保留的能力，迁移后破坏兼容性。
 
@@ -19,11 +19,23 @@ dd-brownfield-baseline 是项目级基线盘点子 skill，用于在 brownfield�
 
 - 老项目（brownfield）启动迁移或重构前，需要盘点现有能力与使用关系
 - 用户提到"基线盘点"、"brownfield"、"老项目迁移"、"能力清单"、"Characterization Test"、"保留适配替换"
-- dd-project-bootstrap-workflow 在 brownfield 分支调用（步骤 2）
+- dd-project-bootstrap-workflow 在 Brownfield Baseline 节点调用
 - 团队要迁移老项目但不清楚哪些能力必须保留
 - 迁移前需要建立行为基线测试，锁定当前行为
 
-**不适用：** greenfield（全新项目，无代码资产，用 dd-writing-specs 从需求开始）、bug 修复（用 dd-bug-fix-workflow）、纯需求文档编写（用 dd-write-requirements）
+**不适用：** 无兼容性或历史义务的 Greenfield、bug 修复（用 dd-bug-fix-workflow）、纯需求文档编写（用 dd-write-requirements）
+
+## 上游上下文协议
+
+被 `dd-project-bootstrap-workflow` 调用时，先读取并消费：
+
+- `project_mode`、`host`、`worktree_path`
+- `resolved_decisions`、`artifact_paths`
+- `review_level`、`delivery_policy`
+
+上游已确定的目标、工作环境、项目模式和文档规则不得重复询问。先从仓库和上游产物取证，只询问会阻塞本产物的未知决策；若证据与上游结论冲突，返回 blocker，不在本 skill 内另建一套事实。
+
+独立调用时才执行最小 Preflight：确认项目规则、工作环境、兼容性义务和产物路径。
 
 ## 项目规则优先（强制首步）
 
@@ -63,10 +75,10 @@ digraph baseline_flow {
     grill [label="Grill 拷问\n（一次一问，针对项目情况）", shape=diamond];
     write_cap [label="写能力清单\n（CAP-* + 原子 A-CAP-*）"];
     write_use [label="写使用关系清单\n（USE-* + 原子 A-USE-*）"];
-    write_matrix [label="写保留/适配/替换矩阵\n（含理由与影响范围）"];
+    write_matrix [label="写处置矩阵\n（固定六类 + 理由与影响范围）"];
     write_test [label="写 Characterization Test 清单\n（TST-* + 原子 A-TST-*，四类语义）"];
     write_ext [label="写扩展产物\n（PLAT-* / HIS-*，按需）"];
-    review [label="三子代理并行审查\n（dd-shared-subagent）", shape=diamond];
+    review [label="风险分级审查\n（dd-shared-subagent）", shape=diamond];
     gate [label="HARD-GATE\n用户确认", shape=diamond];
     done [label="交付基线盘点产物", shape=oval];
 
@@ -82,12 +94,12 @@ digraph baseline_flow {
 
 ### Grill 拷问环节（写盘点前）
 
-针对项目具体情况，一次一问（用 AskUserQuestion），确认盘点方向：
+先从代码、文档、测试与上游上下文回答下列问题。只有答案仍未知且会阻塞产物时，才一次一问（用 AskUserQuestion）：
 
 1. **项目代码规模？**（文件数/模块数/代码行数）——决定盘点粒度
 2. **对外能力如何识别？**（公开 API / CLI 命令 / 配置项 / 事件 / 文件格式）——确定 CAP-* 边界
 3. **内部使用关系如何追踪？**（import 关系 / 调用图 / 依赖分析工具）——确定 USE-* 来源
-4. **保留/适配/替换的分类标准？**——保留=迁移后必须保持；适配=接口需调整但语义保留；替换=重新实现
+4. **处置分类证据是否完整？**——PRESERVE / ADAPT / REPLACE / KNOWN_DEFECT / TOLERATED_COMPATIBILITY / REVIEW
 5. **是否有现有测试可作为 Characterization Test？**——现有测试直接纳入，缺失行为补写
 6. **测试语义分类如何判定？**（INTENDED / KNOWN_DEFECT / TOLERATED_COMPATIBILITY / REVIEW）——见下方分类定义
 7. **是否需要平台与构建矩阵？**（多平台 / 多构建配置 / 多证书策略）——单平台可跳过
@@ -127,20 +139,23 @@ digraph baseline_flow {
 | 调用版本 | 当前调用方式（同步/异步/事件） |
 | 原子条目 | A-USE-* 编号 |
 
-#### 3. 保留适配替换矩阵.md
+#### 3. 处置矩阵.md
 
 对每个 CAP-* 能力分类：
 
 | CAP 编号 | 能力名称 | 分类 | 分类理由 | 影响范围 | 迁移路径 |
 |----------|----------|------|---------|---------|---------|
-| CAP-001 | xxx | 保留 | 迁移后必须保持 | 调用方 USE-* | 直接迁移 |
-| CAP-002 | xxx | 适配 | 接口需调整，语义保留 | 调用方 USE-* | 调整签名后迁移 |
-| CAP-003 | xxx | 替换 | 当前实现不满足目标 | 调用方 USE-* | 新实现替换 |
+| CAP-001 | xxx | PRESERVE | 迁移后必须保持 | 调用方 USE-* | 直接保留 |
+| CAP-002 | xxx | ADAPT | 接口需调整，语义保留 | 调用方 USE-* | 适配后迁移 |
+| CAP-003 | xxx | REPLACE | 当前实现不满足目标 | 调用方 USE-* | 新实现替换 |
 
 **分类定义：**
-- **保留（Keep）**：迁移后行为必须完全保持，属于 Public Compatibility Surface
-- **适配（Adapt）**：接口形态需调整，但业务语义保留，调用方需同步修改
-- **替换（Replace）**：当前实现不满足目标，重新实现，旧能力废弃
+- **PRESERVE**：迁移后行为必须保持，属于 Legacy Compatibility Surface
+- **ADAPT**：接口形态需调整，但业务语义保留，调用方需同步修改
+- **REPLACE**：当前实现不满足目标，重新实现并明确退役路径
+- **KNOWN_DEFECT**：已知缺陷，不得自动成为目标行为或验收标准
+- **TOLERATED_COMPATIBILITY**：仅在明确兼容范围内暂时保留
+- **REVIEW**：证据不足，必须在进入阶段合同前归零
 
 **每条分类必须有理由与影响范围，不允许只填分类不填理由。**
 
@@ -180,12 +195,12 @@ digraph baseline_flow {
 
 ## 审查与确认
 
-### 三子代理并行审查（复用 dd-shared-subagent）
+### 风险分级审查（复用 dd-shared-subagent）
 
-基线盘点产物写完后，调用 dd-shared-subagent 启动三子代理并行审查：
+基线盘点默认 `review_level=high`；若上游明确传入其他等级，按 [dd-shared-subagent](../dd-shared-subagent/SKILL.md) 执行。审查语义固定为：
 
 1. **完整性审查**：能力清单是否漏盘（对照代码模块逐项核对）；使用关系是否完整（对照 import 与调用图）
-2. **分类合理性审查**：保留/适配/替换分类是否有理由与影响范围；Characterization Test 语义分类是否明确
+2. **分类合理性审查**：处置分类是否有理由与影响范围；Characterization Test 语义分类是否明确
 3. **一致性审查**：CAP-* 与 USE-* 交叉引用是否一致；TST-* 与 CAP-* 关联是否正确
 
 审查发现问题 → 回到 Grill 环节补盘或修正，不直接交付。
@@ -195,7 +210,7 @@ digraph baseline_flow {
 审查通过后，用 dd-shared-ask 向用户确认：
 
 - 基线盘点产物是否覆盖项目全部对外能力
-- 保留/适配/替换分类是否符合迁移预期
+- 处置分类是否符合迁移预期
 - Characterization Test 语义分类是否准确
 
 ## HARD-GATE
@@ -203,9 +218,9 @@ digraph baseline_flow {
 **基线盘点产物未经用户确认，不得进入下游环节。**
 
 HARD-GATE 触发条件：
-- 三子代理审查未通过
+- 当前 `review_level` 要求的审查未通过
 - 能力清单存在漏盘（审查指出但未补盘）
-- 保留/适配/替换矩阵存在无理由分类
+- 处置矩阵存在无理由分类
 - Characterization Test 存在未分类测试
 - 用户未确认
 
@@ -217,12 +232,12 @@ HARD-GATE 触发时：停止，回到 Grill 环节或用 AskUserQuestion 澄清�
 digraph skill_relation {
     rankdir=LR;
     node [shape=box];
-    bootstrap [label="dd-project-bootstrap-workflow\n（流程 skill，brownfield 分支步骤 2）"];
+    bootstrap [label="dd-project-bootstrap-workflow\n（Brownfield Baseline 节点）"];
     baseline [label="dd-brownfield-baseline\n（本 skill）", style=filled, fillcolor=lightblue];
     contract [label="dd-write-architecture-contract\n（Public Compatibility Surface allowlist）"];
     req [label="第一阶段需求与验收\n（Constraints 基于基线结论）"];
     roadmap [label="dd-write-roadmap\n（功能列表标注已实现/未实现）"];
-    subagent [label="dd-shared-subagent\n（三子代理审查）"];
+    subagent [label="dd-shared-subagent\n（风险分级审查）"];
     ask [label="dd-shared-ask\n（用户确认）"];
 
     bootstrap -> baseline [label="brownfield 分支调用"];
@@ -241,11 +256,11 @@ digraph skill_relation {
 - 第一阶段需求与验收：Constraints 基于基线盘点结论
 - dd-write-roadmap：功能列表标注"已实现/未实现"状态基于 Characterization Test
 
-**审查与确认复用：** dd-shared-subagent（三子代理并行审查）、dd-shared-ask（用户确认）、HARD-GATE
+**审查与确认复用：** dd-shared-subagent（风险分级审查）、dd-shared-ask（用户确认）、HARD-GATE
 
 ## 输出要求
 
-- 文件名：`能力清单.md` / `使用关系清单.md` / `保留适配替换矩阵.md` / `Characterization_Test清单.md`（扩展产物按需），统一归档到 `docs/phases/P-1_基线盘点/artifacts/`
+- 文件名：`能力清单.md` / `使用关系清单.md` / `处置矩阵.md` / `Characterization_Test清单.md`（若项目已有 `保留适配替换矩阵.md` 则原位演进），统一归档到项目规则指定位置
 - 格式：Markdown，层级标题，表格
 - 编号：CAP-* / USE-* / TST-* / PLAT-* / HIS-* 起，原子级加 A- 前缀
 - 文档头部：`> 最后更新：YYYY-MM-DD | 版本：vX.Y`
@@ -260,7 +275,7 @@ digraph skill_relation {
 
 - [ ] 能力清单双层完整（CAP-* + A-CAP-*），对照代码模块逐项核对无漏盘
 - [ ] 使用关系清单完整（USE-* + A-USE-*），对照 import 与调用图核对
-- [ ] 保留/适配/替换矩阵每条分类有理由与影响范围
+- [ ] 处置矩阵每条分类有理由与影响范围，分类属于固定六类之一
 - [ ] Characterization Test 清单每个测试有明确语义分类（四类之一，不留空）
 - [ ] 语义分类覆盖：INTENDED / KNOWN_DEFECT / TOLERATED_COMPATIBILITY / REVIEW 均有判定标准
 - [ ] CAP-* 与 USE-* 交叉引用一致
@@ -268,7 +283,7 @@ digraph skill_relation {
 - [ ] 扩展产物按需产出（多平台/多历史文档时未跳过）
 - [ ] 文档头部格式正确（`> 最后更新：YYYY-MM-DD | 版本：vX.Y`）
 - [ ] 未改动任何产品代码
-- [ ] 三子代理审查通过
+- [ ] 当前 `review_level` 要求的审查通过
 - [ ] 用户已确认
 
 **任一项失败，修订后重新验证。**

@@ -29,11 +29,22 @@ description: Use when 编写项目路线图与功能列表（路线图.md + 功�
 
 - 新项目创建、大规模迁移、产品定位调整、阶段重排
 - 用户提到"路线图"、"roadmap"、"功能列表"、"P0/P1 阶段"、"Exit Gate"、"项目规划"
-- dd-project-bootstrap-workflow 步骤 4 调用
+- dd-project-bootstrap-workflow 的 Roadmap 节点调用
 - 上游 dd-project-research 完成技术调研后转入规划
 - brownfield 项目纳入既有功能进行整体规划
 
 **不适用：** 单个功能的需求/设计/实现（用 dd-writing-specs + dd-write-requirements + dd-write-design）、bug 修复、实现计划（接口/类/目录）、架构契约（用 dd-write-architecture-contract）
+
+## 上游上下文协议
+
+被 `dd-project-bootstrap-workflow` 调用时，先读取 `project_mode`、`host`、`worktree_path`、`resolved_decisions`、`artifact_paths`、`review_level` 和 `delivery_policy`，并消费 Gap Scan、Research 与 Brownfield Baseline（如适用）。
+
+- 已确定的产品定位、项目模式、工作环境、技术约束和兼容性义务不得重复询问；
+- 功能状态必须来自 Baseline/测试/发布证据，不按代码数量猜测；
+- 只询问会阻塞 Roadmap 的未知决策；
+- 上游产物互相冲突时返回 blocker，不在 Roadmap 中静默选边。
+
+独立调用时执行最小 Preflight；工作环境或输入已明确时不重问。
 
 ## 项目规则优先（强制首步）
 
@@ -55,11 +66,11 @@ test -f docs.md && cat docs.md
 digraph write_roadmap {
     rankdir=TB;
     node [shape=box];
-    "0. 读 docs.md + 上游调研结论" -> "1. grill 拷问（含 brownfield 判断）";
-    "1. grill 拷问（含 brownfield 判断）" -> "2. 写路线图.md";
+    "0. 读 docs.md + 上游产物" -> "1. 补齐阻塞决策（按需）";
+    "1. 补齐阻塞决策（按需）" -> "2. 写路线图.md";
     "2. 写路线图.md" -> "3. 写功能列表.md";
-    "3. 写功能列表.md" -> "4. 3 子代理并行审查";
-    "4. 3 子代理并行审查" -> "5. 合并总结 + 一次一问确认";
+    "3. 写功能列表.md" -> "4. 风险分级审查";
+    "4. 风险分级审查" -> "5. 合并总结 + 一次一问确认";
     "5. 合并总结 + 一次一问确认" -> "结束" [label="确认通过"];
     "5. 合并总结 + 一次一问确认" -> "2. 写路线图.md" [label="需修改", style=dashed];
 }
@@ -71,11 +82,11 @@ digraph write_roadmap {
 
 ### 步骤 0：读 docs.md + 上游调研结论
 
-读取 docs.md，并读取上游 dd-project-research 的技术调研结论（如存在）。提取并记录：项目规则 7 项、调研结论中的技术栈与约束、brownfield 既有功能清单。
+读取 docs.md、Gap Scan、dd-project-research 的技术调研结论（如存在）和 Brownfield Baseline（如适用）。提取并记录：项目规则、调研约束、功能状态与兼容性义务。
 
 ### 步骤 1：grill 拷问（一次一问）
 
-**必需子技能：** 使用 [grilling](../../grilling) 进行拷问。**铁律：一次只问一个问题，等用户回答后再问下一个。** 每个问题提供推荐答案。能通过探索代码库回答的，自己探索而非问用户。
+仅对上游上下文和仓库证据无法回答的 blocker 使用 grilling。**铁律：一次只问一个问题。** 已解决问题不重问；能通过探索回答的，自己探索。
 
 拷问范围（至少覆盖）：
 
@@ -85,7 +96,7 @@ digraph write_roadmap {
 4. **每阶段的 Exit Gate 标准**：可观察的退出标准（不是内部状态）
 5. **功能优先级如何排序**：哪些功能必须在 P0、哪些可延后
 6. **功能依赖关系**：哪些功能依赖其他功能先完成
-7. **brownfield 判断**：是否有已实现/部分实现/未实现的功能需要纳入
+7. **Brownfield 状态确认**：Baseline 是否仍有未决分类或证据冲突
 
 出口判定：输出规划摘要，用 `AskUserQuestion` 询问（选项 1 推荐：确认进入步骤 2；选项 2：补充 grill；选项 3：理解有误重新描述）。
 
@@ -97,9 +108,9 @@ digraph write_roadmap {
 
 按"产出文件结构 - 功能列表.md"章节执行。P0 铁律：不写代码符号；验证标准是可观察行为。
 
-### 步骤 4：3 子代理并行审查
+### 步骤 4：风险分级审查
 
-调度 3 个子代理并行（同一条消息发起 3 个 Task）。维度分配：
+按上游 `review_level` 调用 [dd-shared-subagent](../dd-shared-subagent/SKILL.md)；独立调用默认 `standard`。Level 决定执行成本，不改变下列 A/B/C 语义：
 
 | 子代理 | 维度 | 检查要点 |
 |--------|------|---------|
@@ -111,12 +122,12 @@ digraph write_roadmap {
 
 ### 步骤 5：合并总结 + 一次一问确认
 
-合并三份审查结果展示给用户。用 `AskUserQuestion` 询问**一个问题**：
+合并适用审查等级的结果展示给用户。用 `AskUserQuestion` 询问**一个问题**：
 - 选项 1（推荐）：确认路线图与功能列表，工作流结束
 - 选项 2：需要修改，回到步骤 2 重写
 - 选项 3：方向不对，回到步骤 1 重新 grill
 
-确认通过后立即 `git add` + `git commit`（`docs(roadmap): confirm roadmap and feature list after 3-way review`）。
+确认通过后按 `delivery_policy` 提交或交付；Workflow Gate 不以 commit 是否存在判定内容有效性。
 
 ## 产出文件结构
 
@@ -174,7 +185,7 @@ digraph write_roadmap {
 - 把路线图当设计文档写模块职责、数据流、状态机
 - 把功能列表当实现计划写接口签名、类定义、目录结构
 - 跳过 grill 直接写阶段
-- 跳过 3 子代理审查或用 1 个子代理代替 3 个
+- 跳过当前 `review_level` 要求的审查
 - 用"团队习惯"/"行业标准"/"AI 更明确"为由保留代码符号
 
 **以上任一情况发生时，停止写作，删除违规内容，重写。**
@@ -188,14 +199,14 @@ digraph roadmap_relations {
     "dd-project-research\n(技术调研)" -> "dd-write-roadmap\n(路线图+功能列表)";
     "dd-write-roadmap\n(路线图+功能列表)" -> "dd-write-architecture-contract\n(架构契约)";
     "dd-write-roadmap\n(路线图+功能列表)" -> "dd-write-requirements\n(P0 阶段需求)";
-    "dd-project-bootstrap-workflow\n(项目启动工作流)" -> "dd-write-roadmap\n(步骤 4 调用)";
+    "dd-project-bootstrap-workflow\n(项目启动工作流)" -> "dd-write-roadmap\n(Roadmap 节点)";
 }
 ```
 
 - **上游**：[dd-project-research] 的技术调研结论作为路线图输入（最低系统要求、技术栈约束、brownfield 既有功能清单）
 - **下游**：[dd-write-architecture-contract] 基于路线图设计架构契约；[dd-write-requirements] 的第一阶段需求与验收基于路线图 P0 阶段
-- **被调度**：[dd-project-bootstrap-workflow] 步骤 4 调用本 skill
-- **审查与确认**：复用 [dd-shared-subagent]（3 子代理并行审查）与 [dd-shared-ask]（结构化询问 + worktree 选择）
+- **被调度**：[dd-project-bootstrap-workflow] 的 Roadmap 节点调用本 skill
+- **审查与确认**：复用 [dd-shared-subagent]（风险分级审查）与 [dd-shared-ask]（结构化询问 + worktree 选择）
 - **与 dd-writing-specs 的边界**：dd-writing-specs 是功能级规格套件工作流（需求+设计+原型+测试用例），本 skill 是项目级路线图，粒度更粗，不写单个功能的 FR/AC
 
 ## 输出要求
@@ -243,7 +254,7 @@ digraph roadmap_relations {
 - [ ] 文档头部符合 `> 最后更新：YYYY-MM-DD | 版本：vX.Y`
 - [ ] 中文标点，英文术语保持原文
 - [ ] 不使用 emoji
-- [ ] grill 摘要、3 子代理审查结果、合并总结已提交
+- [ ] 新增决策已持久化，适用 `review_level` 的审查通过
 - [ ] 文档换实现语言/换框架/换类名不需要改
 
 **任一项失败，修订后重新验证。**
