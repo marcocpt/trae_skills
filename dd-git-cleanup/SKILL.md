@@ -13,7 +13,7 @@ description: 当需要检测和清理已合并分支、陈旧 worktree、孤儿 
 
 | 检测项 | 判定条件 | 处理建议 |
 |--------|---------|---------|
-| 已合并分支 | `git branch --merged origin/develop` | 直接删除 |
+| 已合并分支 | `git branch --merged origin/develop` | 直接删除（本地 + 远端） |
 | 陈旧 worktree | 超过 7 天无活动 commit | 提示清理 |
 | 孤儿 worktree | worktree 目录已删除但元数据残留 | `git worktree prune` |
 | 远程已删除分支 | 本地 tracking 分支远程已不存在 | `git remote prune origin` |
@@ -26,9 +26,10 @@ flowchart TD
     B --> C{用户确认}
     C -->|确认| D[git worktree remove]
     D --> E[git branch -d]
-    E --> F[git worktree prune]
-    C -->|拒绝| G[保留并标记]
-    C -->|部分确认| H[按选择执行]
+    E --> F[git push origin --delete]
+    F --> G[git worktree prune]
+    C -->|拒绝| H[保留并标记]
+    C -->|部分确认| I[按选择执行]
 ```
 
 ## 清理约束

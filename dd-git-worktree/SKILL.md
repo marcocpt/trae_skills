@@ -45,8 +45,9 @@ worktree 之间**不共享工作区状态**，每个 worktree 是独立的 git �
 ## worktree 清理规则
 
 - **合并后立即清理**：分支合并到 develop 后，立即执行 `git worktree remove`
+- **同步删除远端分支**：清理工作树时同步删除 origin 上的对应分支（`git push origin --delete <branch>`），避免远端残留废弃分支
 - **避免腐烂**：超过 7 天无活动的 worktree 进入清理建议清单
-- **清理顺序**：先 `git worktree remove <path>`，再 `git branch -d <branch>`
+- **清理顺序**：先 `git worktree remove <path>`，再 `git branch -d <branch>`，最后 `git push origin --delete <branch>`
 - **强制清理**：worktree 目录被手动删除时，使用 `git worktree prune` 修复元数据
 
 ## 禁止事项

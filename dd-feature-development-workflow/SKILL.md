@@ -1209,12 +1209,13 @@ else:
 
 如有未完成的 phase 或最终 CI 未通过 → 禁止清理，回到步骤 4 完成剩余 phase 或步骤 5 完成最终合并。
 
-**删除工作树和 feature 分支**（在主仓库路径执行）：
+**删除工作树和 feature 分支**（在主仓库路径执行，同时删除远端分支）：
 
 ```bash
 cd "$main_root"
 git worktree remove "$WORKTREE_PATH" --force
 git branch -d <工作树分支>  # 已合并到 develop，可安全删除
+git push origin --delete <工作树分支>  # 同步删除远端 feature 分支
 # 清理候选分支（如存在，步骤 5.6 推进后通常已删除）
 git branch -D ci/<F编号>-final-candidate 2>/dev/null || true
 git push origin --delete ci/<F编号>-final-candidate 2>/dev/null || true

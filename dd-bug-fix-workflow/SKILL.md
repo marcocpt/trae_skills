@@ -847,7 +847,14 @@ rm -f "$git_dir/bug-fix-state.json"
 
 CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 4（合并后 CI 验证）。CI 失败时的 AskUserQuestion 选项遵循 dd-shared-ci 场景 4。
 
-清理工作树：删除工作树目录。
+清理工作树和远端分支（在主仓库路径执行）：
+
+```bash
+cd "$main_root"
+git worktree remove "$WORKTREE_PATH" --force
+git branch -d <工作树分支>  # 已合并，可安全删除
+git push origin --delete <工作树分支>  # 同步删除远端 fix 分支
+```
 
 工作流结束。
 
@@ -856,7 +863,14 @@ CI 验证遵循 [dd-shared-ci](../dd-shared-ci/SKILL.md) 场景 4（合并后 CI
 **先删除状态文件**（在离开工作树前，遵循 [dd-shared-state](../dd-shared-state/SKILL.md) 删除模板，参数 `WORKFLOW_TYPE=bug-fix`）。
 
 - 保留原分支不变
-- 清理工作树：删除工作树目录
+- 清理工作树：删除工作树目录 + 删除远端 fix 分支（如已 push 过）
+
+```bash
+cd "$main_root"
+git worktree remove "$WORKTREE_PATH" --force
+git branch -D <工作树分支>  # 未合并，需 -D 强制删除
+git push origin --delete <工作树分支> 2>/dev/null || true  # 远端分支如存在则删除
+```
 
 工作流结束。
 
