@@ -30,13 +30,14 @@ description: 当需要跨 Trae/Codex 结构化询问用户、处理 null 输入�
 
 当调用方声明 `host=trae` 且工作流达到最终完成 Gate 时：
 
-1. 禁止直接结束会话；
-2. 必须使用 Trae 的结构化 ASK 询问：
+1. 先持久化 `status=completed`；若活动状态会随 worktree 清理消失，先按 [dd-shared-workflow-runtime](../dd-shared-workflow-runtime/SKILL.md) 写 Completion Receipt；
+2. 禁止先输出最终摘要并直接结束会话；
+3. 必须使用 Trae 的结构化 ASK 询问：
    - `结束本次任务`
    - `还有其他任务`
-3. 选择“还有其他任务”时接收新任务并继续；
-4. 选择“结束本次任务”后，先持久化 `status=completed`，再输出最终摘要；
-5. null 输入必须重新询问，不能把 null 当作结束。
+4. 选择“还有其他任务”时接收新任务并继续，不篡改已完成记录；
+5. 选择“结束本次任务”后输出最终摘要；
+6. null 输入必须重新询问，不能把 null 当作结束。
 
 Codex 和其他宿主不强制无意义的结束确认，除非用户或项目规则明确要求。
 
