@@ -22,11 +22,33 @@ description: Use when 编写项目级全局架构契约与 ADR 索引，或在 A
 - 新项目 bootstrap 阶段，需要确立路线级架构契约与 ADR 流程
 - brownfield 项目首次引入 AI Coding 工作流，需要梳理历史耦合点 allowlist
 - 用户提到"架构契约"、"全局架构契约"、"ADR 索引"、"ADR 流程"、"写架构"、"不变量"、"禁止依赖方向"
-- dd-project-bootstrap-workflow 步骤 5 调用本 skill
+- dd-project-bootstrap-workflow 的 Architecture Contract 节点调用本 skill
 - 项目级架构调整（新增分层、调整依赖方向、引入新 UI 框架分区）需修订契约
 - 团队把功能级 Design 文档当项目级架构契约用，或 ADR 候选堆积但无登记与流程
 
 **不适用：** 单个功能的设计文档（用 dd-write-design）、需求文档（用 dd-write-requirements）、编码规范（用 dd-write-coding-standards）、bug 修复、完整规格文档套件（用 dd-writing-specs）
+
+## 上游上下文协议
+
+被 `dd-project-bootstrap-workflow` 调用时，先读取 `project_mode`、`host`、`worktree_path`、`resolved_decisions`、`artifact_paths`、`review_level` 和 `delivery_policy`，并消费 Roadmap、Research/ADR 候选与 Brownfield Baseline（如适用）。
+
+- 已解决事实、工作环境和已批准边界不得重复询问；
+- 只询问会阻塞架构契约的未知决策；
+- 上游证据冲突时返回 blocker；
+- 独立调用时才执行最小 Preflight。
+
+## 契约状态
+
+架构状态必须显式记录，禁止把草案写成永久事实：
+
+| 状态 | 含义 | 允许用途 |
+|------|------|---------|
+| `hypothesis` | 仍需验证的候选 | Research/Spike 输入 |
+| `provisional` | 暂定，仍有 blocker | 继续补证据 |
+| `approved-baseline` | Bootstrap Exit Gate 可接受的项目基线 | Feature Design 引用 |
+| `frozen` | 有实现、测试和 ADR 证据支持的稳定契约 | 长期强约束 |
+
+Bootstrap 出口至少需要 `approved-baseline`。没有真实实现与验证证据时不得声称 `frozen`。
 
 ## 项目规则优先（强制首步）
 
@@ -85,35 +107,33 @@ digraph arch_layers {
 digraph write_contract {
     rankdir=TB;
     node [shape=box];
-    "0. 读 docs.md + 既有契约 + ADR 候选" -> "1. grill 拷问（一次一问）";
-    "1. grill 拷问（一次一问）" -> "2. 写全局架构契约.md";
+    "0. 读 docs.md + 上游产物" -> "1. 补齐阻塞决策（按需）";
+    "1. 补齐阻塞决策（按需）" -> "2. 写全局架构契约.md";
     "2. 写全局架构契约.md" -> "3. 写 ADR 索引.md（+ 候选 ADR 文件）";
-    "3. 写 ADR 索引.md（+ 候选 ADR 文件）" -> "4. 3 子代理并行审查";
-    "4. 3 子代理并行审查" -> "5. 合并总结 + 一次一问确认";
+    "3. 写 ADR 索引.md（+ 候选 ADR 文件）" -> "4. 风险分级审查";
+    "4. 风险分级审查" -> "5. 合并总结 + 一次一问确认";
     "5. 合并总结 + 一次一问确认" -> "结束" [label="确认通过"];
     "5. 合并总结 + 一次一问确认" -> "2. 写全局架构契约.md" [label="需修改", style=dashed];
 }
 ```
 
 <HARD-GATE>
-严格按 0→1→2→3→4→5 顺序执行。步骤 5 确认通过后才算完成。禁止跳过 grill、禁止跳过三子代理审查、禁止跳过一次一问确认、禁止把契约与 ADR 文件并行写完再批量确认。
+按 0→1→2→3→4→5 执行。步骤 1 只补齐 blocker，可以因上游上下文完整而无提问；步骤 3 没有 ADR 主题时只维护索引。不得跳过适用 `review_level` 的审查与确认。
 
-**进入下一步前置断言**：每进入下一步前，必须自查"上一步产物已在 git 历史中"（`git log --oneline -1` 可见对应 commit）。未提交则禁止进入下一步，先补提交。
+节点完成以产物存在、验证通过、阻塞决策归零和状态持久化为准；是否逐步 commit 遵循 `delivery_policy`。
 </HARD-GATE>
 
 ## 全局规则
 
 **通用规则**（结构化询问、null 输入重问、文档规则优先、提交边界、worktree 选择模板）遵循 [dd-shared-ask](../dd-shared-ask/SKILL.md)（含 worktree 选择模板）。
 
-**三子代理并行审查规则**遵循 [dd-shared-subagent](../dd-shared-subagent/SKILL.md)。
+**风险分级审查规则**遵循 [dd-shared-subagent](../dd-shared-subagent/SKILL.md)。
 
 ## 工作环境前置询问（强制，先于步骤 0）
 
-**进入步骤 0 前，必须按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 的「工作环境询问」模板询问用户**：选项 1（推荐）新建隔离工作树（分支 `docs/architecture-contract`，遵循 [dd-git-branch](../dd-git-branch/SKILL.md) 与 [dd-git-worktree](../dd-git-worktree/SKILL.md)）；选项 2 在当前 worktree 工作（仅做验证）。
+独立调用且工作环境未知时，按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 的「工作环境询问」模板询问用户：选项 1（推荐）新建隔离工作树；选项 2 在当前 worktree 工作。
 
-**处理规则**：选「新建」走 [dd-git-worktree](../dd-git-worktree/SKILL.md) 流程，调用 `../dd-ai-git-workflow/scripts/create-worktree.sh docs architecture-contract`；选「当前 worktree」仅做验证；null 输入按 dd-shared-ask 重问规则；**特例**：被 dd-project-bootstrap-workflow 步骤 5 调用时不询问（工作环境已由上游确定）。
-
-选中工作环境后，后续所有步骤都在该 worktree 中执行。**每步必提交**：每个步骤产出可保存的工件后立即 `git add` + `git commit`，提交信息遵循 Conventional Commits。修改 `.trae/public-files.txt` 中的公共文件时 commit message 末尾追加 `PublicFile` tag（遵循 [dd-git-conflict](../dd-git-conflict/SKILL.md)）。禁止 `--no-verify`、`--force`、提交敏感文件。
+**处理规则**：选「新建」走 [dd-git-worktree](../dd-git-worktree/SKILL.md)；Bootstrap 已传入 `worktree_path` 时直接继承。提交、公共文件和推送规则遵循 `delivery_policy` 与 [dd-git-workflow](../dd-git-workflow/SKILL.md)。
 
 ---
 
@@ -126,13 +146,13 @@ digraph write_contract {
 - **上游 ADR 候选存在**（被 dd-project-bootstrap-workflow 调用时）→ 作为步骤 3 起草输入，不直接定稿
 - **路线图存在**（dd-write-roadmap 产出）→ 提取规划的分层结构作为契约参考
 
-将记录写入 `docs/architecture/.contract-step0-summary.md` 并提交：`docs(architecture): record rules and references for contract drafting`
+把新事实合并进上游状态；独立调用且需要跨会话恢复时才写 `.contract-step0-summary.md`。是否提交遵循 `delivery_policy`。
 
 ---
 
 ## 步骤 1：grill 拷问（一次一问）
 
-**必需子技能：** 使用 grilling 技能进行拷问。**一次只问一个问题**，等用户回答后再问下一个。
+先用上游产物和仓库证据回答下列问题。只有答案仍未知且会阻塞契约时才使用 grilling，且**一次只问一个问题**。
 
 针对项目具体情况，依次拷问（跳过不适用的）：
 
@@ -140,30 +160,31 @@ digraph write_contract {
 2. **哪些是路线级不变量？** — 永远不能违反的约束（如"Core 层永不依赖 AppKit"、"依赖方向必须单向"）
 3. **依赖方向是什么？** — 明确单向依赖图，用 dot/mermaid 绘制
 4. **禁止哪些反向依赖？** — 明确禁止的反向依赖（如"Core 禁止 import UI"、"UI 禁止直接持有覆盖层"）
-5. **是否有 brownfield 历史耦合点需要 allowlist？** — 仅 brownfield 项目问。列出当前已存在但不符合契约的历史耦合点，标注"只减不增"
+5. **Brownfield 的 Legacy/Target Surface 是否已分开？** — Legacy Compatibility Surface 只记录必须兼容且只减不增的历史面；Target Public Surface 记录目标公共边界，禁止混为同一 allowlist
 6. **是否有 UI 框架分区需求？** — 仅 UI 项目问。如"必须 AppKit / 允许 SwiftUI"分区表
 7. **哪些决策需要 ADR？** — 来自调研阶段的 ADR 候选，逐一确认是否进入 ADR 流程
 
-将 grill 摘要写入 `docs/architecture/.contract-step1-summary.md`（含分层结论、不变量候选、依赖方向、禁止依赖方向、allowlist 候选、UI 分区结论、ADR 候选清单）并提交：`docs(architecture): record grill summary for contract`
+把新增决策写回上游状态；独立调用且需要跨会话恢复时才写 `.contract-step1-summary.md`。
 
 ---
 
 ## 步骤 2：写全局架构契约.md
 
-按项目模板优先；无模板时使用以下默认 8 章节：
+按项目模板优先；无模板时使用以下默认 9 章节：
 
 1. **概述**：架构契约的作用（路线级不变量 + 依赖方向 + ADR 索引）；声明契约修订必须经 ADR 流程批准
 2. **路线级不变量**：编号 INV-001 起，零填充三位。每条描述"什么永远成立"，不描述"怎么实现"。例："INV-001：核心逻辑层永不依赖 UI 框架（AppKit/SwiftUI）"
 3. **分层结构**：模块划分（如 MacimCore/MacimUI/MacimApp；或 CPDF Facade/Boundary/Adapter/Native）。用中文业务术语命名模块，不写类名
 4. **依赖方向**：明确单向依赖图，用 dot 或 mermaid 绘制。例：`MacimApp -> MacimUI -> MacimCore`
 5. **禁止依赖方向**：明确禁止的反向依赖。例："MacimCore 禁止 import MacimUI"、"MacimUI 禁止 import MacimApp"
-6. **Public Compatibility Surface allowlist**（仅 brownfield）：历史耦合点清单，标注"只减不增，新增需 ADR 修订批准"。greenfield 项目跳过本章
-7. **UI 框架分区**（可选扩展）：仅 UI 项目。分区表列出"分区名 | 允许框架 | 涉及子模块 | 理由"。例：Macim 的"必须 AppKit / 允许 SwiftUI"分区表
-8. **ADR 流程**：候选 ADR 起草 → 评审 → 批准 → 登记到 ADR 索引。明确"修订不变量必须经 ADR 批准"
+6. **Legacy Compatibility Surface**（仅 Brownfield）：必须兼容的历史入口与耦合点，标注“只减不增”
+7. **Target Public Surface**：目标公共边界与稳定性承诺；不得用 Legacy allowlist 代替
+8. **UI 框架分区**（可选扩展）：仅 UI 项目。分区表列出“分区名 | 允许框架 | 涉及子模块 | 理由”
+9. **ADR 流程与契约状态**：候选 → 评审 → 批准 → 登记；明确状态与升级证据
 
 **写作规则**：不变量描述"什么永远成立"；分层用中文业务术语；依赖方向图与禁止依赖方向不得矛盾；allowlist 完整列出历史耦合点只减不增；ADR 候选不预写最终内容，仅登记到索引标注"候选"状态。
 
-提交：`docs(architecture): draft global architecture contract`
+验证后按 `delivery_policy` 交付。
 
 ---
 
@@ -173,8 +194,8 @@ digraph write_contract {
 
 | ADR 编号 | 主题 | 状态 | 批准日期 | 文件链接 |
 |---------|------|------|---------|---------|
-| ADR-0001 | 核心层禁依赖 UI 框架 | 已批准 | 2026-07-28 | [adr/ADR-0001-核心层禁依赖UI框架.md](adr/ADR-0001-核心层禁依赖UI框架.md) |
-| ADR-0002 | 引入 SwiftUI 偏好设置窗口 | 候选 | - | [adr/ADR-0002-引入SwiftUI偏好设置窗口.md](adr/ADR-0002-引入SwiftUI偏好设置窗口.md) |
+| ADR-0001 | 核心层禁依赖 UI 框架 | 已批准 | 2026-07-28 | `adr/ADR-0001-核心层禁依赖UI框架.md` |
+| ADR-0002 | 引入 SwiftUI 偏好设置窗口 | 候选 | - | `adr/ADR-0002-引入SwiftUI偏好设置窗口.md` |
 
 **状态取值**：候选 / 已批准 / 已废弃
 
@@ -189,13 +210,13 @@ digraph write_contract {
 
 **候选 ADR 不预写最终内容**：上下文与决策写初步草案，标注"待评审"；批准后补全影响与关联不变量。
 
-提交：`docs(architecture): draft ADR index and candidate ADRs`
+验证后按 `delivery_policy` 交付。
 
 ---
 
-## 步骤 4：3 子代理并行审查
+## 步骤 4：风险分级审查
 
-**遵循 [dd-shared-subagent](../dd-shared-subagent/SKILL.md) 三子代理并行检查规则。**
+按上游 `review_level` 遵循 [dd-shared-subagent](../dd-shared-subagent/SKILL.md)；独立调用默认 `standard`。Level 决定执行成本，不改变 A/B/C 语义。
 
 ### 方向映射
 
@@ -205,11 +226,11 @@ digraph write_contract {
 | **B** | 一致与正确 | 依赖方向图与禁止依赖方向是否矛盾、章节结构是否符合 docs.md、编号是否连续 |
 | **C** | 可验证与可观测 | 不变量是否可检验（非模糊词）、ADR 流程是否可执行、是否有"优化/改进"等模糊词 |
 
-### P0 必检项（3 代理全检）
+### P0 必检项
 
 全文搜索代码符号（类名/协议名/方法签名/字段类型/枚举值/文件路径/并发原语/框架 API）应为 0；不变量描述"什么永远成立"而非"怎么实现"；ADR 候选未预写最终内容。
 
-按 [dd-shared-subagent](../dd-shared-subagent/SKILL.md) 汇总规则处理：「必须修复」自动采纳并重审，「建议修复」/「可选优化」仅重大项询问用户。审查结果写入 `.contract-step4-review.md` 并提交：`docs(architecture): record 3-subagent review results`
+按 [dd-shared-subagent](../dd-shared-subagent/SKILL.md) 汇总规则处理；“必须修复”自动采纳并重审。审查结果写入状态；需要跨会话恢复时才写临时文件。
 
 ---
 
@@ -217,9 +238,9 @@ digraph write_contract {
 
 将审查结果合并为修订清单，分类为「必须修复」「建议修复」「可选优化」。用 `AskUserQuestion` 一次一问确认：问题 1 修订清单是否采纳（全部采纳/部分采纳/不采纳）；问题 2（如需修订）是否重新审查（重新审查/跳过审查直接确认）。
 
-**修订与重审**：「必须修复」自动采纳后重新调度 3 子代理审查；重试上限 3 次，第 3 次未通过 → `AskUserQuestion` 升级处理。
+**修订与重审**：“必须修复”自动采纳后按当前 `review_level` 重审；重试上限 3 次，第 3 次未通过 → `AskUserQuestion` 升级处理。
 
-**最终提交**：`docs(architecture): finalize global architecture contract and ADR index`。清理临时笔记文件（`.contract-step0-summary.md`、`.contract-step1-summary.md`、`.contract-step4-review.md`）并提交。
+最终产物与状态按 `delivery_policy` 交付；若创建了临时笔记，确认其内容已进入 SSOT 后再清理。
 
 ---
 
@@ -227,7 +248,7 @@ digraph write_contract {
 
 ```
 docs/architecture/
-├── 全局架构契约.md          # 必含（8 章节核心契约）
+├── 全局架构契约.md          # 必含（9 章节核心契约）
 ├── ADR索引.md               # 必含（ADR 登记表）
 └── adr/                     # 可选（每个 ADR 一个文件，候选状态即可创建）
     ├── ADR-0001-主题.md
@@ -238,7 +259,7 @@ docs/architecture/
 
 - **上游**：dd-project-research 提供 ADR 候选；dd-write-roadmap 提供分层结构参考
 - **下游**：dd-write-coding-standards 基于架构契约写编码规范；第一阶段需求文档的 Constraints 章节引用不变量编号（如"根据 INV-003"）；功能级 Design 引用不变量编号而非复制契约原文
-- **被调度**：dd-project-bootstrap-workflow 步骤 5 调用本 skill
+- **被调度**：dd-project-bootstrap-workflow 的 Architecture Contract 节点调用本 skill
 - **独立触发**：用户提到"架构契约"、"ADR 索引"等触发词时独立使用
 - **与 dd-write-design 的区分**：dd-write-design 写功能级模块边界/数据流/状态模型；本 skill 写路线级不变量/依赖方向/ADR 索引。Design 引用契约不变量编号，不复制契约原文
 
@@ -289,7 +310,8 @@ docs/architecture/
 - [ ] 不变量编号连续（INV-001、INV-002...）
 - [ ] 分层结构用中文业务术语，非英文类名
 - [ ] 依赖方向图与禁止依赖方向无矛盾
-- [ ] brownfield 项目 allowlist 完整，标注"只减不增"
+- [ ] Brownfield 的 Legacy Compatibility Surface 与 Target Public Surface 分离，Legacy 标注“只减不增”
+- [ ] 契约状态明确，Bootstrap 出口至少为 `approved-baseline`
 - [ ] UI 框架分区（如有）写在架构契约，非功能级 Design
 - [ ] ADR 索引登记所有候选 ADR，状态明确
 - [ ] 候选 ADR 未预写最终内容，标注"待评审"

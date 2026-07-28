@@ -31,12 +31,30 @@ CODING_STANDARDS.md 是整个 AI Coding 项目的"写法契约"。它回答：�
 
 - 新项目创建、AI Coding 项目迁移、团队确立统一写法时，写编码规范
 - 用户提到"编码规范"、"CODING_STANDARDS"、"写编码规范"、"coding standards"、"lint 配置"、"代码风格规范"
-- dd-project-bootstrap-workflow 工作流中"写编码规范"环节（步骤 6）
+- dd-project-bootstrap-workflow 的 Coding Standards 节点
 - AGENTS.md 引用了 CODING_STANDARDS.md 但文件不存在
 - AI 生成的代码风格漂移、命名混乱、日志直接 print、并发更新 UI
 - lint 配置与编码规范不一致
 
 **不适用：** 写需求文档（用 dd-write-requirements）、写设计/架构契约（用 dd-write-design / dd-write-architecture-constraint）、写 AGENTS.md / AI 协作约定（用 dd-write-ai-conventions）、bug 修复、功能开发
+
+## 上游上下文协议
+
+被 `dd-project-bootstrap-workflow` 调用时，先读取 `project_mode`、`host`、`worktree_path`、`resolved_decisions`、`artifact_paths`、`review_level`、`delivery_policy` 和已批准架构契约。
+
+- 已确定的语言、工具链、工作环境和架构边界不得重复询问；
+- 先检查现有 lint/test/CI 配置，只询问仍会阻塞规范的未知决策；
+- 上游与工具配置冲突时返回 blocker；
+- 独立调用时才执行最小 Preflight。
+
+## 质量基线
+
+| 模式 | 强制政策 |
+|------|---------|
+| Greenfield | 新项目零新增 lint error/violation；warning 必须有明确政策，不能无限累积 |
+| Brownfield | 记录现有 baseline；changed code 不新增违规；new code 满足完整规范；CI 使用 ratchet 逐步收紧 |
+
+禁止要求 Brownfield 一次性清零所有历史债务，也禁止以“已有债务”为由放宽新代码。
 
 ## 项目规则优先（强制首步）
 
@@ -87,9 +105,9 @@ digraph three_layers {
 
 ## grill 拷问环节（写规范前必做）
 
-写 CODING_STANDARDS.md 前，针对项目情况**一次一问**拷问用户（用 AskUserQuestion，每问等用户回答再问下一问）。不可一次性抛出全部问题。
+先从上游上下文、代码和工具配置回答下列问题。只有答案仍未知且会阻塞产物时，才**一次一问**拷问用户。
 
-### 必问清单（8 项）
+### 检查清单（8 项）
 
 1. **编程语言**：项目使用什么主语言？是否有次要语言？（Swift / Python / TypeScript / Go / Rust / 多语言）
 2. **代码风格**：缩进几格？大括号 Allman 还是 K&R？行宽上限多少？
@@ -104,7 +122,7 @@ digraph three_layers {
 
 - 用户回答模糊（如"差不多就行"）→ 用 AskUserQuestion 给 2-3 个具体选项让用户选
 - 用户回答与已有 lint 配置冲突 → 标注冲突，写规范时以用户回答为准并提示同步改 lint 配置
-- 用户跳过某问 → 不得自行假设默认值，标记为"待定"并在 HARD-GATE 前补问
+- 用户跳过且该项会阻塞规范 → 标记 blocker；不阻塞时记录为 deferred，不为凑齐问题而重问
 
 ## 流程
 
@@ -114,10 +132,10 @@ digraph coding_standards_flow {
     node [shape=box];
     read_docs [label="读取 docs.md\n(项目规则优先)", shape=box, style=filled, fillcolor=lightblue];
     read_arch [label="读取架构契约\n(分层/依赖方向作为约束输入)", shape=box, style=filled, fillcolor=lightblue];
-    grill [label="grill 拷问\n(一次一问, 8 项必问)", shape=box, style=filled, fillcolor=lightyellow];
+    grill [label="补齐阻塞决策\n(按需, 一次一问)", shape=box, style=filled, fillcolor=lightyellow];
     write_core [label="写 CODING_STANDARDS.md\n(8 核心章节)"];
     write_lint [label="写/校 lint 配置\n(可选, 按语言栈)"];
-    review [label="三子代理并行审查\n(dd-shared-subagent)"];
+    review [label="风险分级审查\n(dd-shared-subagent)"];
     ask [label="结构化确认\n(dd-shared-ask)"];
     gate [label="HARD-GATE\n(用户确认)", shape=box, style=filled, fillcolor=lightcoral];
 
@@ -154,6 +172,8 @@ digraph coding_standards_flow {
 
 **约束：** lint 配置必须与 CODING_STANDARDS.md 一致。例如规范说"行宽 120"，lint 配置必须设为 120。不一致以规范为准，修订 lint 配置。
 
+同时写明 Greenfield/Brownfield 对应的 lint baseline、changed-code 检查和 CI ratchet 命令；命令无法执行时标记 blocker，不编造验证结果。
+
 ## CODING_STANDARDS.md 核心章节（8 章）
 
 按项目已有规范优先；无规范时使用以下默认 8 章。**每章不可跳过**。
@@ -177,9 +197,9 @@ digraph coding_standards_flow {
 
 ## 审查与确认
 
-### 三子代理并行审查（复用 dd-shared-subagent）
+### 风险分级审查（复用 dd-shared-subagent）
 
-写完 CODING_STANDARDS.md 与 lint 配置后，发起 3 个子代理并行审查：
+按上游 `review_level` 调用 [dd-shared-subagent](../dd-shared-subagent/SKILL.md)；独立调用默认 `standard`。Level 决定成本，不改变 A/B/C 语义：
 
 | 方向 | 名称 | 检查项 |
 |------|------|--------|
@@ -204,8 +224,8 @@ null 输入按 dd-shared-ask 规则重问，不得假设默认值。
 
 1. CODING_STANDARDS.md 8 章节齐全
 2. lint 配置（如需）已写且与规范一致
-3. 三子代理审查的「必须修复」项全部处理
-4. 用户对 grill 8 项的回答已全部纳入规范
+3. 适用 `review_level` 的「必须修复」项全部处理
+4. 已确认输入与新增决策全部纳入规范
 5. 用户通过 AskUserQuestion 明确确认"编码规范完成"
 
 任一项不满足，回到对应步骤修订。**禁止自行宣布完成。**
@@ -219,18 +239,18 @@ digraph skill_relation {
     arch [label="dd-write-architecture-constraint\n(上游, 分层/依赖方向)"];
     self [label="dd-write-coding-standards\n(本 skill, 写法)", shape=box, style=filled, fillcolor=lightyellow];
     ai [label="dd-write-ai-conventions\n(下游, AGENTS.md 引用规范)"];
-    flow [label="dd-project-bootstrap-workflow\n(流程 skill, 步骤 6 调用)"];
+    flow [label="dd-project-bootstrap-workflow\n(Coding Standards 节点)"];
 
     arch -> self [label="分层/依赖方向作为约束输入"];
     self -> ai [label="AGENTS.md 引用编码规范"];
-    flow -> self [label="步骤 6 调度"];
+    flow -> self [label="节点调度"];
 }
 ```
 
 - **上游**：dd-write-architecture-constraint 的分层结构与依赖方向作为约束输入（编码规范不重复分层，只补充写法）
 - **下游**：dd-write-ai-conventions 的 AGENTS.md 引用编码规范；功能开发时所有代码需遵守
-- **流程 skill**：dd-project-bootstrap-workflow 步骤 6 调度本 skill
-- **共享**：复用 dd-shared-subagent（三子代理审查）、dd-shared-ask（结构化询问 + null 重问）
+- **流程 skill**：dd-project-bootstrap-workflow 的 Coding Standards 节点调度本 skill
+- **共享**：复用 dd-shared-subagent（风险分级审查）、dd-shared-ask（结构化询问 + null 重问）
 
 ## 输出要求
 
@@ -248,13 +268,14 @@ digraph skill_relation {
 
 - [ ] 读取过项目 docs.md（若存在）
 - [ ] 读取过架构契约（若存在），编码规范不与架构契约冲突
-- [ ] grill 8 项必问全部问完，用户回答已纳入规范
+- [ ] 上游输入与必要的新决策已纳入规范，已解决事实未重问
 - [ ] docs/standards/CODING_STANDARDS.md 8 核心章节齐全
 - [ ] lint 配置（如需）已写且与规范一致
 - [ ] 全文无具体类名 / 方法签名作为命名示例
 - [ ] 全文无"优化 / 改进 / 更好"等模糊词
 - [ ] 验证命令可执行
-- [ ] 三子代理审查「必须修复」项全部处理
+- [ ] Greenfield/Brownfield 质量政策与验证命令明确
+- [ ] 适用 `review_level` 的「必须修复」项全部处理
 - [ ] 用户通过 AskUserQuestion 明确确认完成
 
 **任一项失败，修订后重新验证。**
