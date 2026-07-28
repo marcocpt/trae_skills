@@ -9,6 +9,8 @@ description: 当合并前需要自检、配置 CI 流水线、输出 PreMergeChe
 
 合并前检查确保分支在合并回 develop 前通过所有质量门禁。本技能涵盖合并前自检、CI 配置和 JSON 输出格式。完整工作流总览见 [dd-git-workflow](../dd-git-workflow/SKILL.md)。
 
+本技能按 `invocation_mode=helper` 返回调用方，不自行 Host Close。直接承接用户目标时由顶层 `standalone` 会话按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 收尾。
+
 ## 基础检查
 
 ```bash

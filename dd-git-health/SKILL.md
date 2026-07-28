@@ -9,6 +9,8 @@ description: Git 分支健康度监控技能，涵盖四类指标、评分模型
 
 分支健康度监控帮助 AI Agent 量化分支状态，避免长分支导致的冲突指数增长。本技能涵盖四类指标、评分模型和每日同步。完整工作流总览见 [dd-git-workflow](../dd-git-workflow/SKILL.md)。
 
+本技能按 `invocation_mode=helper` 返回调用方，不自行 Host Close。直接承接用户目标时由顶层 `standalone` 会话按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 收尾。
+
 ## 四类指标
 
 | 指标 | 含义 | 数据来源 | 告警阈值 |

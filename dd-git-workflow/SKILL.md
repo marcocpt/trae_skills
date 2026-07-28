@@ -11,6 +11,8 @@ AI Coding 场景下的 Git 工作流守护技能，适用于 Cursor、Codex、Cl
 
 **核心原则：** 一个分支一个功能；每天必须有合并动作（不只是同步）；merge-only，不引入 rebase。
 
+本技能是 Git 子技能的路由入口。子技能一律以 `invocation_mode=helper` 返回；直接承接用户目标时由顶层 `standalone` 会话按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 完成 Trae/Codex 宿主收尾，禁止子技能重复 ASK 是否结束。
+
 ## 核心原则
 
 1. 一个分支只做一个功能

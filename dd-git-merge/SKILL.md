@@ -9,6 +9,8 @@ description: 当执行合并流程、编写 commit message、选择 merge 策略
 
 合并流程遵循 merge-only 原则，禁止 rebase。本技能涵盖每日合并、Push 流程、完整 Merge 流程和 Commit 规范。完整工作流总览见 [dd-git-workflow](../dd-git-workflow/SKILL.md)。
 
+本技能按 `invocation_mode=helper` 返回调用方，不自行 Host Close。直接承接用户目标时由顶层 `standalone` 会话按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 收尾。
+
 ## merge-only 原则与混合模式
 
 坚持 merge-only 原则，不引入 rebase。在 merge 基础上引入混合模式：

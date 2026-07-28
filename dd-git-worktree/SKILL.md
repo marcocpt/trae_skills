@@ -9,6 +9,8 @@ description: 当需要创建或管理 worktree 时使用。触发词：worktree�
 
 worktree 遵循"一个分支一个 worktree"原则，禁止跨分支共享工作区。本技能涵盖创建、命名、同步和清理规则。完整工作流总览见 [dd-git-workflow](../dd-git-workflow/SKILL.md)。
 
+本技能按 `invocation_mode=helper` 返回调用方，不自行 Host Close。直接承接用户目标时由顶层 `standalone` 会话按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 收尾。
+
 ## worktree 创建规则
 
 - **一个分支一个 worktree**：禁止跨分支共享工作区

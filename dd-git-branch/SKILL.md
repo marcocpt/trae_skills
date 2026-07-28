@@ -9,6 +9,8 @@ description: 当新建分支、确认分支命名规则、配置 Feature Flag �
 
 分支管理是 Git 工作流的基础，遵循"一个分支一个功能"原则。本技能涵盖分支命名、创建和 Feature Flag 策略。完整工作流总览见 [dd-git-workflow](../dd-git-workflow/SKILL.md)。
 
+本技能按 `invocation_mode=helper` 返回调用方，不自行 Host Close。直接承接用户目标时由顶层 `standalone` 会话按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 收尾。
+
 ## 分支命名规则
 
 ### 分支模型

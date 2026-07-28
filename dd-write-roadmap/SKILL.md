@@ -11,6 +11,8 @@ description: Use when 编写项目路线图与功能列表（路线图.md + 功�
 
 路线图与功能列表是 AI Coding 项目级规划的"阶段合同"与"功能版图"。它们回答五个问题：项目要做什么、分几个阶段、每阶段的进入与退出标准、功能如何按优先级排序、功能之间如何依赖。即使后续架构、类名、实现语言全部重构，两者基本不需要改。
 
+调用时声明 `invocation_mode=standalone|child`。`child` 消费 Bootstrap 事实并只返回产物/Gate；`standalone` 由顶层会话按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 收尾，禁止 child 重复最终 ASK。
+
 **路线图写的是"阶段目标与可观察的退出标准（Exit Gate）"，不写"模块职责/数据流/状态机"——后者属于 Design。** 功能列表写的是"功能编号 + 子功能分解 + 可观察的验证标准 + 依赖 + 状态"，不写接口签名、类定义、目录结构。
 
 **违反规则的字面意思就是违反规则的精神。**
@@ -23,7 +25,7 @@ description: Use when 编写项目路线图与功能列表（路线图.md + 功�
 | **P1** | 尽量遵守 | 阶段有 Goal/IN/OUT/Exit Gate、功能有编号与验证标准、brownfield 标注状态 | 补齐缺失项 |
 | **P2** | 建议 | 中文标点、文档头部版本号、依赖图用 mermaid | 提醒修正 |
 
-**冲突处理优先级：** User > Skill > Default behavior。与 P0 冲突时用 AskUserQuestion 提出。
+**冲突处理优先级：** User > Skill > Default behavior。与 P0 冲突时用宿主可用的结构化 ASK 提出。
 
 ## 何时使用
 
@@ -58,7 +60,7 @@ test -f docs.md && cat docs.md
 
 从 docs.md 提取并记录：规划文档存放路径、文件命名规则（`路线图.md`/`功能列表.md` 或 `Roadmap.md`/`FeatureList.md`）、文档头部格式、标点符号规则、mermaid 规则、同步更新规则、阶段命名规则（准备阶段 `P{n}_` 前缀 vs 功能阶段 `F{n}_` 前缀 vs 功能优先级 P0/P1/P2）。
 
-**处理规则：** docs.md 存在则优先；不存在用默认规则；与 P0 冲突时 P0 优先，用 AskUserQuestion 提出冲突。
+**处理规则：** docs.md 存在则优先；不存在用默认规则；与 P0 冲突时 P0 优先，用结构化 ASK 提出冲突。
 
 ## 流程
 
@@ -98,7 +100,7 @@ digraph write_roadmap {
 6. **功能依赖关系**：哪些功能依赖其他功能先完成
 7. **Brownfield 状态确认**：Baseline 是否仍有未决分类或证据冲突
 
-出口判定：输出规划摘要，用 `AskUserQuestion` 询问（选项 1 推荐：确认进入步骤 2；选项 2：补充 grill；选项 3：理解有误重新描述）。
+出口判定：输出规划摘要，用结构化 ASK 询问（选项 1 推荐：确认进入步骤 2；选项 2：补充 grill；选项 3：理解有误重新描述）。
 
 ### 步骤 2：写路线图.md
 
@@ -122,7 +124,7 @@ digraph write_roadmap {
 
 ### 步骤 5：合并总结 + 一次一问确认
 
-合并适用审查等级的结果展示给用户。用 `AskUserQuestion` 询问**一个问题**：
+合并适用审查等级的结果展示给用户。用结构化 ASK 询问**一个问题**：
 - 选项 1（推荐）：确认路线图与功能列表，工作流结束
 - 选项 2：需要修改，回到步骤 2 重写
 - 选项 3：方向不对，回到步骤 1 重新 grill

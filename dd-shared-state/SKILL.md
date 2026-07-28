@@ -9,6 +9,8 @@ description: 当需要持久化 dd 工作流状态、跨会话恢复、验证已
 
 会话上下文压缩后可能遗忘 worktree 路径、`BASE_BRANCH`、当前分支、当前步骤等关键状态。通过**状态文件持久化**解决——每个 worktree 拥有独立状态文件，支持多会话并行开发。
 
+本技能固定为 `invocation_mode=helper`：完成状态读写、恢复或并发检查后返回调用方，不自行 Host Close。宿主结束由顶层 `standalone` 工作流按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 负责。
+
 ## 何时使用
 
 - dd-bug-fix-workflow 或 dd-feature-development-workflow 的步骤开始前，需要恢复工作上下文
@@ -144,7 +146,7 @@ Bootstrap 没有状态文件时，先从仓库中的 `docs.md`、Roadmap、Archi
 - **更新 `merge_in_progress`**：合并操作执行前设置为 `true`，merge 成功后清除或直接删除状态文件
 - **删除**：合并成功后（**禁止 merge 前删除**），须在 `git merge --no-ff` 成功后执行，此时 `git-dir` 指向 worktree 私有目录
 - **Bootstrap 写入**：Preflight 结束后写入；每个节点 Gate 通过后更新 `current_node`、`completed_nodes`、`artifacts` 和 gaps
-- **Bootstrap 完成**：Handoff 准备后设为 `handoff-ready`；下游确认接收或 Trae 用户选择结束后设为 `completed`，不立即删除
+- **Bootstrap 完成**：Handoff 准备后设为 `handoff-ready`；下游确认接收且 Exit Gate 通过后、Host Close ASK 前设为 `completed`，不立即删除
 
 ### 写入模板
 

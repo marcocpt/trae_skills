@@ -11,6 +11,8 @@ description: Use when 编写项目级技术调研文档或产出 ADR 候选，�
 
 dd-project-research 是项目级调研子 skill，被 dd-project-bootstrap-workflow 的 Research / Technical Validation 节点按风险调度，也可独立触发。产出技术调研文档与 ADR 候选草稿，为后续 dd-write-roadmap 与 dd-write-architecture-contract 提供输入。
 
+调用时声明 `invocation_mode=standalone|child`。`child` 继承 Bootstrap 的事实并只返回产物/Gate；`standalone` 由顶层会话按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 收尾。不得在 child 内重复最终 ASK。
+
 **调研产出的是"候选与依据"，不是"拍板的决策"。** 最终架构决策由 dd-write-architecture-contract 阶段批准；本 skill 只提供候选草稿与对比依据。
 
 **违反规则的字面意思就是违反规则的精神。**
@@ -64,7 +66,7 @@ test -f docs.md && cat docs.md
 
 - **docs.md 存在** → docs.md 规则优先于 skill 默认规则
 - **docs.md 不存在** → 用 skill 默认规则
-- **docs.md 规则与 skill 约束冲突时** → 用 `AskUserQuestion` 提出，由用户决定
+- **docs.md 规则与 skill 约束冲突时** → 用宿主可用的结构化 ASK 提出，由用户决定
 
 ## 流程
 
@@ -124,7 +126,7 @@ digraph project_research {
 
 ## 步骤 1：grill 拷问（一次一问）
 
-只对证据和上游上下文无法回答的 blocker 使用 grilling。**一次一问**，每问用 `AskUserQuestion` 单独提出；已解决问题不得因进入本 skill 而重问。
+只对证据和上游上下文无法回答的 blocker 使用 grilling。**一次一问**，每问用结构化 ASK 单独提出；已解决问题不得因进入本 skill 而重问。
 
 ### 1.1 拷问范围
 
@@ -225,7 +227,7 @@ digraph project_research {
 
 ### 5.2 一次一问确认
 
-按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 的结构化询问规则，用 `AskUserQuestion` 一次一问：
+按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 的结构化询问规则，一次一问：
 
 - 问题：技术调研文档与 ADR 候选是否确认通过？
 - 选项 1（推荐）：确认通过，进入下一阶段

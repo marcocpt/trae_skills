@@ -11,6 +11,8 @@ description: 当 dd-git-worktree、dd-git-health、dd-git-ci、dd-git-conflict�
 
 **工作流入口：** [dd-git-workflow](../dd-git-workflow/SKILL.md) 提供总览、核心原则、分支模型和子技能导航。
 
+本技能是 `invocation_mode=helper` 的原子能力：完成后返回调用方，不自行执行 Host Close。若它直接承接用户目标，顶层会话仍是 `standalone`，最终结束遵循 [dd-shared-ask](../dd-shared-ask/SKILL.md)。
+
 ## 脚本清单
 
 | 脚本 | 用途 | 输出格式 | 调用方 |

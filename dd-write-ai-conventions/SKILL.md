@@ -15,6 +15,8 @@ description: Use when 编写或重构项目级 AI 协作入口，包括短根 AG
 - 规则按需加载，避免把全部项目知识塞进每次会话；
 - 宿主结束行为明确且可执行。
 
+调用时声明 `invocation_mode=standalone|child`。`child` 只返回 AI 约定产物与 Gate，不执行 Host Close；`standalone` 按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 收尾。
+
 本 skill 不复制 Requirements、Architecture 或 Coding Standards 正文。
 
 ## 上游上下文协议
@@ -104,12 +106,13 @@ delivery_policy: project-rules
 当 `host=trae` 时，根入口或 Trae 薄适配器必须包含：
 
 1. 未通过任务 Exit Gate 时禁止宣布完成；
-2. 最终产物、验证与状态持久化完成后禁止直接结束会话；
-3. 必须使用 ASK，仅提供：
+2. 最终产物、验证与 `status=completed` 持久化完成后禁止直接结束会话；
+3. 仅 `invocation_mode=standalone` 必须使用 ASK，且只提供：
    - `结束本次任务`
    - `还有其他任务`
 4. 选择“还有其他任务”时继续处理，不输出结束语；
-5. 选择“结束本次任务”后持久化完成状态，再输出最终摘要。
+5. 选择“结束本次任务”后输出最终摘要；
+6. `invocation_mode=child` 返回父工作流，不执行本节 ASK。
 
 该决策若已由 Bootstrap 确定，本 skill 不得再次询问是否启用。
 

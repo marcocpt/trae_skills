@@ -9,6 +9,8 @@ description: 当需要检测和清理已合并分支、陈旧 worktree、孤儿 
 
 废弃分支清理帮助 AI Agent 保持工作区整洁，避免陈旧 worktree 和已合并分支堆积。本技能涵盖自动检测、清理流程和约束。完整工作流总览见 [dd-git-workflow](../dd-git-workflow/SKILL.md)。
 
+本技能按 `invocation_mode=helper` 返回调用方，不自行 Host Close。直接承接用户目标时由顶层 `standalone` 会话按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 收尾。
+
 ## 自动检测项
 
 | 检测项 | 判定条件 | 处理建议 |

@@ -11,6 +11,8 @@ description: Use when 对老项目（Brownfield）做基线盘点，产出能力
 
 dd-brownfield-baseline 是项目级基线盘点子 skill，用于在 Brownfield 场景下，系统化盘点项目对外能力、内部使用关系、处置分类与行为基线测试。Brownfield 的判定依据是**存在必须解释的兼容性、历史行为、发布用户、数据迁移或公共接口义务**，不是源文件数量。产出作为后续架构契约 allowlist、阶段合同与 roadmap 功能状态标注的输入。
 
+调用时声明 `invocation_mode=standalone|child`。`child` 继承 Bootstrap 的事实并只返回产物/Gate；`standalone` 由顶层会话按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 收尾。不得在 child 内重复最终 ASK。
+
 **基线盘点必须完整——能力级与原子级双层盘点，不漏盘。** 每条处置分类必须有理由与影响范围；每个 Characterization Test 必须有明确语义分类。
 
 **基线盘点产物是后续所有迁移决策的事实基础。** 盘点遗漏会导致架构契约漏掉必须保留的能力，迁移后破坏兼容性。
@@ -61,7 +63,7 @@ test -f docs.md && cat docs.md
 
 - **docs.md 存在** → docs.md 规则优先于 skill 默认规则
 - **docs.md 不存在** → 用 skill 默认规则
-- **docs.md 与 skill 冲突时** → docs.md 优先（项目约定 > 通用建议），冲突用 AskUserQuestion 提出
+- **docs.md 与 skill 冲突时** → docs.md 优先（项目约定 > 通用建议），冲突用宿主可用的结构化 ASK 提出
 
 ## 流程
 
@@ -94,7 +96,7 @@ digraph baseline_flow {
 
 ### Grill 拷问环节（写盘点前）
 
-先从代码、文档、测试与上游上下文回答下列问题。只有答案仍未知且会阻塞产物时，才一次一问（用 AskUserQuestion）：
+先从代码、文档、测试与上游上下文回答下列问题。只有答案仍未知且会阻塞产物时，才使用结构化 ASK 一次一问：
 
 1. **项目代码规模？**（文件数/模块数/代码行数）——决定盘点粒度
 2. **对外能力如何识别？**（公开 API / CLI 命令 / 配置项 / 事件 / 文件格式）——确定 CAP-* 边界
@@ -105,7 +107,7 @@ digraph baseline_flow {
 7. **是否需要平台与构建矩阵？**（多平台 / 多构建配置 / 多证书策略）——单平台可跳过
 8. **是否有历史文档需要重新基线？**——历史设计文档/规范是否纳入 HIS-* 矩阵
 
-**Grill 原则：** 一次一问，等待用户回答后再问下一个。不要批量抛出。用户回答不明确时，用 AskUserQuestion 给出 2-3 个建议及推荐。
+**Grill 原则：** 一次一问，等待用户回答后再问下一个。不要批量抛出。用户回答不明确时，用结构化 ASK 给出 2-3 个建议及推荐。
 
 ## 产出文件结构
 
@@ -224,7 +226,7 @@ HARD-GATE 触发条件：
 - Characterization Test 存在未分类测试
 - 用户未确认
 
-HARD-GATE 触发时：停止，回到 Grill 环节或用 AskUserQuestion 澄清，不得绕过。
+HARD-GATE 触发时：停止，回到 Grill 环节或用结构化 ASK 澄清，不得绕过。
 
 ## 与其他 skill 的关系
 

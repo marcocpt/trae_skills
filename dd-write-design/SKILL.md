@@ -11,6 +11,8 @@ description: Use when 编写 02_Design.md 设计文档，或在 AI Coding 场景
 
 Design 是整个 AI Coding 项目的"架构契约"。它回答五个问题：有哪些模块、职责如何划分、数据如何流动、状态如何变化、为什么这样划分。即使后续类名、接口签名、实现语言全部重构，Design 基本不需要改。
 
+调用时声明 `invocation_mode=standalone|child`。`child` 消费 Requirements 并只返回产物/Gate；`standalone` 由顶层会话按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 收尾，禁止 child 重复最终 ASK。
+
 **Requirements 是唯一需求来源（Single Source of Truth），Design 不复制需求，只引用 FR 编号说明"由谁负责"。** Design 写的是"由谁负责（Who is responsible）"，不写"必须发生什么（Must happen）"——后者属于 Requirements。
 
 **违反规则的字面意思就是违反规则的精神。**
@@ -36,7 +38,7 @@ Design 是整个 AI Coding 项目的"架构契约"。它回答五个问题：有
 | **P1** | 尽量遵守 | 引用 FR 编号而非复制需求、每模块写职责边界、状态机用中文状态名、数据流用 mermaid | 补齐缺失项 |
 | **P2** | 建议 | 中文标点、文档头部版本号、章节顺序 | 提醒修正 |
 
-**冲突处理优先级：** User > Skill > Default behavior。当用户明确要求与 P0 规则冲突时，用 AskUserQuestion 提出，由用户决定。
+**冲突处理优先级：** User > Skill > Default behavior。当用户明确要求与 P0 规则冲突时，用宿主可用的结构化 ASK 提出，由用户决定。
 
 ## 何时使用
 
@@ -74,7 +76,7 @@ test -f docs.md && cat docs.md
 
 - **docs.md 存在** → docs.md 规则优先于 skill 默认规则
 - **docs.md 不存在** → 用 skill 默认规则
-- **docs.md 规则与 skill P0 冲突时** → P0 优先（不写代码符号是铁律），用 AskUserQuestion 提出冲突
+- **docs.md 规则与 skill P0 冲突时** → P0 优先（不写代码符号是铁律），用结构化 ASK 提出冲突
 - **docs.md 规则与 skill P1/P2 冲突时** → docs.md 优先
 
 ## 核心原则：Design 不是 Implementation Plan
@@ -322,7 +324,7 @@ protocol TemplateMatchingEngining {
 
 **错误推理：** "这个情况不同，因为是……"
 
-**处理：** 规则无例外。如果你认为情况特殊，用 AskUserQuestion 提出，由用户决定。
+**处理：** 规则无例外。如果你认为情况特殊，用结构化 ASK 提出，由用户决定。
 
 ### FM-013：精神 vs 字面
 

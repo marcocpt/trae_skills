@@ -11,6 +11,8 @@ description: 当需要为项目准备阶段、Brownfield 迁移阶段或兼容�
 
 普通功能需求使用 [dd-write-requirements](../dd-write-requirements/SKILL.md)。阶段合同与功能需求都属于 Requirements 层，但前者额外承载阶段 Exit Gate、迁移处置和兼容约束。
 
+调用时声明 `invocation_mode=standalone|child`。`child` 消费 Bootstrap 事实并只返回产物/Gate；`standalone` 由顶层会话按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 收尾，禁止 child 重复最终 ASK。
+
 ## 首步：确定调用模式
 
 ### Bootstrap 调用

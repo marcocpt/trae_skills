@@ -11,6 +11,8 @@ description: Use when 编写 docs/standards/CODING_STANDARDS.md 项目编码规�
 
 CODING_STANDARDS.md 是整个 AI Coding 项目的"写法契约"。它回答：缩进多少格、大括号放哪、类型/方法/变量/常量怎么命名、日志怎么记、并发怎么守边界、错误怎么处理、魔术数字怎么消除、测试怎么写。即使后续重构类名、调整模块拆分，编码规范基本不需要改。
 
+调用时声明 `invocation_mode=standalone|child`。`child` 消费上游事实并只返回产物/Gate；`standalone` 由顶层会话按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 收尾，禁止 child 重复最终 ASK。
+
 **编码规范是项目级的，适用于整个项目所有代码。** 架构契约定义分层与依赖方向，编码规范定义每一行代码的写法。两者互补不冲突——架构契约说"Core 不能依赖 UI"，编码规范说"Core 里的代码统一用 4 空格缩进、Allman 大括号"。
 
 **不写具体类名/方法签名作为示例**——避免被误读为"必须这样命名"。示例用自然语言或通用形式描述。
@@ -25,7 +27,7 @@ CODING_STANDARDS.md 是整个 AI Coding 项目的"写法契约"。它回答：�
 | **P1** | 尽量遵守 | 8 章节齐全、命名约定明确、并发边界明确、错误处理可检索 | 补齐缺失项 |
 | **P2** | 建议 | 中文标点、文档头部版本号、验证命令齐全 | 提醒修正 |
 
-**冲突处理优先级：** User > Skill > Default behavior。当用户明确要求与 P0 规则冲突时，用 AskUserQuestion 提出，由用户决定。
+**冲突处理优先级：** User > Skill > Default behavior。当用户明确要求与 P0 规则冲突时，用宿主可用的结构化 ASK 提出，由用户决定。
 
 ## 何时使用
 
@@ -80,7 +82,7 @@ test -f docs.md && cat docs.md
 
 - **docs.md 存在** → docs.md 规则优先于 skill 默认规则
 - **docs.md 不存在** → 用 skill 默认规则
-- **docs.md 规则与 skill P0 冲突时** → P0 优先（lint 配置与规范一致是铁律），用 AskUserQuestion 提出冲突
+- **docs.md 规则与 skill P0 冲突时** → P0 优先（lint 配置与规范一致是铁律），用结构化 ASK 提出冲突
 - **docs.md 规则与 skill P1/P2 冲突时** → docs.md 优先（项目约定 > 通用建议）
 
 ## 核心原则：写法不是架构
@@ -120,7 +122,7 @@ digraph three_layers {
 
 ### 处理规则
 
-- 用户回答模糊（如"差不多就行"）→ 用 AskUserQuestion 给 2-3 个具体选项让用户选
+- 用户回答模糊（如"差不多就行"）→ 用结构化 ASK 给 2-3 个具体选项让用户选
 - 用户回答与已有 lint 配置冲突 → 标注冲突，写规范时以用户回答为准并提示同步改 lint 配置
 - 用户跳过且该项会阻塞规范 → 标记 blocker；不阻塞时记录为 deferred，不为凑齐问题而重问
 
@@ -209,7 +211,7 @@ digraph coding_standards_flow {
 
 ### 结构化确认（复用 dd-shared-ask）
 
-审查后用 AskUserQuestion 逐项确认重大项（一次一问）：
+审查后用结构化 ASK 逐项确认重大项（一次一问）：
 
 - 命名约定是否符合团队习惯
 - 并发边界是否符合项目实际
@@ -226,7 +228,7 @@ null 输入按 dd-shared-ask 规则重问，不得假设默认值。
 2. lint 配置（如需）已写且与规范一致
 3. 适用 `review_level` 的「必须修复」项全部处理
 4. 已确认输入与新增决策全部纳入规范
-5. 用户通过 AskUserQuestion 明确确认"编码规范完成"
+5. 用户通过结构化 ASK 明确确认"编码规范完成"
 
 任一项不满足，回到对应步骤修订。**禁止自行宣布完成。**
 
@@ -276,7 +278,7 @@ digraph skill_relation {
 - [ ] 验证命令可执行
 - [ ] Greenfield/Brownfield 质量政策与验证命令明确
 - [ ] 适用 `review_level` 的「必须修复」项全部处理
-- [ ] 用户通过 AskUserQuestion 明确确认完成
+- [ ] 用户通过结构化 ASK 明确确认完成
 
 **任一项失败，修订后重新验证。**
 

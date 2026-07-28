@@ -9,6 +9,8 @@ description: 当遇到合并冲突、需要修改公共文件、预测冲突风�
 
 冲突处理遵循"在 feature 分支解决，禁止在 develop 上直接解决"原则。本技能涵盖冲突流程、优先级、公共文件锁机制和冲突预测。完整工作流总览见 [dd-git-workflow](../dd-git-workflow/SKILL.md)。
 
+本技能按 `invocation_mode=helper` 返回调用方，不自行 Host Close。直接承接用户目标时由顶层 `standalone` 会话按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 收尾。
+
 ## 长分支合并策略
 
 ### 全部使用 merge

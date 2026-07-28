@@ -11,6 +11,8 @@ description: 用户延后工作时使用（"稍后/以后/回头/晚点/先跳�
 
 **核心原则：** 会话内的任务用 TodoWrite；明确延后到未来会话的事项用 LATER。会话结束 TodoWrite 即失效，LATER 跨会话留存。
 
+本技能默认 `invocation_mode=helper`，持久化结果后返回调用方，不自行 Host Close。若直接承接用户目标，顶层 `standalone` 会话按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 收尾。
+
 ## 何时使用
 
 触发条件（任一即触发）：

@@ -11,6 +11,8 @@ description: Use when 编写 01_Requirements.md 需求文档，或在 AI Coding 
 
 Requirements 是整个 AI Coding 项目的"产品合同"与"唯一真实需求来源（Single Source of Truth）"。它回答五个问题：为什么做、解决什么问题、用户看到什么、系统必须做到什么、成功标准是什么。即使后续架构、类名、设计模式全部重构，Requirements 基本不需要改。
 
+调用时声明 `invocation_mode=standalone|child`。`child` 消费上游 seed 并只返回产物/Gate；`standalone` 由顶层会话按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 收尾，禁止 child 重复最终 ASK。
+
 **Requirements 写的是"必须发生什么（Must happen）"，不关心"由谁负责"。** 例如"识别结束后必须清空展示层"是 Requirements；"识别模块负责触发清空"是 Design。
 
 **违反规则的字面意思就是违反规则的精神。**
@@ -25,7 +27,7 @@ Requirements 是整个 AI Coding 项目的"产品合同"与"唯一真实需求�
 | **P1** | 尽量遵守 | 12 章节齐全、FR 可观察、NFR 可测量、AC 用 Given/When/Then、每个 FR 至少一个 AC | 补齐缺失项 |
 | **P2** | 建议 | 中文标点、无模糊词（优化/改进/更好）、文档头部版本号 | 提醒修正 |
 
-**冲突处理优先级：** User > Skill > Default behavior。当用户明确要求与 P0 规则冲突时，用 AskUserQuestion 提出，由用户决定。
+**冲突处理优先级：** User > Skill > Default behavior。当用户明确要求与 P0 规则冲突时，用宿主可用的结构化 ASK 提出，由用户决定。
 
 ## 何时使用
 
@@ -63,7 +65,7 @@ test -f docs.md && cat docs.md
 
 - **docs.md 存在** → docs.md 规则优先于 skill 默认规则（路径/命名/头部格式等）
 - **docs.md 不存在** → 用 skill 默认规则
-- **docs.md 规则与 skill P0 冲突时** → P0 优先（不写代码符号是铁律），用 AskUserQuestion 提出冲突
+- **docs.md 规则与 skill P0 冲突时** → P0 优先（不写代码符号是铁律），用结构化 ASK 提出冲突
 - **docs.md 规则与 skill P1/P2 冲突时** → docs.md 优先（项目约定 > 通用建议）
 
 ### 注意
@@ -321,7 +323,7 @@ Constraints-1：模板匹配置信度阈值默认 0.8，支持运行时修改即
 
 **错误推理：** "这个情况不同，因为是……"
 
-**处理：** 规则无例外。如果你认为情况特殊，用 AskUserQuestion 提出，由用户决定。
+**处理：** 规则无例外。如果你认为情况特殊，用结构化 ASK 提出，由用户决定。
 
 ### FM-013：精神 vs 字面
 

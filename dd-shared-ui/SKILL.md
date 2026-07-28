@@ -9,6 +9,8 @@ description: 当需要 UI 可观测性门禁验证时使用（被 dd-ai-refactor
 
 本技能包含 dd 系列技能通用的 UI 可观测性门禁规则，各 dd 技能引用本技能以避免重复。
 
+本技能固定为 `invocation_mode=helper`：返回 UI 证据与 Gate 结果，不自行 Host Close；顶层 `standalone` 会话按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 收尾。
+
 ## UI 可观测性门禁
 
 任何涉及 UI、桌面 app、Web app、可视化、快捷键交互、窗口/浮层/菜单/表单/画布的特性，都必须通过此门禁。

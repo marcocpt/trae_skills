@@ -1,6 +1,6 @@
 ---
 name: dd-shared-ci
-description: 当需要 CI 验证（基线 CI 复用、回归 CI 触发、push 后等待、合并后验证）或本地 Xcode 编译证书规范时使用（被 dd-bug-fix-workflow、dd-feature-development-workflow 引用）。触发词：CI 验证、gh run、push 后等待、合并后 CI、test-macos.sh、xcodebuild、证书、签名、DEVELOPMENT_TEAM、CODE_SIGN_IDENTITY、CODE_SIGN_STYLE、pbxproj、xcworkspace、xcodeproj、killed: 9、code signing is required、Automatically manage signing。
+description: "当需要 CI 验证（基线 CI 复用、回归 CI 触发、push 后等待、合并后验证）或本地 Xcode 编译证书规范时使用（被 dd-bug-fix-workflow、dd-feature-development-workflow 引用）。触发词：CI 验证、gh run、push 后等待、合并后 CI、test-macos.sh、xcodebuild、证书、签名、DEVELOPMENT_TEAM、CODE_SIGN_IDENTITY、CODE_SIGN_STYLE、pbxproj、xcworkspace、xcodeproj、killed: 9、code signing is required、Automatically manage signing。"
 ---
 
 # dd 共享 CI 验证规则
@@ -8,6 +8,8 @@ description: 当需要 CI 验证（基线 CI 复用、回归 CI 触发、push �
 ## 概述
 
 dd-bug-fix-workflow 和 dd-feature-development-workflow 共享的 CI 验证逻辑。**核心原则：CI 优先，禁止本地测试作为 CI 替代。** 本地环境差异（签名、SDK、runner 配置）会掩盖问题，CI 是工作流核心价值。
+
+本技能固定为 `invocation_mode=helper`：只把 CI 状态、SHA、run、证据和 blocker 返回调用方，不自行输出最终摘要或 Host Close。直接承接用户目标时仍由顶层 `standalone` 会话按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 收尾。
 
 ## 何时使用
 
@@ -36,8 +38,8 @@ gh workflow run macos-ci.yml --ref <当前分支>
 gh run watch <run-id> --exit-status
 ```
 
-- **当前分支未 push 时不得以此为由降级本地**——先查 BASE_BRANCH 已有结果，或用 AskUserQuestion 询问是否 push 后触发 CI
-- `gh workflow run` 本身报错（ref 不存在、鉴权失败等）→ 按 test-location-strategy 步骤 2 的 AskUserQuestion 流程处理，**不得降级本地**
+- **当前分支未 push 时不得以此为由降级本地**——先查 BASE_BRANCH 已有结果，或用结构化 ASK 询问是否 push 后触发 CI
+- `gh workflow run` 本身报错（ref 不存在、鉴权失败等）→ 按 test-location-strategy 步骤 2 的结构化 ASK 流程处理，**不得降级本地**
 
 ## 场景 2：回归 CI 验证（提交后必须 push + 触发 CI）
 
@@ -58,7 +60,7 @@ git ls-remote --exit-code --heads origin "$CURRENT_BRANCH" >/dev/null 2>&1
   git push -u origin "$CURRENT_BRANCH"
   ```
   - push 成功 → 进入 2.2
-  - push 失败 → **AskUserQuestion**：
+  - push 失败 → **结构化 ASK**：
     - 选项 1（推荐）：重试 push（排查网络/权限问题）
     - 选项 2：停止工作流，排查 push 权限
   - **禁止**：以 push 失败为由落到本地测试
@@ -83,7 +85,7 @@ RUN_ID=$(gh run list --workflow macos-ci.yml --branch <当前分支> --limit 5 \
 gh run watch "$RUN_ID" --exit-status
 ```
 
-- **触发失败** → **AskUserQuestion**：
+- **触发失败** → **结构化 ASK**：
   - 选项 1（推荐）：重试触发 CI
   - 选项 2：停止工作流，排查 CI 配置
 - **禁止**：以 CI 触发失败为由落到本地测试
@@ -91,7 +93,7 @@ gh run watch "$RUN_ID" --exit-status
 ### 2.4 CI 失败处理
 
 - **CI 通过** → 进入下一步
-- **CI 失败**（测试用例未通过）→ **AskUserQuestion**：
+- **CI 失败**（测试用例未通过）→ **结构化 ASK**：
   - 选项 1（推荐）：拉取 CI 日志（`gh run view <run-id> --log-failed`）分析失败原因，回到 TDD 步骤修复
   - 选项 2：本地复现排查（`bash scripts/ci/test-macos.sh`，**仅用于理解失败原因，修复后必须重新走 CI 验证**）
   - 选项 3：跳过继续（不推荐）
@@ -125,11 +127,11 @@ fi
 ```
 
 - **成功** → 进入下一步
-- **CI 失败** → **AskUserQuestion**：
+- **CI 失败** → **结构化 ASK**：
   - 选项 1（推荐）：拉取 CI 日志（`gh run view <run-id> --log-failed`）分析失败原因，回到 TDD 步骤修复
   - 选项 2：本地复现排查（`bash scripts/ci/test-macos.sh`，**仅用于理解失败原因，修复后必须重新走 CI 验证**）
   - 选项 3：跳过继续（不推荐，会引入未验证代码到远端）
-- **未找到 run** → **AskUserQuestion**：
+- **未找到 run** → **结构化 ASK**：
   - 选项 1（推荐）：手动触发 `gh workflow run macos-ci.yml --ref <当前分支>` 后重新等待
   - 选项 2：检查 workflow 文件是否存在 / `.github/workflows/macos-ci.yml` 配置是否正确
   - 选项 3：跳过继续（不推荐，会引入未验证代码到远端）
@@ -145,7 +147,7 @@ fi
 3. **本地全量测试**（**仅当** CI 不可用或用户明确要求）：`bash scripts/ci/test-macos.sh`
 
 - **CI 通过** → 继续清理工作树
-- **CI 失败** → **AskUserQuestion**：
+- **CI 失败** → **结构化 ASK**：
   - 选项 1（推荐）：拉取 CI 日志分析，回到 TDD 步骤修复
   - 选项 2：`git merge --abort` 撤销合并，回到 TDD 步骤
   - 选项 3：本地复现排查
@@ -326,10 +328,10 @@ open "$APP_PATH"
 
 - 跳过基线测试验证
 - 不询问就带着失败的测试继续
-- **以"当前分支未 push 导致 CI 触发失败"为由降级本地测试**——必须先查 BASE_BRANCH 的 CI 结果（基线 commit 与 BASE_BRANCH HEAD 相同）；若 BASE_BRANCH 也无结果，用 AskUserQuestion 询问是否 push 后触发 CI，不得直接降级本地
+- **以"当前分支未 push 导致 CI 触发失败"为由降级本地测试**——必须先查 BASE_BRANCH 的 CI 结果（基线 commit 与 BASE_BRANCH HEAD 相同）；若 BASE_BRANCH 也无结果，用结构化 ASK 询问是否 push 后触发 CI，不得直接降级本地
 - **以"CI 不可用"宽泛措辞降级本地**——"CI 不可用"仅指：项目无 `.github/workflows/` 配置、`gh` 命令不可用且用户选择不修复、用户在**无可用 CI 结果**时明确选择本地。分支未 push、`gh workflow run` 报错、CI 触发失败**均不构成"CI 不可用"**
-- **以"用户明确要求"凌驾于 CI 优先之上**——当已有可复用的成功 CI 结果时，用户要求本地不构成降级理由；应用 AskUserQuestion 给出"复用 CI 结果（推荐）/ 仍要本地仅作参考 / 终止"选项
-  - **触发时机**：若 agent 已确定复用（commit 一致 + conclusion=success），可直接复用并告知用户，无需 AskUserQuestion；AskUserQuestion 仅在 agent 考虑接受用户本地请求时强制触发（即 agent 在"复用 CI"与"本地执行"之间犹豫时，必须用 AskUserQuestion 让用户显式选择，不得沉默降级本地）
+- **以"用户明确要求"凌驾于 CI 优先之上**——当已有可复用的成功 CI 结果时，用户要求本地不构成降级理由；应用结构化 ASK 给出"复用 CI 结果（推荐）/ 仍要本地仅作参考 / 终止"选项
+  - **触发时机**：若 agent 已确定复用（commit 一致 + conclusion=success），可直接复用并告知用户，无需 ASK；仅在 agent 考虑接受用户本地请求时强制触发（即 agent 在"复用 CI"与"本地执行"之间犹豫时，必须用结构化 ASK 让用户显式选择，不得沉默降级本地）
 
 ## 基线验证 vs 回归验证的表面张力说明
 

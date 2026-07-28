@@ -9,6 +9,8 @@ description: 当 dd 工作流需要按覆盖与范围、一致与正确、可验
 
 本技能固定审查语义，但让执行强度随风险变化。质量标准不随宿主能力或 Token 预算下降。
 
+本技能固定为 `invocation_mode=helper`：返回分角色结论和证据，不自行 Host Close。无子 Agent 时由调用方执行等价多视角复核；顶层会话结束遵循 [dd-shared-ask](../dd-shared-ask/SKILL.md)。
+
 ## 固定审查语义
 
 所有检查必须覆盖：
