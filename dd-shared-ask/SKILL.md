@@ -47,7 +47,7 @@ description: 当需要结构化询问用户、处理 null 输入重问、确认�
 
 ## 文档规则优先
 
-项目存在 `.trae/rules/docs.md`、`docs/CODING_STANDARDS.md`、`docs/AI/trae-xctest-rules.md` 时，写规格文档套件、计划、检查前先阅读并遵守。
+项目存在 `.trae/rules/docs.md`、`docs/standards/CODING_STANDARDS.md`（或旧路径 `docs/CODING_STANDARDS.md`）、`docs/standards/{语言/测试规则}.md`（或旧路径 `docs/AI/trae-xctest-rules.md`）时，写规格文档套件、计划、检查前先阅读并遵守。
 
 ## 提交边界
 

@@ -119,10 +119,10 @@ digraph write_contract {
 
 ## 步骤 0：读 docs.md + 既有契约 + ADR 候选
 
-按"项目规则优先"章节读取 docs.md。同时读取既有架构契约、ADR 索引、上游 ADR 候选（`.research-adr-candidates.md`）、路线图（`路线图.md`），判断新建/修订模式：
+按"项目规则优先"章节读取 docs.md。同时读取既有架构契约、ADR 索引、上游 ADR 候选（`docs/architecture/adr/ADR-NNNN-主题.md`，标注"待批准"状态）、路线图（`路线图.md`），判断新建/修订模式：
 
 - **既有契约存在** → 修订模式：记录现有不变量编号上限、ADR 编号上限、allowlist 现状；本次改动需走 ADR 修订流程
-- **不存在** → 新建模式：编号从 INV-001、ADR-001 起
+- **不存在** → 新建模式：编号从 INV-001、ADR-0001 起
 - **上游 ADR 候选存在**（被 dd-project-bootstrap-workflow 调用时）→ 作为步骤 3 起草输入，不直接定稿
 - **路线图存在**（dd-write-roadmap 产出）→ 提取规划的分层结构作为契约参考
 
@@ -173,14 +173,14 @@ digraph write_contract {
 
 | ADR 编号 | 主题 | 状态 | 批准日期 | 文件链接 |
 |---------|------|------|---------|---------|
-| ADR-001 | 核心层禁依赖 UI 框架 | 已批准 | 2026-07-28 | [adr/001_核心层禁依赖UI框架.md](adr/001_核心层禁依赖UI框架.md) |
-| ADR-002 | 引入 SwiftUI 偏好设置窗口 | 候选 | - | [adr/002_引入SwiftUI偏好设置窗口.md](adr/002_引入SwiftUI偏好设置窗口.md) |
+| ADR-0001 | 核心层禁依赖 UI 框架 | 已批准 | 2026-07-28 | [adr/ADR-0001-核心层禁依赖UI框架.md](adr/ADR-0001-核心层禁依赖UI框架.md) |
+| ADR-0002 | 引入 SwiftUI 偏好设置窗口 | 候选 | - | [adr/ADR-0002-引入SwiftUI偏好设置窗口.md](adr/ADR-0002-引入SwiftUI偏好设置窗口.md) |
 
 **状态取值**：候选 / 已批准 / 已废弃
 
-**候选 ADR 文件结构**（`adr/{NNN}_{主题}.md`）：
+**候选 ADR 文件结构**（`adr/ADR-NNNN-主题.md`）：
 
-- **标题**：`ADR-{NNN}：{主题}`
+- **标题**：`ADR-NNNN：{主题}`
 - **状态**：候选 / 已批准 / 已废弃
 - **上下文（Context）**：为什么需要这个决策
 - **决策（Decision）**：决策内容
@@ -230,8 +230,8 @@ docs/architecture/
 ├── 全局架构契约.md          # 必含（8 章节核心契约）
 ├── ADR索引.md               # 必含（ADR 登记表）
 └── adr/                     # 可选（每个 ADR 一个文件，候选状态即可创建）
-    ├── 001_{主题}.md
-    └── 002_{主题}.md
+    ├── ADR-0001-主题.md
+    └── ADR-0002-主题.md
 ```
 
 ## 与其他 skill 的关系
@@ -244,9 +244,9 @@ docs/architecture/
 
 ## 输出要求（P2）
 
-- 文件名：`全局架构契约.md`、`ADR索引.md`、`adr/{NNN}_{主题}.md`
+- 文件名：`全局架构契约.md`、`ADR索引.md`、`adr/ADR-NNNN-主题.md`
 - 格式：Markdown，层级标题
-- 不变量编号：INV-001 起，零填充三位；ADR 编号：ADR-001 起，零填充三位
+- 不变量编号：INV-001 起，零填充三位；ADR 编号：ADR-0001 起，零填充四位
 - 文档头部：`> 最后更新：YYYY-MM-DD | 版本：vX.Y`；文末：版本记录列表
 - 中文标点（，。！？：；），英文术语保持原文；图示用 dot 或 mermaid，节点用中文业务术语；不使用 emoji
 

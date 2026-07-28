@@ -50,12 +50,12 @@ test -f docs.md && cat docs.md
 
 ### 从 docs.md 提取并记录
 
-1. **AI 约束文件存放路径**（根目录 AGENTS.md / CLAUDE.md，规则文件 `.trae/rules/`）
+1. **AI 约束文件存放路径**（根目录 AGENTS.md / CLAUDE.md；权威规范文件 `docs/standards/`；Trae IDE 特定入口 `.trae/rules/`）
 2. **文档头部格式**（如 `> 最后更新：YYYY-MM-DD | 版本：vX.Y`）
 3. **标点符号规则**（中文标点 / 英文术语保持原文）
 4. **historys 同步规则**（架构变更 / 入口文档变更是否需追加 history）
 5. **同步更新规则**（修改 AGENTS.md 时是否需同步 CLAUDE.md 或规则文件）
-6. **既有规则文件清单**（已存在哪些 `.trae/rules/*.md`，避免重复创建）
+6. **既有规则文件清单**（已存在哪些 `docs/standards/*.md` 与 `.trae/rules/*.md`，避免重复创建）
 
 ### 处理规则
 
@@ -69,7 +69,7 @@ test -f docs.md && cat docs.md
 写 AGENTS.md 前，**必须先读取架构契约与编码规范**作为引用输入（不复制原文，只引用文件路径与核心约束名）：
 
 - **架构契约**（dd-write-architecture-contract 产出）：分层结构、依赖方向、UI 框架分区 → AGENTS.md 第 3 章"架构边界"引用
-- **编码规范**（dd-write-coding-standards 产出）：`docs/CODING_STANDARDS.md` → AGENTS.md 第 6 章"编码规范"引用
+- **编码规范**（dd-write-coding-standards 产出）：`docs/standards/CODING_STANDARDS.md` + `docs/standards/git-commit-message.md` + 语言/测试规则 → AGENTS.md 第 6 章"编码规范"引用
 - 若上游文件不存在 → 用 AskUserQuestion 提示先走对应 skill，不得自行编造架构与规范内容
 
 ## 核心原则：引用不是复制
@@ -150,17 +150,19 @@ digraph ai_conventions_flow {
 
 ### 必含文件
 
-- `AGENTS.md` — 共享 AI 代理规则主入口（所有 AI 工具共用）
+- `AGENTS.md` — 共享 AI 代理规则主入口（所有 AI 工具共用，仓库根目录）
 
 ### 可选文件（按 grill 回答按需创建）
 
 | 文件 | 创建条件 | 内容定位 |
 |------|----------|----------|
-| `CLAUDE.md` | 项目使用 Claude Code | Claude Code 专用补充约定，不复制 AGENTS.md 主体 |
-| `.trae/rules/docs.md` | 项目有 docs 治理需求 | 文档目录结构 / 命名规范 / 版本记录 / historys 规范 |
-| `.trae/rules/git-commit-message.md` | 项目需统一提交规范 | Conventional Commits 规范（type / scope / subject / body / footer） |
-| `.trae/rules/{语言}-rules.md` | 项目有语言特定规则 | 语言规则（如 swift-rules.md 的 Allman 风格 / 4 空格缩进） |
-| `.trae/rules/xctest-rules.md` | 项目有测试规则需求 | 测试规则（TDD / Mock 规范 / 测试隔离） |
+| `CLAUDE.md` | 项目使用 Claude Code | Claude Code 专用补充约定，不复制 AGENTS.md 主体（仓库根目录） |
+| `.trae/rules/*.md` | 项目使用 Trae IDE | Trae IDE 特定规则入口，**引用 `docs/standards/` 权威来源，不复制原文**；按需创建 `docs.md`（文档治理入口）、`git-commit-message.md`（提交规范入口）、`{语言}-rules.md`（语言规则入口）、`xctest-rules.md`（测试规则入口） |
+
+**重要区分：**
+- **权威来源**：`docs/standards/CODING_STANDARDS.md`、`docs/standards/git-commit-message.md`、`docs/standards/{语言}-rules.md`、`docs/standards/{测试}-rules.md` — 由 dd-write-coding-standards 产出，是规范正文
+- **Trae IDE 入口**：`.trae/rules/*.md` — 仅作为 Trae IDE 的规则入口文件，引用 `docs/standards/` 对应文件，不复制规范原文
+- **文档治理**：仓库根目录 `docs.md` 由 dd-project-bootstrap-workflow 治理规范抽离产出，`.trae/rules/docs.md` 可作为 Trae IDE 入口引用根目录 `docs.md`
 
 **约束：** 可选文件按需创建，不强制全部生成。无对应需求不创建空文件。
 
@@ -173,7 +175,7 @@ digraph ai_conventions_flow {
 3. **架构边界**：分层结构 + 依赖方向 + UI 框架分区（**引用架构契约文件路径与不变量编号，不复制原文**）
 4. **工作流程**：先看 git 状态 → 阅读规划文档 → 涉及新功能先更新设计文档 → TDD → 聚焦修改 → 验证。每步简洁可执行
 5. **文档同步**：引用 docs 治理规范（修改设计 / 架构 / 实现计划时同步更新对应文档 + historys 追加）。不复制 docs.md 原文
-6. **编码规范**：引用 `docs/CODING_STANDARDS.md` 与对应语言规则文件。不复制规范原文
+6. **编码规范**：引用 `docs/standards/CODING_STANDARDS.md`、`docs/standards/git-commit-message.md` 与对应语言/测试规则文件。不复制规范原文
 7. **验证命令**：lint / 测试 / 编译检查命令，区分 CI 与本地。明确全量回归是否必须由 CI 执行
 8. **Git 与提交**：commit 前检查（Swift 项目过 swiftlint）+ Conventional Commits 规范（引用 git-commit-message.md）。禁止 push --force / rebase 等危险操作
 9. **禁止事项**：明确禁止的行为（如 Core 引入 UI 依赖、绕过文档同步、用 sleep 代替条件等待、吞掉错误、直接结束会话）
@@ -189,10 +191,14 @@ digraph ai_conventions_flow {
 
 ## .trae/rules/*.md 写作要求
 
-- **docs.md**：文档目录结构、命名规范、版本记录格式、historys 追加规则。不复制 AGENTS.md 内容
-- **git-commit-message.md**：Conventional Commits 规范（type / scope / subject / body / footer），含示例。中文 subject
-- **{语言}-rules.md**：语言特定规则。如 swift-rules.md 写 Allman 风格、4 空格缩进、命名约定；不写具体类名作为示例
-- **xctest-rules.md**：测试规则。TDD 优先、Mock 只模拟外部依赖不 mock 被测对象本身、测试隔离、测试命名规范
+`.trae/rules/*.md` 是 Trae IDE 的规则入口文件，**引用 `docs/standards/` 权威来源，不复制规范原文**。
+
+- **docs.md**（Trae 入口）：引用仓库根目录 `docs.md`（文档治理规范），可补充 Trae IDE 特定的规则加载顺序说明。不复制根目录 `docs.md` 内容
+- **git-commit-message.md**（Trae 入口）：引用 `docs/standards/git-commit-message.md`，可补充 Trae IDE 的提交检查入口说明
+- **{语言}-rules.md**（Trae 入口）：引用 `docs/standards/{语言}-rules.md`，可补充 Trae IDE 的 lint 集成说明
+- **xctest-rules.md**（Trae 入口）：引用 `docs/standards/{测试}-rules.md`，可补充 Trae IDE 的测试运行说明
+
+**关键原则：** `.trae/rules/*.md` 只写 Trae IDE 特定的入口说明与引用，规范正文唯一来源是 `docs/standards/`。项目不使用 Trae IDE 时不创建 `.trae/rules/` 目录。
 
 **规则文件头部**：规则文件可省略 `> 最后更新：YYYY-MM-DD | 版本：vX.Y`（仅 AGENTS.md / CLAUDE.md 必含）。
 
@@ -259,7 +265,7 @@ digraph skill_relation {
 
 ## 输出要求
 
-- 文件名：`AGENTS.md`（必含）、`CLAUDE.md`（可选）、`.trae/rules/*.md`（可选）
+- 文件名：`AGENTS.md`（必含，根目录）、`CLAUDE.md`（可选，根目录）、`.trae/rules/*.md`（可选，Trae IDE 入口，引用 `docs/standards/` 权威来源）
 - 格式：Markdown，层级标题
 - 文档头部：`> 最后更新：YYYY-MM-DD | 版本：vX.Y`（仅 AGENTS.md / CLAUDE.md 必含，规则文件可省略）
 - 文末：版本记录列表（仅 AGENTS.md / CLAUDE.md）
@@ -277,7 +283,7 @@ digraph skill_relation {
 - [ ] grill 9 项必问全部问完，用户回答已纳入约束
 - [ ] AGENTS.md 10 核心章节齐全
 - [ ] CLAUDE.md（如创建）只写补充约定，与 AGENTS.md 无内容重复
-- [ ] .trae/rules/*.md 按需创建，无空文件，无未问需求的冗余文件
+- [ ] .trae/rules/*.md 按需创建（仅 Trae IDE 项目），引用 docs/standards/ 权威来源，无空文件，无未问需求的冗余文件
 - [ ] AGENTS.md 文档头部含版本号与最后更新日期
 - [ ] 验证命令可执行，区分 CI 与本地
 - [ ] 禁止事项明确可检查

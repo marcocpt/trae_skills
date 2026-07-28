@@ -163,7 +163,7 @@ digraph project_research {
 
 ## 步骤 3：写 ADR 候选（按主题）
 
-**可选产出**：`docs/architecture/adr-candidates/{主题}.md`（每个候选 ADR 一个文件）
+**可选产出**：`docs/architecture/adr/ADR-NNNN-主题.md`（每个候选 ADR 一个文件，标注"待批准"状态）
 
 ### 3.1 识别 ADR 主题
 
@@ -231,7 +231,7 @@ digraph project_research {
 
 ### 可选
 
-- `docs/architecture/adr-candidates/{主题}.md`：每个候选 ADR 一个文件，标注"待批准"
+- `docs/architecture/adr/ADR-NNNN-主题.md`：每个候选 ADR 一个文件，标注"待批准"
 
 ### 临时（工作流结束后清理）
 

@@ -100,7 +100,10 @@ digraph writing_specs {
 
 ```bash
 test -f .trae/rules/docs.md && cat .trae/rules/docs.md
+test -f docs.md && cat docs.md
+test -f docs/standards/CODING_STANDARDS.md && cat docs/standards/CODING_STANDARDS.md
 test -f docs/CODING_STANDARDS.md && cat docs/CODING_STANDARDS.md
+test -f docs/standards/xctest-rules.md && cat docs/standards/xctest-rules.md
 test -f docs/AI/trae-xctest-rules.md && cat docs/AI/trae-xctest-rules.md
 ```
 

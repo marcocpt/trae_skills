@@ -535,7 +535,7 @@ docs/superpowers/plans/YYYY-MM-DD-<feature-name>/
 **核对内容**：
 
 1. 是否遵循需求文档、设计文档和审查结果
-2. 是否遵循 `docs/CODING_STANDARDS.md`
+2. 是否遵循 `docs/standards/CODING_STANDARDS.md`（或旧路径 `docs/CODING_STANDARDS.md`）
 3. 是否遵循 `.trae/rules/docs.md`
 4. 是否遵循 `docs/AI/trae-xctest-rules.md` 或 `docs/ai/trae-xctest-rules.md`
 5. 主计划和 Phase 子计划是否一致
@@ -681,7 +681,7 @@ git commit -m "<type>[scope]: <description>"
 
 1. 代码是否符合需求文档、设计文档和当前 Phase 子计划
 2. 是否遗漏 AC 或实现了超范围功能
-3. 是否符合 `docs/CODING_STANDARDS.md`
+3. 是否符合 `docs/standards/CODING_STANDARDS.md`（或旧路径 `docs/CODING_STANDARDS.md`）
 4. 测试是否覆盖新增行为和受影响旧行为
 5. 日志、错误处理、边界条件是否完整
 6. UI 行为是否有用户可见证据：E2E/XCUITest/Playwright、截图像素、AX/DOM/window marker、录屏或手动验收记录

@@ -1,6 +1,6 @@
 ---
 name: dd-write-coding-standards
-description: Use when 编写 docs/CODING_STANDARDS.md 项目编码规范，或在 AI Coding 项目创建/迁移时确立项目级写法约束。触发词：编码规范、CODING_STANDARDS、写编码规范、coding standards、lint 配置、代码风格规范。症状：项目缺少统一编码规范导致 AI 生成代码风格漂移、命名混乱、日志直接 print、并发更新 UI、魔术数字散落、Mock 被测对象本身、AGENTS.md 引用的 CODING_STANDARDS.md 不存在、lint 配置与编码规范不一致、把架构契约当编码规范、用户问编码规范要不要写具体类名。
+description: Use when 编写 docs/standards/CODING_STANDARDS.md 项目编码规范，或在 AI Coding 项目创建/迁移时确立项目级写法约束。触发词：编码规范、CODING_STANDARDS、写编码规范、coding standards、lint 配置、代码风格规范。症状：项目缺少统一编码规范导致 AI 生成代码风格漂移、命名混乱、日志直接 print、并发更新 UI、魔术数字散落、Mock 被测对象本身、AGENTS.md 引用的 CODING_STANDARDS.md 不存在、lint 配置与编码规范不一致、把架构契约当编码规范、用户问编码规范要不要写具体类名。
 ---
 
 # 编写编码规范（CODING_STANDARDS.md）
@@ -132,9 +132,17 @@ digraph coding_standards_flow {
 
 ### 必含文件
 
-- `docs/CODING_STANDARDS.md` — 编码规范正文
+- `docs/standards/CODING_STANDARDS.md` — 编码规范正文（标准入口、跨主题原则和详细规范索引）
+- `docs/standards/git-commit-message.md` — 提交格式与 scope 规范
 
-### 可选 lint 配置（按语言栈，至少一个）
+### 可选 standards 文件（按语言栈与项目需要）
+
+| 文件 | 创建条件 | 内容定位 |
+|------|----------|----------|
+| `docs/standards/{语言}-rules.md` | 项目有语言特定规则 | 如 `swift-rules.md`（Allman 风格 / 4 空格缩进 / 命名约定）；如 `python-rules.md`（类型标注 / import 约定） |
+| `docs/standards/{测试框架}-rules.md` | 项目有测试规则需求 | 如 `xctest-rules.md`（TDD / Mock 规范 / 测试隔离）；如 `pytest-rules.md` |
+
+### 可选 lint 配置（按语言栈，至少一个，置于仓库根目录便于 CLI 读取）
 
 | 语言 | 配置文件 |
 |------|---------|
@@ -226,7 +234,7 @@ digraph skill_relation {
 
 ## 输出要求
 
-- 文件名：`docs/CODING_STANDARDS.md`
+- 文件名：`docs/standards/CODING_STANDARDS.md`、`docs/standards/git-commit-message.md`（必含）；`docs/standards/{语言/测试规则}.md`（可选）
 - 格式：Markdown，层级标题
 - 文档头部：`> 最后更新：YYYY-MM-DD | 版本：vX.Y`
 - 文末：版本记录列表
@@ -241,7 +249,7 @@ digraph skill_relation {
 - [ ] 读取过项目 docs.md（若存在）
 - [ ] 读取过架构契约（若存在），编码规范不与架构契约冲突
 - [ ] grill 8 项必问全部问完，用户回答已纳入规范
-- [ ] CODING_STANDARDS.md 8 核心章节齐全
+- [ ] docs/standards/CODING_STANDARDS.md 8 核心章节齐全
 - [ ] lint 配置（如需）已写且与规范一致
 - [ ] 全文无具体类名 / 方法签名作为命名示例
 - [ ] 全文无"优化 / 改进 / 更好"等模糊词

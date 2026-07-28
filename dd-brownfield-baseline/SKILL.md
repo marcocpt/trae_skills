@@ -39,7 +39,7 @@ test -f docs.md && cat docs.md
 
 ### 从 docs.md 提取并记录
 
-1. **文档存放路径**（如 `docs/phases/P-1_基线盘点/`）
+1. **文档存放路径**（如 `docs/phases/P-1_基线盘点/artifacts/`，清单/矩阵归档到 `artifacts/`）
 2. **文件命名规则**（如 `能力清单.md` 或 `CAP-xxx.md`）
 3. **文档头部格式**（如 `> 最后更新：YYYY-MM-DD | 版本：vX.Y`）
 4. **标点符号规则**（中文标点/英文术语保持原文）
@@ -99,7 +99,7 @@ digraph baseline_flow {
 
 ### 核心产物（必含）
 
-存放路径默认 `docs/phases/P-1_基线盘点/`（按 docs.md 调整）：
+存放路径默认 `docs/phases/P-1_基线盘点/artifacts/`（清单/矩阵归档到 `artifacts/`，按 docs.md 调整）：
 
 #### 1. 能力清单.md
 
@@ -245,7 +245,7 @@ digraph skill_relation {
 
 ## 输出要求
 
-- 文件名：`能力清单.md` / `使用关系清单.md` / `保留适配替换矩阵.md` / `Characterization_Test清单.md`（扩展产物按需）
+- 文件名：`能力清单.md` / `使用关系清单.md` / `保留适配替换矩阵.md` / `Characterization_Test清单.md`（扩展产物按需），统一归档到 `docs/phases/P-1_基线盘点/artifacts/`
 - 格式：Markdown，层级标题，表格
 - 编号：CAP-* / USE-* / TST-* / PLAT-* / HIS-* 起，原子级加 A- 前缀
 - 文档头部：`> 最后更新：YYYY-MM-DD | 版本：vX.Y`
