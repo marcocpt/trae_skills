@@ -110,15 +110,56 @@ Gate 通过后写路径、review 结论、规格提交 SHA，并更新 `current_
 
 ## 4. Planning
 
-读取已批准的全部规格与 review，再调用 `writing-plans`。
+读取已批准的全部规格与 review，先识别 Phase 数量与依赖，再调用 `writing-plans`。
 
-拆分：
+### 拆分档位（按 Phase 数量强制）
 
-- 简单：1–2 个 Phase 且任务少，总计划即可；
-- 中等：按 Phase 拆子计划；
-- 复杂：Phase 子计划 + 跨 Phase 集成计划。
+<HARD-GATE>
+拆分档位由 Phase 数量强制决定，不得为省 token 或省轮次降档：
 
-计划至少包含：
+- Phase ≤ 2 且任务少（简单）：1 个总计划文件即可；
+- Phase ∈ [3, 5]（中等）：每 Phase 1 个独立子计划文件；
+- Phase ≥ 6 或跨子系统（复杂）：每 Phase 1 个独立子计划文件 + 1 个跨 Phase 集成计划文件。
+
+「中等」与「复杂」档必须产出**独立 `.md` 文件**，禁止用同一文件内的 `## Phase N` 二级标题分区代替。判定依据是 Requirements 中已确认的 Phase 列表长度，不是主观估计「任务多少」。每个 Phase 子计划必须独立可执行、独立可回滚、独立 Local Gate。
+
+Trae 宿主下不得以「总计划里分了 Phase 章节效果一样」「下游按 Phase 顺序读即可」为由降档；这些是合理化借口，参见 [baseline-4-planning-phase-split.md](../tests/baseline-4-planning-phase-split.md)。
+</HARD-GATE>
+
+### 调用 writing-plans 的合同
+
+调用 [writing-plans](../../writing-plans/SKILL.md) 时必须显式传：
+
+```yaml
+invocation_mode: helper
+worktree_path: /absolute/path
+feature_number: F0
+plan_dir: /absolute/or/repo-relative/path
+requirements_path: /absolute/path
+design_path: /absolute/path
+test_case_path: /absolute/path
+split_mode: simple | per-phase | per-phase-with-integration
+phase_list:
+  - phase_id: 1
+    name: ""
+    goal: ""
+    in: []              # 上游 Phase 已固化的产物/接口
+    out: []             # 本 Phase 必须产出的可验证产物
+    dependencies: []    # 依赖哪些 Phase
+    ac_keys: []         # Requirements 中 AC 编号
+  - phase_id: 2
+    ...
+```
+
+`split_mode` 由上方拆分档位决定：
+
+- `simple`：`Phase ≤ 2`，`writing-plans` 产出 1 个总计划；
+- `per-phase`：`Phase ∈ [3, 5]`，`writing-plans` 按 `phase_list` 逐 Phase 产出独立文件，命名 `plan-phase-<NN>-<slug>.md`；
+- `per-phase-with-integration`：`Phase ≥ 6` 或跨子系统，在 `per-phase` 基础上额外产出 `plan-integration-cross-phase.md`。
+
+禁止不传 `phase_list` 与 `split_mode`，让 `writing-plans` 自行决定拆分。`writing-plans` 的「独立子系统」拆分逻辑与本 Phase 拆分概念不对应，必须由本工作流显式驱动。
+
+### 计划至少包含
 
 - Goal、Architecture、Tech Stack；
 - 精确文件和职责；
@@ -132,10 +173,34 @@ Gate 通过后写路径、review 结论、规格提交 SHA，并更新 `current_
 
 禁止 `TODO`、`待定`、笼统错误处理、未定义符号和“类似任务 N”。
 
+### 复核与交付
+
 复核方向：
 
 1. 覆盖与范围；
 2. 一致与正确；
 3. 可验证与可观测。
 
-必须修复项自动修复并复核；重大产品/架构变化才 ASK。计划达到项目交付要求后写入 `plan_dir`、Phase 数量和计划 SHA，更新 `current_stage=implementation`、`current_phase=0`。
+必须修复项自动修复并复核；重大产品/架构变化才 ASK。计划达到项目交付要求后写入状态：
+
+```yaml
+plan_dir: /absolute/path
+total_phases: <N>
+phase_plan_paths:
+  - phase_id: 1
+    path: plan-phase-01-<slug>.md
+  - phase_id: 2
+    path: plan-phase-02-<slug>.md
+integration_plan_path: plan-integration-cross-phase.md   # 仅复杂档
+plan_commit_sha: <sha>
+current_stage: implementation
+current_phase: 0
+```
+
+### 红线
+
+- Phase ≥ 3 时只用一个总计划文件包含所有 Phase；
+- 调用 `writing-plans` 不传 `phase_list` 与 `split_mode`，让它自行决定拆分；
+- 用同一文件内 `## Phase N` 二级标题代替独立文件；
+- 复杂档缺失跨 Phase 集成计划；
+- 状态文件未写 `phase_plan_paths` 数组就推进到 implementation。

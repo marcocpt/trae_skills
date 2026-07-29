@@ -15,7 +15,7 @@
 
 每个 Phase：
 
-1. 读取总计划、当前 Phase、规格和 review；
+1. 读取当前 Phase 子计划（`phase_plan_paths` 中 `phase_id == current_phase` 的文件；简单档读取总计划）、规格和 review；
 2. 按任务执行 TDD；
 3. 完成代码复核；
 4. 保存 UI/运行证据；

@@ -136,6 +136,8 @@ visual_path: null
 test_case_path: ""
 review_paths: []
 plan_dir: ""
+phase_plan_paths: []
+integration_plan_path: null
 current_phase: null
 total_phases: 0
 completed_phases: []
@@ -191,7 +193,7 @@ phase_contract_path: null
 
 读取 [specification-and-planning.md](references/specification-and-planning.md) 的 Planning。
 
-调用 `writing-plans` 创建总计划和必要的 Phase 子计划，并完成覆盖、一致性和可验证性检查。Gate：无占位符、AC 映射完整、验证与提交边界明确、计划已按项目规则交付。
+按 Phase 数量强制拆分档位（`<HARD-GATE>`），调用 `writing-plans` 时显式传 `split_mode` 与 `phase_list`，禁止让 `writing-plans` 自行决定拆分。Gate：无占位符、AC 映射完整、验证与提交边界明确、`phase_plan_paths` 数组与 `split_mode` 一致、计划已按项目规则交付。
 
 ### Implementation
 
@@ -245,6 +247,7 @@ phase_contract_path: null
 - 重问 Handoff 或状态中已解决事实；
 - 跨 worktree 引用未提交状态；
 - 未通过 Phase Local Gate 就进入下一 Phase；
+- Phase ≥ 3 时只用一个总计划文件包含所有 Phase，或调用 `writing-plans` 不传 `split_mode` 与 `phase_list`；
 - 用内部状态宣称 UI 已验证；
 - 完整 CI 没有验证最终候选 SHA 就推进 develop；
 - 候选过期后仍推进；

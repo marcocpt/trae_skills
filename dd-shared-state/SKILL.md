@@ -67,6 +67,8 @@ description: 当需要持久化 dd 工作流状态、跨会话恢复、验证已
   "test_case_path": "<测试用例表路径>",
   "review_path": "<审查结果路径>",
   "plan_dir": "<计划目录路径>",
+  "phase_plan_paths": [{"phase_id": 1, "path": "<Phase 子计划文件路径>"}],
+  "integration_plan_path": "<跨 Phase 集成计划路径，仅复杂档>",
   "current_phase": "<当前 Phase>",
   "total_phases": "<Phase 总数>",
   "completed_phases": ["<已完成本地验证的 Phase 编号列表>"],
@@ -139,6 +141,7 @@ Bootstrap 没有状态文件时，先从仓库中的 `docs.md`、Roadmap、Archi
 - **写入**：工作树创建/验证成功后（bug-fix 步骤 1，feature-dev 步骤 1）
 - **更新 `current_step`**：**每个步骤出口判定成功后必须立即更新**（HARD-GATE）。仅步骤 1 写入一次是不够的，会话压缩后智能体凭此字段恢复进度，停在 1 会让智能体误以为还在步骤 1。
 - **更新 `current_phase`**（仅 feature-development）：每完成一个子计划，更新此字段
+- **更新 `phase_plan_paths` / `integration_plan_path`**（仅 feature-development）：Planning Stage 拆分档位为 `per-phase` 或 `per-phase-with-integration` 时，写入每个 Phase 子计划路径数组；复杂档同时写 `integration_plan_path`。`phase_plan_paths` 长度必须等于 `total_phases`，否则禁止推进到 implementation
 - **更新 `completed_phases`**（仅 feature-development）：每完成一个 phase 的本地验证，追加当前 phase 编号到此数组
 - **更新 `smoke_ci_phases`**（仅 feature-development）：每触发一次远程 UI Smoke CI，追加当前 phase 编号到此数组
 - **更新 `final_candidate_branch`**（仅 feature-development）：步骤 5 创建最终合并候选分支时记录
