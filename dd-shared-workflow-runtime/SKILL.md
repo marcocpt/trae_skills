@@ -110,7 +110,7 @@ recovery_evidence: []
 - 歧义、失败、冲突、破坏性分支或重大产品/架构变化才 ASK；
 - null、取消或空输入视为未回答，必须重问；
 - 子 Agent 不可用时在主线程完成相同检查，不降低检查语义；
-- 审查次数、CI 范围和证据成本按风险调整，不删除验收条件。
+- 审查等级按 [dd-shared-subagent](../dd-shared-subagent/SKILL.md) 的风险触发器逐级升级；审查次数、CI 范围和证据成本随之调整，但不删除验收条件或确定性验证。
 
 ## Workflow Gate 与 Delivery Gate
 

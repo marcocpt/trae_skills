@@ -199,7 +199,7 @@ digraph baseline_flow {
 
 ### 风险分级审查（复用 dd-shared-subagent）
 
-基线盘点默认 `review_level=high`；若上游明确传入其他等级，按 [dd-shared-subagent](../dd-shared-subagent/SKILL.md) 执行。审查语义固定为：
+基线盘点默认 `review_level=low`；若上游明确传入更高等级，或盘点中命中 [dd-shared-subagent](../dd-shared-subagent/SKILL.md) 的风险触发器，则按该等级执行。审查语义固定为：
 
 1. **完整性审查**：能力清单是否漏盘（对照代码模块逐项核对）；使用关系是否完整（对照 import 与调用图）
 2. **分类合理性审查**：处置分类是否有理由与影响范围；Characterization Test 语义分类是否明确
