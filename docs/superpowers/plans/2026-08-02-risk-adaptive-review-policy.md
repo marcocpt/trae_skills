@@ -97,7 +97,7 @@ git commit -m "refactor(skills): apply risk-adaptive review defaults"
 - [ ] **步骤 1：运行会失败的重构入口断言**
 
 ```bash
-LC_ALL=en_US.UTF-8 ruby -EUTF-8:UTF-8 -e 'text = File.read("dd-ai-refactor-workflow/SKILL.md"); abort "legacy parallel rule remains" if text.include?("每个 Commit 后执行 [dd-shared-subagent]"); abort "current-level rule missing" unless text.include?("当前 `review_level` 要求的三视角审查")'
+LC_ALL=en_US.UTF-8 ruby -EUTF-8:UTF-8 -e 'text = File.read("dd-ai-refactor-workflow/SKILL.md"); abort "legacy parallel rule remains" if text.include?("每个 Commit 后执行 [dd-shared-subagent]"); abort "current-level rule missing" unless text.include?("按当前 `review_level` 执行")'
 ```
 
 预期：失败；当前文件强制每个 Commit 后执行三视角并行检查。
@@ -111,7 +111,7 @@ LC_ALL=en_US.UTF-8 ruby -EUTF-8:UTF-8 -e 'text = File.read("dd-ai-refactor-workf
 - [ ] **步骤 3：运行全量策略检查**
 
 ```bash
-LC_ALL=en_US.UTF-8 ruby -EUTF-8:UTF-8 -e 'shared = File.read("dd-shared-subagent/SKILL.md"); runtime = File.read("dd-shared-workflow-runtime/SKILL.md"); baseline = File.read("dd-brownfield-baseline/SKILL.md"); refactor = File.read("dd-ai-refactor-workflow/SKILL.md"); abort "shared default missing" unless shared.include?("默认等级：`low`"); abort "runtime invariant missing" unless runtime.include?("不删除验收条件"); abort "baseline default missing" unless baseline.include?("默认 `review_level=low`"); abort "refactor level rule missing" unless refactor.include?("当前 `review_level` 要求的三视角审查")'
+LC_ALL=en_US.UTF-8 ruby -EUTF-8:UTF-8 -e 'shared = File.read("dd-shared-subagent/SKILL.md"); runtime = File.read("dd-shared-workflow-runtime/SKILL.md"); baseline = File.read("dd-brownfield-baseline/SKILL.md"); refactor = File.read("dd-ai-refactor-workflow/SKILL.md"); abort "shared default missing" unless shared.include?("默认等级：`low`"); abort "runtime invariant missing" unless runtime.include?("不删除验收条件"); abort "baseline default missing" unless baseline.include?("默认 `review_level=low`"); abort "refactor level rule missing" unless refactor.include?("按当前 `review_level` 执行")'
 git diff --check
 ```
 
