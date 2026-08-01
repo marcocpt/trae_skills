@@ -116,7 +116,7 @@ Gate：
 
 ### 6. Review + CI
 
-每个 Commit 后执行 [dd-shared-subagent](../dd-shared-subagent/SKILL.md) 的三视角并行检查，再按 [dd-shared-ci](../dd-shared-ci/SKILL.md) push 并等待 CI。子 Agent 不可用时主线程做同等三视角复核，不降低语义。
+每个 Commit 后按当前 `review_level` 执行 [dd-shared-subagent](../dd-shared-subagent/SKILL.md) 的三视角审查；无子 Agent 时主线程完成同义复核，不降低语义。随后按 [dd-shared-ci](../dd-shared-ci/SKILL.md) push 并等待 CI。
 
 行为保持必须同时满足：
 
