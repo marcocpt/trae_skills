@@ -34,7 +34,7 @@ state_file: $(git rev-parse --git-dir)/docreview-state.json
 
 - 文档绝对路径、mode、当前章节/问题；
 - 已确认事实与待核实项；
-- TODO/LATER 路径和已分配编号；
+- TODO 路径和已分配编号、LATER 条目文件与 ID；
 - 每轮 disposition；
 - 批次、修复 SHA、验证摘要；
 - `current_stage`、blocker、`next_safe_action`。
@@ -49,7 +49,7 @@ state_file: $(git rev-parse --git-dir)/docreview-state.json
 4. ASK 审核模式；
 5. ASK 起始章节；
 6. ASK TODO 保存路径，默认 `docs/AI/doc-review-todo/<doc-name>_TODO.md`；
-7. LATER 固定为项目根 `docs/AI/LATER.md`，不重复询问；
+7. LATER 固定为项目根 `docs/AI/later/` 目录（一项一文件，见 [dd-later-tracking](../dd-later-tracking/SKILL.md)），不重复询问；
 8. 写入状态后进入 Review Loop。
 
 纯只读且不落盘、不修复时不询问 worktree。
@@ -95,7 +95,7 @@ TODO 使用 Logseq 兼容的 Markdown task：
 - 模式 B 验证过代码时必须有推荐修复文件与理由；
 - 代码位置、HTML 预览只在真实存在时写；
 - 待办不写 `修复SHA`；标记 `[x]` 时最后追加 `修复SHA:: <短SHA>`；
-- LATER 通过 [dd-later-tracking](../dd-later-tracking/SKILL.md) 去重后写入，单行 ≤80 中文字符。
+- LATER 通过 [dd-later-tracking](../dd-later-tracking/SKILL.md) 去重后写入 `docs/AI/later/`（一项一文件，frontmatter + 分节正文）；项目有 INDEX 生成脚本时，改动条目的同一 commit 必须刷新 INDEX。
 
 完整 schema、去重、并行分组见 [todo-later-and-batch-repair.md](references/todo-later-and-batch-repair.md)。
 

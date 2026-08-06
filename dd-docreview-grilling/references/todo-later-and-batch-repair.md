@@ -47,18 +47,15 @@
 
 ## LATER
 
-路径固定为项目根 `docs/AI/LATER.md`。调用 [dd-later-tracking](../../dd-later-tracking/SKILL.md)：
+路径固定为项目根 `docs/AI/later/`（一项一文件）。调用 [dd-later-tracking](../../dd-later-tracking/SKILL.md)：
 
-1. 搜索关键词、标签和可能重复项；
-2. 语义复核；
-3. 重复则合并或引用，不新建；
-4. 新增格式：
+1. Grep `docs/AI/later/` 中现有条目的 title、tags、trigger 与正文关键词，找出可能重复项；
+2. 语义复核（必要时子代理精判）；
+3. 重复则合并更新已有条目文件，不新建；相关但独立则新增并在双方 frontmatter `related` 互链；
+4. 新增：有 `docs/AI/later/_TEMPLATE.md` 则复制模板；文件名为权威 ID `LATER-<YYYYMMDD>-<slug>.md`（无全局顺序号）；开放条目 frontmatter 必填 `id`、`title`、`status`、`created`、`source`、`target_phase`、`trigger`；
+5. 项目存在 INDEX 生成脚本（如 `Tools/gen_later_index.py`）时，改动条目后必须立即重新生成 INDEX.md，并与条目改动放在同一 commit。
 
-```markdown
-- [ ] LATER1. 简要描述（不超过 80 中文字符）#模块
-```
-
-LATER 是索引，不扩写成方案文档。
+正文分节、分条、硬换行；title 保持一句话。LATER 条目记录现状、延后理由、触发条件与关闭所需证据，但不扩写成方案文档。
 
 ## 收尾分组
 
