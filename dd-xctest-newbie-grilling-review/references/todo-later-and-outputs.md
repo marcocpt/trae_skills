@@ -7,12 +7,16 @@
 - 唯一编号
 - 测试类别
 - 测试函数或文件位置
-- 风险说明
+- 风险说明（写证据：行号、输入、断言，不写感受）
 - 规则依据
-- 建议修复
+- 建议修复（用户已选定的单一方案，达到可执行粒度）
 - 优先级
-- 验证方式
+- 验证方式（可判定的完成标准）
 - 来源为本次 grilling 审核
+
+排版遵循 [dd-docreview-grilling](../../dd-docreview-grilling/references/todo-later-and-batch-repair.md) TODO Schema 的可读性硬规则：多事实字段分条硬换行（一条事实一行）、条目间留空行、代码标识符与行号用反引号、禁止数百字不换行长段。
+
+**强制规则：** 凡审核中发现、但当前阶段不立即实现的事项（后续实现/延后/暂缓），一律必须记入 LATER 持久化，避免遗忘。不得只在会话里口头延后或停留在记忆里；不得因为"不主动建文档"而跳过写入。
 
 加入 LATER 时，除上述内容外，还要写入（对应条目 frontmatter 与正文字段）：
 
@@ -24,29 +28,6 @@
 不得只写一句模糊的“后续优化”。
 
 LATER 的文件位置、条目格式与去重遵循 [dd-later-tracking](../../dd-later-tracking/SKILL.md)（项目根 `docs/AI/later/` 一项一文件，frontmatter + 分节正文，先查后写；项目有 INDEX 生成脚本时，改动条目的同一 commit 必须刷新 INDEX）。TODO 文件位置参照 [dd-docreview-grilling](../../dd-docreview-grilling/SKILL.md) 约定，默认 `docs/AI/doc-review-todo/` 下按测试文件名命名；如项目已有 TODO 文件则追加。
-
-## 每类测试结束时的小结
-
-当前类别所有风险点完成裁决后，输出：
-
-- 这类测试主要验证什么
-- 已确认覆盖
-- 尚未覆盖
-- 已加入 TODO 的项目
-- 已加入 LATER 的项目
-- 已立即修复的项目
-- 未采纳项目
-- 当前类别结论：PASS / PASS_WITH_TODO / PASS_WITH_LATER / NEEDS_FIX / BLOCKED
-
-结论判定：
-
-- BLOCKED：缺少关键文件、工具或证据，无法完成有效审核。
-- NEEDS_FIX：存在尚未处置的阻塞性风险，或立即修复后验证失败。
-- PASS_WITH_TODO：不存在未处置阻塞项，但至少有一个 TODO。
-- PASS_WITH_LATER：没有 TODO，仅存在已接受的非阻塞 LATER。
-- PASS：没有 TODO、LATER 或未解决风险。
-
-优先级：BLOCKED > NEEDS_FIX > PASS_WITH_TODO > PASS_WITH_LATER > PASS。TODO 与 LATER 同时存在时取更高优先级（PASS_WITH_TODO）。
 
 然后自动进入下一类测试，不需要再次询问是否继续。
 
