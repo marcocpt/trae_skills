@@ -101,17 +101,15 @@ description: 面向领域新手交互式审核 XCTest 测试用例。解释领�
 11. 等待用户裁决。
 12. 执行用户裁决。
 13. 继续当前类别的下一个风险点。
-14. 当前类别没有未处理风险后，输出该类别小结。
-15. 自动进入下一类测试，不需要再次询问是否继续。
-16. 所有类别结束后，输出最终总结。
+14. 当前类别没有未处理风险后，停止当前类别；不输出类别小结；询问用户是否进入下一类测试（不得自动进入，需用户明确说才执行）。
+15. 仅在所有类别均完成且用户明确要求收尾时，才输出最终总结（不自动输出）。
 
 无风险分支：
 
 1. 不得为了满足交互格式而虚构风险。
 2. 不提出裁决问题。
-3. 输出当前类别小结，结论为 PASS。
-4. 自动进入下一类测试。
-5. 如果所有类别均无风险，则直接输出最终总结。
+3. 停止当前类别；不输出类别小结；询问用户是否进入下一类测试（不得自动进入，需用户明确说才执行）。
+4. 最终总结仅在用户明确要求收尾时输出，不自动输出。
 
 步骤 4～6 的解释与概览格式见 [references/explain-categories.md](references/explain-categories.md)。
 步骤 7～10 的检查清单、优先级、类型 A/B/C 处理与裁决提问要求见 [references/risk-review-and-ask.md](references/risk-review-and-ask.md)。
@@ -161,7 +159,7 @@ description: 面向领域新手交互式审核 XCTest 测试用例。解释领�
 3. 第一类测试所需的少量术语。
 4. 第一类测试在做什么。
 5. 第一类测试的事实概览。
-6. 当前类别第一个风险点；如果没有风险，则输出该类别 PASS 小结。
+6. 当前类别第一个风险点；如果没有风险，则不输出小结，询问用户是否进入下一类测试。
 7. 仅在存在风险点时提出一次裁决问题（文本提问）。
 
 不要在首次响应中输出完整审核报告。
@@ -170,5 +168,5 @@ description: 面向领域新手交互式审核 XCTest 测试用例。解释领�
 
 - 首次进入测试类别前，必须读取 [references/explain-categories.md](references/explain-categories.md)。
 - 首次开始风险审核前，必须读取 [references/risk-review-and-ask.md](references/risk-review-and-ask.md)。
-- 用户首次选择 TODO、LATER，或准备输出类别小结前，必须读取 [references/todo-later-and-outputs.md](references/todo-later-and-outputs.md)。
+- 用户首次选择 TODO、LATER，或准备进入下一类测试/输出最终总结前，必须读取 [references/todo-later-and-outputs.md](references/todo-later-and-outputs.md)。
 - 已在当前会话中完整读取且文件未变化时，不必重复读取。

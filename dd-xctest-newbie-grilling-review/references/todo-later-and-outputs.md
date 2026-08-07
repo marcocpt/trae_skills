@@ -1,4 +1,4 @@
-# TODO/LATER 记录、类别小结与最终输出
+# TODO/LATER 记录与最终输出
 
 ## TODO 与 LATER 记录要求
 
@@ -29,11 +29,11 @@
 
 LATER 的文件位置、条目格式与去重遵循 [dd-later-tracking](../../dd-later-tracking/SKILL.md)（项目根 `docs/AI/later/` 一项一文件，frontmatter + 分节正文，先查后写；项目有 INDEX 生成脚本时，改动条目的同一 commit 必须刷新 INDEX）。TODO 文件位置参照 [dd-docreview-grilling](../../dd-docreview-grilling/SKILL.md) 约定，默认 `docs/AI/doc-review-todo/` 下按测试文件名命名；如项目已有 TODO 文件则追加。
 
-然后自动进入下一类测试，不需要再次询问是否继续。
+然后停止当前类别，不输出类别小结；询问用户是否进入下一类测试（不得自动进入，需用户明确说才执行）。
 
 ## 最终输出
 
-所有测试类别审核结束后，给出：
+仅当用户明确要求收尾时才输出（不自动输出）。所有测试类别审核结束后，给出：
 
 1. 测试类别总览。
 2. 面向新手的整体解释。
