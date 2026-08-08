@@ -113,7 +113,7 @@ description: 面向领域新手交互式审核 XCTest 测试用例。解释领�
 
 步骤 4～6 的解释与概览格式见 [references/explain-categories.md](references/explain-categories.md)。
 步骤 7～10 的检查清单、优先级、类型 A/B/C 处理与裁决提问要求见 [references/risk-review-and-ask.md](references/risk-review-and-ask.md)。
-步骤 12～16 的 TODO/LATER 记录、类别小结与最终输出格式见 [references/todo-later-and-outputs.md](references/todo-later-and-outputs.md)。
+步骤 12～16 的 TODO/LATER 记录与最终输出格式见 [references/todo-later-and-outputs.md](references/todo-later-and-outputs.md)。
 
 ## 风险优先级
 
