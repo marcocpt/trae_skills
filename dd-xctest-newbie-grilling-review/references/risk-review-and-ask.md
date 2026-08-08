@@ -148,7 +148,20 @@
 - 用户回答含糊或无法对应任何选项时，重新提问，不得猜测裁决。
 - 用户回答后，先执行该裁决，再进入下一风险点。
 
-**剪切板复制（裁决提问前推荐执行）：** 提出裁决问题前，先将与该风险点相关的信息复制到系统剪切板，剪切板内容第一行必须以 `%%CHATGPT%%` 打头，其后依次为：风险点、测试源码、证据位置、建议与裁决选项。用户可据此直接粘贴给外部工具（如 ChatGPT）辅助裁决。优先用 `osascript` 复制，例如：
+**发送给 ChatGPT 辅助裁决（裁决提问前推荐执行）：** 提出裁决问题前，先将与该风险点相关的信息（风险点、测试源码、证据位置、建议与裁决选项）发送给外部 ChatGPT 辅助裁决。内容首行必须以 `%%CHATGPT%%` 打头。**优先全自动发送，失败时回退剪切板复制。**
+
+### 主路径：Trae 内置浏览器全自动发送
+
+优先使用 Trae 内置浏览器（TraeCode CN / TraeWork CN 的 `integrated_browser` MCP，通过 `browser_navigate` / `browser_type` / `browser_press_key` 控制，无需 macOS 辅助功能权限）：
+
+1. 若已有打开的 ChatGPT 页则直接复用；否则 `browser_navigate` 新开对话（如 `chatgpt.com`）；
+2. 用 `browser_type` 将 `%%CHATGPT%%` 打头的内容粘贴到输入框；
+3. 用 `browser_press_key`（或发送按钮）发送；
+4. **发送即走**，不等待 ChatGPT 生成回复，立即回到审核流程继续提问。
+
+### 回退路径：剪切板复制
+
+内置浏览器不可用（MCP 未配置）、ChatGPT 未登录或自动发送失败时，回退到剪切板复制并提示用户手动粘贴：
 
 ```bash
 osascript -e 'set the clipboard to "%%CHATGPT%%\n<风险点>\n<测试源码>\n<证据位置>\n<建议>\n<裁决选项>"'
