@@ -152,16 +152,16 @@
 
 ### 主路径：Trae 内置浏览器全自动发送
 
-优先使用 Trae 内置浏览器（TraeCode CN / TraeWork CN 的 `integrated_browser` MCP，通过 `browser_navigate` / `browser_type` / `browser_press_key` / `browser_snapshot` 控制，无需 macOS 辅助功能权限）：
+优先使用 Trae 内置浏览器（TraeCode CN / TraeWork CN 的 `integrated_browser` MCP，通过 `browser_navigate` / `browser_type` / `browser_press_key` / `browser_snapshot` / `browser_tabs` 控制，无需 macOS 辅助功能权限）：
 
-1. 若已有打开的 ChatGPT 页则直接复用；否则 `browser_navigate` 新开对话（如 `chatgpt.com`）；
-2. 用 `browser_type` 将 `%%CHATGPT%%` 打头的内容粘贴到输入框；
-3. 用 `browser_press_key`（或发送按钮）发送；
-4. **等待生成完成**：轮询 `browser_snapshot`，直到「停止回答」按钮消失（生成结束）；
-5. **读取结果**：取「本次发送后新增的最后一条 ChatGPT 回复」；
-6. **完整展示**该回复供用户参考，不自动采用，最终裁决权仍在用户；
-7. **超时**（约 30–60s 仍未完成）：尽力读取当前可见的最后一条回复，并标注「生成可能未完成」；
-8. 展示后回到审核流程继续提问。
+0. **会话保持（最高优先）**：先用 `browser_tabs list` 检查。若内置浏览器已有打开的 ChatGPT 页，则**在同一会话继续输入，不新建对话**；**保持标签页不关闭**（不得用 `browser_tabs close` 关闭，除非用户明确要求）。仅当浏览器里**没有任何 ChatGPT 页**时，才 `browser_navigate` 新开对话（如 `chatgpt.com`），且新开后同样保持不关闭，供下次复用。
+1. 用 `browser_type` 将 `%%CHATGPT%%` 打头的内容粘贴到当前会话的输入框；
+2. 用 `browser_press_key`（或发送按钮）发送；
+3. **等待生成完成**：轮询 `browser_snapshot`，直到「停止回答」按钮消失（生成结束）；
+4. **读取结果**：取「本次发送后新增的最后一条 ChatGPT 回复」；
+5. **完整展示**该回复供用户参考，不自动采用，最终裁决权仍在用户；
+6. **超时**（约 30–60s 仍未完成）：尽力读取当前可见的最后一条回复，并标注「生成可能未完成」；
+7. 展示后回到审核流程继续提问；全程保持该 ChatGPT 会话标签页打开。
 
 ### 回退路径：剪切板复制
 
