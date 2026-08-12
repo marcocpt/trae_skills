@@ -326,7 +326,7 @@ description: 面向领域新手交互式审核 XCTest 测试用例。解释领�
 
 - 使用 `chatgpt_send`（文本内容）或 `chatgpt_send_file`（本地文件，如完整测试文件或源码文件）提交。
 - `conversation_id` 复用同一会话（如 `xctest-review`），不传默认 `default`；同任务内多次调用复用同一会话页，不新开标签页。
-- `chatgpt_send` / `chatgpt_send_file` 立即返回 `task_id`；随后用 `chatgpt_get_result` 按 `task_id` 轮询，约 2-3 秒一次，直到任务完成返回回复全文。
+- `chatgpt_send` / `chatgpt_send_file` 立即返回 `task_id`；随后用 `chatgpt_get_result` 按 `task_id` 轮询，约 10，20，30，30... 秒一次，直到任务完成返回回复全文。
 - `timeout_seconds` 默认 120，最长 600；超时未完成时，尽力读取当前结果并标注“生成可能未完成”。
 
 ### 结果处理
