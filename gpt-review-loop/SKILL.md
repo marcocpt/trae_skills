@@ -24,16 +24,16 @@ description: Use when 完成一轮代码修改后需要送外部 ChatGPT 审核�
 
 ### 1. 提交 chatgpt_send
 
-- `conversation_id`：固定 `"<仓库名>-review"`，同任务多轮复用（复审带上下文）
+- `conversation_id`：固定 `"<app 名>-<仓库名>-<分支名>-<月日时分>"`，同一个会话中多轮复用（复审带上下文）
 - `instruction`：传 `""`（不加默认前缀）
 - `timeout_seconds`：`600`（这是上限，传更大直接报参数错误）
 - `content`：按下方模板。只写业务要求 + 仓库名 + 范围；**禁止粘贴代码/diff**
 
 ### 2. 轮询 chatgpt_get_result
 
-- 每 5-10 秒一次；`[RUNNING]` 继续等，审核通常 5-10 分钟
+- 开始 20 秒间隔轮询 3次，随后 40 间隔轮询；`[RUNNING]` 继续等，审核通常 5-10 分钟
 - **禁止重复提交**；`[FAILED]` 检查原因后最多重试 1 次
-- 连接异常（ECONNRESET 等）：任务仍在 daemon，**新建连接重试轮询**，不要放弃
+- 连接异常（ECONNRESET 等）：任务仍在 daemon，**新建连接更新 conversation_id 重试轮询**，不要放弃
 - 满 10 分钟仍未完成：报告用户等待中，不得无限阻塞
 
 ### 3. 处置意见
