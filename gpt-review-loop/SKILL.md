@@ -46,7 +46,8 @@ description: Use when 完成一轮代码修改后需要送外部 ChatGPT 审核�
 | 目标 | repo 名 |
 |---|---|
 | develop 主目录 | `cpdf` |
-| worktree | `cpdf-wt/<分组>/<分支名>`，如 `cpdf-wt/test/S5-Governance-review` |
+| CPDF worktree | `cpdf-wt/<分组>/<分支名>`，如 `cpdf-wt/test/S5-Governance-review` |
+| 其他项目（~/Working 下全部，含未来新增） | `work/<相对路径>`，如 `work/Keyboard/Macim-worktrees/F-3.3` |
 
 worktree 动态变化，送审前先确认仍存在：`git -C /Users/dengdeng/Working/PDF/CPDF worktree list`。
 
