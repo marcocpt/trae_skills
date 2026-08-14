@@ -52,7 +52,7 @@ CLASSIFICATION 与 CHANGE_RISK 是两个处置轴；SEVERITY 仅表示严重度�
 | CLOSED | 满足 CLOSED 判据（见下） |
 | INVALIDATED | 经 DISPUTED 复核确认 finding 不成立 |
 
-disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK 项 lifecycle 仍为 OPEN（已登记处置意向但未闭环），不再进入本轮主动处置循环。`REOPEN` 是复查结果而非 lifecycle 状态：收到 REOPEN 后原 finding lifecycle 置回/保持 `OPEN`，保留原 finding ID（原问题没修好仍是原 finding，不是新风险点）；修复引入的新问题创建新 finding ID，记录 `introduced_by=<原 finding ID>`。
+disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING 项 lifecycle 仍为 OPEN（已登记处置意向或待取证，但未闭环），均不进入本轮主动处置循环；其中 VERIFICATION_PENDING 在新证据到达前挂起，取得证据后按「VERIFICATION_REQUIRED 转换」恢复处理。`REOPEN` 是复查结果而非 lifecycle 状态：收到 REOPEN 后原 finding lifecycle 置回/保持 `OPEN`，保留原 finding ID（原问题没修好仍是原 finding，不是新风险点）；修复引入的新问题创建新 finding ID，记录 `introduced_by=<原 finding ID>`。
 
 **review processing complete ≠ all findings closed**：状态机收尾时必须区分"已处置"与"已 CLOSED"，最终报告须列明各 finding 的 lifecycle + disposition。
 
@@ -87,7 +87,7 @@ disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK 项 lifecycle 仍为 
    - VERIFICATION_REQUIRED → 登记 VERIFICATION_PENDING，按「VERIFICATION_REQUIRED 转换」处置
    - HUMAN_DECISION_REQUIRED → 走「逐条裁决」（HARD-GATE 适用）
 6. 任何「立即修复」执行后，评估 CHANGE_RISK，按「修复后复查（按风险分级）」处置；HUMAN_DECISION_REQUIRED 项先人工定方案再实现
-7. 还有未处置 finding → 回步骤 5；没有 → 输出最终报告（列明各 finding 状态），询问是否扩大范围/收尾（不得自动继续）
+7. 还有本轮可主动处置的 finding → 回步骤 5 对应路径；仅剩 TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING → 输出最终报告（列明各 finding 的 lifecycle + disposition），询问是否扩大范围/收尾（不得自动继续）
 
 <HARD-GATE>
 - 仅对 HUMAN_DECISION_REQUIRED 类逐条裁决：每轮只处理一个、只提一个裁决问题；用户未回答不得继续下一个
