@@ -7,27 +7,27 @@ description: Use when 用户要求 ChatGPT 审核指定文件/指定仓库、让
 
 ## 目标
 
-角色反转的审核闭环：**ChatGPT（强模型）是主审与最终关闭人**，**本地 agent（弱模型）是执行者与核对者**，**用户是最终裁决人**。依据 `/Users/dengdeng/.trae-cn/skills/gpt-code-review.md` 的人工判断升级规则，对核对属实的风险点做三类分流，**仅 HUMAN_DECISION_REQUIRED 逐条裁决**。修复采用两个独立轴（SEVERITY / CHANGE_RISK）：**凡 ChatGPT 提出的 finding 修改了生产代码或测试语义，弱模型不得自行 CLOSED，必须由 ChatGPT 针对性复查（原 finding + 真实 diff + 授权范围 + 验证结果）返回 CLOSED 才闭环**；纯拼写/格式可本地验证关闭。
+角色反转的审核闭环：**ChatGPT（强模型）是主审与最终关闭人**，**本地 agent（弱模型）是执行者与核对者**，**用户是最终裁决人**。依据 `/Users/dengdeng/.trae-cn/skills/gpt-code-review.md` 的人工判断升级规则，对核对属实的风险点做三类分流，**仅 HUMAN_DECISION_REQUIRED 逐条裁决**。修复采用三个独立字段（SEVERITY / CLASSIFICATION / CHANGE_RISK）：**凡 ChatGPT 提出的 finding 修改了生产代码或测试语义，弱模型不得自行 CLOSED，必须由 ChatGPT 针对性复查（原 finding + 真实 diff + 授权范围 + 验证结果）返回 CLOSED 才闭环**；纯拼写/格式可本地验证关闭。
 
 ## 角色分工
 
 | 角色 | 职责 | 禁止 |
 |---|---|---|
 | ChatGPT（强模型/主审） | 首审输出 finding + SEVERITY + 建议分流；针对性复查并给出 STATUS | 不得只凭弱模型摘要 CLOSED |
-| 本地 agent（弱模型，执行+核对） | 送审、核对引用、按规则分流、执行获批修改、按风险分级送复查 | 不得机械接受意见；不得静默降级 F/V/H 或 CHANGE_RISK；不得自行 CLOSED 生产代码/测试语义修改；不得未经授权修改；不得覆盖用户已有变更 |
+| 本地 agent（弱模型，执行+核对） | 送审、核对引用、按规则分流、执行获批修改、按风险分级送复查 | 不得机械接受意见；不得静默重分类 F/V/H 或降级 CHANGE_RISK；不得自行 CLOSED 生产代码/测试语义修改；不得未经授权修改；不得覆盖用户已有变更 |
 | 用户（裁决人） | 对 HUMAN_DECISION_REQUIRED 逐条裁决；对 FINDING 批量授权；对 VERIFICATION_REQUIRED 确认取证方式 | — |
 
 **违反规则的字面意思就是违反规则的精神。**
 
-## 两个独立轴
+## 三个独立字段
 
-F/V/H 与 LOW/MEDIUM/HIGH 是**正交两个轴**，不得混用：
+每个 finding 有三个独立字段，不得混用：
 
-- **SEVERITY**（首审 ChatGPT 输出）：finding 本身的严重度，HIGH/MEDIUM/LOW
-- **CLASSIFICATION**（问题分流）：FINDING / VERIFICATION_REQUIRED / HUMAN_DECISION_REQUIRED
-- **CHANGE_RISK**（确定修改方案后评估）：LOW/MEDIUM/HIGH，回答"这个具体修改有多大复查风险"
+- **SEVERITY**（首审 ChatGPT 输出）：finding 本身的严重度，HIGH/MEDIUM/LOW。仅表示严重度，不决定处置路径
+- **CLASSIFICATION**（问题分流，处置轴一）：FINDING / VERIFICATION_REQUIRED / HUMAN_DECISION_REQUIRED
+- **CHANGE_RISK**（修改方案确定后评估，处置轴二）：LOW/MEDIUM/HIGH，回答"这个具体修改有多大复查风险"
 
-**HUMAN_DECISION_REQUIRED 不是第四级 CHANGE_RISK。** 一个 H 项经人工选择后，仍需独立评估 CHANGE_RISK（H+LOW / H+MEDIUM / H+HIGH 都可能）。
+CLASSIFICATION 与 CHANGE_RISK 是两个处置轴；SEVERITY 仅表示严重度。**HUMAN_DECISION_REQUIRED 不是第四级 CHANGE_RISK。** 一个 H 项经人工选择后，仍需独立评估 CHANGE_RISK（H+LOW / H+MEDIUM / H+HIGH 都可能）。
 
 **SEVERITY 不得直接决定 CHANGE_RISK**：高严重度崩溃可能是低风险修复；低严重度兼容性瑕疵可能是高风险架构迁移。
 
@@ -35,23 +35,26 @@ F/V/H 与 LOW/MEDIUM/HIGH 是**正交两个轴**，不得混用：
 
 - 至少 **HIGH**：公共 API、用户可见行为、并发、安全/权限、持久化/文件格式、兼容性、数据迁移
 - 至少 **MEDIUM**：状态机、异步逻辑、错误语义、fail-open/fail-closed、公共函数行为、测试期望变化
-- 突破下限降级须送 ChatGPT 复核（见「DISPUTED 路径」）
+- 同时命中多个下限时，取最高等级
+- 突破下限降级须送 ChatGPT 复核（见「弱模型重分类复核」）
 
-## finding 生命周期状态（轻量）
+## finding 生命周期（轻量）
 
-| 状态 | 含义 |
+每个 finding 有两个独立字段：
+
+- **lifecycle**：`OPEN` / `DISPUTED` / `CLOSED` / `INVALIDATED`
+- **disposition**：`NONE`（未处置）/ `TODO` / `LATER` / `ACCEPTED_RISK`（用户不采纳）/ `VERIFICATION_PENDING`（待取证）
+
+| lifecycle | 含义 |
 |---|---|
 | OPEN | 已发现待处置 |
 | DISPUTED | 弱模型对 ChatGPT finding 提出反证，待 ChatGPT 复核 |
 | CLOSED | 满足 CLOSED 判据（见下） |
 | INVALIDATED | 经 DISPUTED 复核确认 finding 不成立 |
 
-处置类状态（非 CLOSED）：`TODO` / `LATER` / `ACCEPTED_RISK`（用户不采纳）/ `VERIFICATION_PENDING`（待取证）。
+disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK 项 lifecycle 仍为 OPEN（已登记处置意向但未闭环），不再进入本轮主动处置循环。`REOPEN` 是复查结果而非 lifecycle 状态：收到 REOPEN 后原 finding lifecycle 置回/保持 `OPEN`，保留原 finding ID（原问题没修好仍是原 finding，不是新风险点）；修复引入的新问题创建新 finding ID，记录 `introduced_by=<原 finding ID>`。
 
-**review processing complete ≠ all findings closed**：状态机收尾时必须区分"已处置"与"已 CLOSED"，最终报告须列明各 finding 最终状态。
-
-- `REOPEN` 保留原 finding ID（原问题没修好仍是原 finding，不是新风险点）
-- 修复引入的新问题创建新 finding ID，并记录 `introduced_by=<原 finding ID>`
+**review processing complete ≠ all findings closed**：状态机收尾时必须区分"已处置"与"已 CLOSED"，最终报告须列明各 finding 的 lifecycle + disposition。
 
 ### CLOSED 判据（必须同时满足）
 
@@ -78,7 +81,7 @@ F/V/H 与 LOW/MEDIUM/HIGH 是**正交两个轴**，不得混用：
 3. **本地核对**：对 ChatGPT 引用的每个文件、行号、结论，用 Read/Grep 当场验证
    - 引用属实 → 进入分流
    - 引用有误/结论不成立 → 走「DISPUTED 路径」，不得直接丢弃
-4. **风险分流**：依据「风险分流规则」+ ChatGPT 建议分流，归入 FINDING / VERIFICATION_REQUIRED / HUMAN_DECISION_REQUIRED；弱模型降级须复核
+4. **风险分流**：依据「风险分流规则」+ ChatGPT 建议分流，归入 FINDING / VERIFICATION_REQUIRED / HUMAN_DECISION_REQUIRED；弱模型重分类须复核
 5. 按分流路径处置：
    - FINDING → 走「批量 finding 处置」
    - VERIFICATION_REQUIRED → 登记 VERIFICATION_PENDING，按「VERIFICATION_REQUIRED 转换」处置
@@ -117,8 +120,8 @@ F/V/H 与 LOW/MEDIUM/HIGH 是**正交两个轴**，不得混用：
 - 缺事实证据 → V；缺正确行为定义 → H
 - 优先减少误报
 
-### 弱模型降级复核
-弱模型拟将 ChatGPT 建议的 HUMAN_DECISION_REQUIRED 降级为 FINDING/VERIFICATION_REQUIRED，或拟将 CHANGE_RISK 突破下限降级，**不得直接降级**，须把反证送 ChatGPT targeted reconsideration。反向升级（F→H）须说明理由。
+### 弱模型重分类复核
+弱模型若改变 ChatGPT 建议的 CLASSIFICATION（任何 F/V/H 重分类），**不得静默改分流**，须把反证送 ChatGPT targeted reconsideration。CHANGE_RISK 突破下限降级同样须复核。反向升级（如 F→H）须说明理由。最简单可靠的执行：**任何 F/V/H 重分类均须 ChatGPT 复核**（例如 ChatGPT 判定 FINDING，弱模型不得改成 VERIFICATION_REQUIRED 把应修复问题变成无限待验证）。
 
 ## DISPUTED 路径
 
@@ -130,9 +133,9 @@ F/V/H 与 LOW/MEDIUM/HIGH 是**正交两个轴**，不得混用：
 
 ## VERIFICATION_REQUIRED 转换
 
-取得证据后：
-- 证明实现违反明确行为 → 转 FINDING
-- 证明实现符合明确行为 → CLOSED_NO_CHANGE
+取得证据后（不新增 lifecycle 状态）：
+- 证明实现违反明确行为 → 转 FINDING（lifecycle 仍 OPEN，CLASSIFICATION 改为 FINDING）
+- 证明实现符合明确行为 → CLOSED，记录 `resolution=NO_CHANGE`
 - 证据仍不足 → 保持 VERIFICATION_PENDING
 
 ## 首次送审模板
@@ -174,7 +177,7 @@ UNREADABLE: <未能读取的文件>
 | MEDIUM | ChatGPT 针对性复查（真实 diff + 当前源码） | ChatGPT 返回 CLOSED |
 | HIGH | ChatGPT 针对性复查 + 测试/真实运行证据 + baseline 对比 | ChatGPT 返回 CLOSED 且证据齐备 |
 
-CHANGE_RISK 按「两个独立轴」下限评估，弱模型不得无理由突破下限降级。
+CHANGE_RISK 按「三个独立字段」中的下限评估，弱模型不得无理由突破下限降级。
 
 ### ChatGPT 针对性复查模板（同 conversation_id 续发）
 
@@ -210,7 +213,7 @@ STATUS: HUMAN_DECISION_REQUIRED
 ### 复查结果处置
 
 - `CLOSED`：满足 CLOSED 判据，标记闭环
-- `REOPEN`：原问题未解决 → 保留原 finding ID 回步骤 3；引入新问题 → 新 finding ID + introduced_by 回步骤 3
+- `REOPEN`：原问题未解决 → 原 finding lifecycle 置回/保持 OPEN、保留原 ID 回步骤 3；引入新问题 → 新 finding ID + introduced_by 回步骤 3
 - `VERIFICATION_REQUIRED`：登记 VERIFICATION_PENDING，补证据后再复查
 - `HUMAN_DECISION_REQUIRED`：升级为逐条裁决（HARD-GATE 适用）
 
@@ -257,7 +260,7 @@ STATUS: HUMAN_DECISION_REQUIRED
 | 机械接受 ChatGPT 意见（行号/引用错误也被照单执行） | 步骤 3 强制本地核对 |
 | 弱模型修歪→自判低风险→自改测试→测试绿→自宣布 CLOSED | 关闭权规则：生产代码/测试语义修改必须 ChatGPT CLOSED |
 | 把可客观判定的 FINDING 升级为逐条人工裁决 | 风险分流：FINDING 批量处置，仅 HUMAN_DECISION_REQUIRED 逐条裁决 |
-| 弱模型静默降级 F/V/H 或 CHANGE_RISK | 降级复核 + DISPUTED 路径 |
+| 弱模型静默重分类 F/V/H 或降级 CHANGE_RISK | 重分类复核（任何 F/V/H 重分类须 ChatGPT 复核）+ DISPUTED 路径 |
 | 弱模型声称"引用有误"让 finding 消失 | DISPUTED 路径：反证送 ChatGPT 复核 |
 | 中高风险只给摘要不给 diff | MEDIUM/HIGH 必须真实 diff + 当前源码 |
 | 改完不复审就宣称闭环 | 风险分级复查 + CLOSED 判据 |
@@ -275,7 +278,7 @@ STATUS: HUMAN_DECISION_REQUIRED
 | "低风险，测试过了我自己关掉" | 生产代码/测试语义修改必须 ChatGPT CLOSED，弱模型不得自行 CLOSED |
 | "每个问题都得问用户才稳妥" | 能客观判定的归 FINDING 批量处置，只有真正决策项才逐条裁决 |
 | "问题都差不多，一起问了效率高" | HUMAN_DECISION_REQUIRED 原子单位=独立决策点，一次一个 |
-| "这个 H 其实是 FINDING，我直接降级" | 降级须送 ChatGPT 复核，不得静默降级 |
+| "这个 H 其实是 FINDING，我直接重分类" | 重分类须送 ChatGPT 复核，不得静默改分流 |
 | "引用有误，这 finding 作废" | 走 DISPUTED，反证送 ChatGPT，不得直接丢弃 |
 | "中风险给个摘要就行" | MEDIUM/HIGH 必须真实 diff + 当前源码 |
 | "修改 obvious 不用等授权" | 未经授权不得改任何文件 |
@@ -288,7 +291,7 @@ STATUS: HUMAN_DECISION_REQUIRED
 - 弱模型自行 CLOSED 生产代码/测试语义修改（必须 ChatGPT 针对性复查返回 CLOSED）
 - 把可客观判定的问题（FINDING）升级为 HUMAN_DECISION_REQUIRED 逐条裁决
 - 因测试缺失或只缺运行证据就要求人工决策（应归 FINDING 指出补测试，或 VERIFICATION_REQUIRED）
-- 静默降级 F/V/H 或突破 CHANGE_RISK 下限降级（须送 ChatGPT 复核）
+- 静默重分类 F/V/H 或突破 CHANGE_RISK 下限降级（任何 F/V/H 重分类须送 ChatGPT 复核）
 - 静默否定 ChatGPT finding（须走 DISPUTED）
 - HUMAN_DECISION_REQUIRED 项未经人工定方案就由弱模型直接修掉
 - 中高风险复查用"文件清单+摘要"替代真实 diff
