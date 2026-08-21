@@ -109,7 +109,7 @@ Gate：
 
 Brownfield 必须调用 [dd-brownfield-baseline](../dd-brownfield-baseline/SKILL.md)。Greenfield 跳过。
 
-默认 `review_level=high`。产物必须包含能力、使用关系、处置和 Characterization Test 清单。
+产物必须包含能力、使用关系、处置和 Characterization Test 清单。
 
 ### Research / Technical Validation
 
@@ -184,7 +184,6 @@ worktree_path: /absolute/path
 resolved_decisions: []
 artifact_paths: {}
 blocking_questions: []
-review_level: standard
 delivery_policy: project-rules
 ```
 
@@ -196,7 +195,7 @@ delivery_policy: project-rules
 
 ## 审查与 Gate
 
-审查语义与等级遵循 [dd-shared-subagent](../dd-shared-subagent/SKILL.md)。
+审查语义遵循 [dd-shared-subagent](../dd-shared-subagent/SKILL.md)。
 
 通用 Workflow Gate：
 

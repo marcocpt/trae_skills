@@ -9,7 +9,6 @@
 - [Characterization Test](#characterization-test)
 - [诊断报告](#诊断报告)
 - [路线图与执行批次](#路线图与执行批次)
-- [三视角复核](#三视角复核)
 
 ## 事实查证与业务判断
 
@@ -91,7 +90,6 @@ produces:
   - dependency.seam
 gate:
   - observable behavior unchanged
-  - 3-view review clean
   - CI green
 rollback:
   - revert commit
@@ -101,15 +99,3 @@ recovery_evidence:
 ```
 
 行为保持型优先于结构型；架构演进最后执行，并单独经过产品/架构刹车。
-
-## 三视角复核
-
-按照 [dd-shared-subagent](../../dd-shared-subagent/SKILL.md)：
-
-| 视角 | 必查 |
-|---|---|
-| 行为 | Characterization 覆盖、调用顺序、共享状态、异常路径 |
-| 结构 | 依赖方向、职责、耦合、公共接口、过度设计 |
-| 验证 | 测试有效性、CI 范围、Warning、证据和回滚 |
-
-只把会导致行为漂移、不可维护或无法验证的事项列为 blocking；风格偏好不阻塞。

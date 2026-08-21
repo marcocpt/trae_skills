@@ -84,10 +84,9 @@ requirements_summary_path: null
 bootstrap_requirements_seed: []
 phase_contract_path: null
 resolved_decisions: []
-review_level: standard
 ```
 
-子 Skill 必须消费上游事实，不重复 grill。没有子 Agent 能力时在主线程执行相同的 Requirements → Design → Visual（如适用）→ Test Cases 与审查顺序。
+子 Skill 必须消费上游事实，不重复 grill。
 
 产物：
 

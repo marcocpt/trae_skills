@@ -33,7 +33,7 @@ dd-brownfield-baseline 是项目级基线盘点子 skill，用于在 Brownfield 
 
 - `project_mode`、`host`、`worktree_path`
 - `resolved_decisions`、`artifact_paths`
-- `review_level`、`delivery_policy`
+- `delivery_policy`
 
 上游已确定的目标、工作环境、项目模式和文档规则不得重复询问。先从仓库和上游产物取证，只询问会阻塞本产物的未知决策；若证据与上游结论冲突，返回 blocker，不在本 skill 内另建一套事实。
 
@@ -80,7 +80,7 @@ digraph baseline_flow {
     write_matrix [label="写处置矩阵\n（固定六类 + 理由与影响范围）"];
     write_test [label="写 Characterization Test 清单\n（TST-* + 原子 A-TST-*，四类语义）"];
     write_ext [label="写扩展产物\n（PLAT-* / HIS-*，按需）"];
-    review [label="风险分级审查\n（dd-shared-subagent）", shape=diamond];
+    review [label="审查\n（dd-shared-subagent）", shape=diamond];
     gate [label="HARD-GATE\n用户确认", shape=diamond];
     done [label="交付基线盘点产物", shape=oval];
 
@@ -197,9 +197,9 @@ digraph baseline_flow {
 
 ## 审查与确认
 
-### 风险分级审查（复用 dd-shared-subagent）
+### 审查（复用 dd-shared-subagent）
 
-基线盘点默认 `review_level=low`；若上游明确传入更高等级，或盘点中命中 [dd-shared-subagent](../dd-shared-subagent/SKILL.md) 的风险触发器，则按该等级执行。审查语义固定为：
+按 [dd-shared-subagent](../dd-shared-subagent/SKILL.md) 的通用 A/B/C 语义自检。基线盘点附加检查：
 
 1. **完整性审查**：能力清单是否漏盘（对照代码模块逐项核对）；使用关系是否完整（对照 import 与调用图）
 2. **分类合理性审查**：处置分类是否有理由与影响范围；Characterization Test 语义分类是否明确
@@ -220,7 +220,7 @@ digraph baseline_flow {
 **基线盘点产物未经用户确认，不得进入下游环节。**
 
 HARD-GATE 触发条件：
-- 当前 `review_level` 要求的审查未通过
+- 审查未通过
 - 能力清单存在漏盘（审查指出但未补盘）
 - 处置矩阵存在无理由分类
 - Characterization Test 存在未分类测试
@@ -239,7 +239,7 @@ digraph skill_relation {
     contract [label="dd-write-architecture-contract\n（Public Compatibility Surface allowlist）"];
     req [label="第一阶段需求与验收\n（Constraints 基于基线结论）"];
     roadmap [label="dd-write-roadmap\n（功能列表标注已实现/未实现）"];
-    subagent [label="dd-shared-subagent\n（风险分级审查）"];
+    subagent [label="dd-shared-subagent\n（审查）"];
     ask [label="dd-shared-ask\n（用户确认）"];
 
     bootstrap -> baseline [label="brownfield 分支调用"];
@@ -258,7 +258,7 @@ digraph skill_relation {
 - 第一阶段需求与验收：Constraints 基于基线盘点结论
 - dd-write-roadmap：功能列表标注"已实现/未实现"状态基于 Characterization Test
 
-**审查与确认复用：** dd-shared-subagent（风险分级审查）、dd-shared-ask（用户确认）、HARD-GATE
+**审查与确认复用：** dd-shared-subagent（审查）、dd-shared-ask（用户确认）、HARD-GATE
 
 ## 输出要求
 
@@ -285,7 +285,7 @@ digraph skill_relation {
 - [ ] 扩展产物按需产出（多平台/多历史文档时未跳过）
 - [ ] 文档头部格式正确（`> 最后更新：YYYY-MM-DD | 版本：vX.Y`）
 - [ ] 未改动任何产品代码
-- [ ] 当前 `review_level` 要求的审查通过
+- [ ] 审查通过
 - [ ] 用户已确认
 
 **任一项失败，修订后重新验证。**

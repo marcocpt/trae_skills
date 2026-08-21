@@ -29,7 +29,6 @@ host: codex
 worktree_path: /absolute/path
 resolved_decisions: []
 artifact_paths: {}
-review_level: standard
 delivery_policy: project-rules
 ```
 
@@ -128,20 +127,14 @@ Codex 默认正常交付结果；只有用户或项目规则要求时才追加�
 6. 仅在存在目录差异时写 nested `AGENTS.md`；
 7. 仅为实际宿主写薄适配器；
 8. 验证路径、命令、作用域、加载策略和 Trae ASK；
-9. 按 `review_level` 审查；
+9. 按 [dd-shared-subagent](../dd-shared-subagent/SKILL.md) 审查；
 10. 通过 Gate 后按 `delivery_policy` 交付。
 
 已存在入口时原位演进，避免无迁移说明地改名或删除兼容路径。
 
 ## 审查
 
-调用 [dd-shared-subagent](../dd-shared-subagent/SKILL.md)：
-
-- A 覆盖与范围：任务路由、必读入口、宿主范围完整；
-- B 一致与正确：无重复 SSOT、路径存在、nested 作用域正确；
-- C 可验证与可观测：命令可执行、禁止项可检查、Trae ASK 可触发。
-
-上游决定 `review_level`；独立调用默认 `standard`。Level 只改变成本，不改变 A/B/C 语义。
+按 [dd-shared-subagent](../dd-shared-subagent/SKILL.md) 的通用 A/B/C 语义自检。AI 协作入口附加检查：任务路由、必读入口、宿主范围完整；无重复 SSOT、路径存在、nested 作用域正确；命令可执行、禁止项可检查、Trae ASK 可触发。
 
 ## Gate
 
@@ -153,7 +146,7 @@ Codex 默认正常交付结果；只有用户或项目规则要求时才追加�
 - [ ] 所有引用路径存在，验证命令可执行或明确标记 blocker
 - [ ] `host=trae` 时包含精确的最终 ASK 合同
 - [ ] 已解决事实未重复询问
-- [ ] 适用 `review_level` 的必须修复项为零
+- [ ] 审查的必须修复项为零
 - [ ] 用户要求的确认 Gate 已通过
 
 任一项失败时修订或返回 blocker，不得自行宣布完成。

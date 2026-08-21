@@ -39,7 +39,7 @@ description: Use when 编写项目路线图与功能列表（路线图.md + 功�
 
 ## 上游上下文协议
 
-被 `dd-project-bootstrap-workflow` 调用时，先读取 `project_mode`、`host`、`worktree_path`、`resolved_decisions`、`artifact_paths`、`review_level` 和 `delivery_policy`，并消费 Gap Scan、Research 与 Brownfield Baseline（如适用）。
+被 `dd-project-bootstrap-workflow` 调用时，先读取 `project_mode`、`host`、`worktree_path`、`resolved_decisions`、`artifact_paths` 和 `delivery_policy`，并消费 Gap Scan、Research 与 Brownfield Baseline（如适用）。
 
 - 已确定的产品定位、项目模式、工作环境、技术约束和兼容性义务不得重复询问；
 - 功能状态必须来自 Baseline/测试/发布证据，不按代码数量猜测；
@@ -71,8 +71,8 @@ digraph write_roadmap {
     "0. 读 docs.md + 上游产物" -> "1. 补齐阻塞决策（按需）";
     "1. 补齐阻塞决策（按需）" -> "2. 写路线图.md";
     "2. 写路线图.md" -> "3. 写功能列表.md";
-    "3. 写功能列表.md" -> "4. 风险分级审查";
-    "4. 风险分级审查" -> "5. 合并总结 + 一次一问确认";
+    "3. 写功能列表.md" -> "4. 审查";
+    "4. 审查" -> "5. 合并总结 + 一次一问确认";
     "5. 合并总结 + 一次一问确认" -> "结束" [label="确认通过"];
     "5. 合并总结 + 一次一问确认" -> "2. 写路线图.md" [label="需修改", style=dashed];
 }
@@ -110,21 +110,15 @@ digraph write_roadmap {
 
 按"产出文件结构 - 功能列表.md"章节执行。P0 铁律：不写代码符号；验证标准是可观察行为。
 
-### 步骤 4：风险分级审查
+### 步骤 4：审查
 
-按上游 `review_level` 调用 [dd-shared-subagent](../dd-shared-subagent/SKILL.md)；独立调用默认 `standard`。Level 决定执行成本，不改变下列 A/B/C 语义：
-
-| 子代理 | 维度 | 检查要点 |
-|--------|------|---------|
-| **A** | 完整性 + 一致性 + docs.md 合规性 + P0 铁律 | 阶段/功能是否齐全；路线图与功能列表是否一致；docs.md 规则符合性；**全文搜索代码符号应为 0** |
-| **B** | 阶段合理性 + 优先级 + YAGNI | 阶段划分是否合理；P0 是否过载；功能优先级是否站得住；是否塞入未请求功能 |
-| **C** | 可验证性 + 依赖完整 | Exit Gate 是否可观察；功能验证标准是否可观察；依赖关系图是否完整无环；brownfield 状态标注是否完整 |
+按 [dd-shared-subagent](../dd-shared-subagent/SKILL.md) 的通用 A/B/C 语义自检。路线图附加检查：阶段/功能齐全且路线图与功能列表一致；全文搜索代码符号应为 0；阶段划分合理、P0 不过载、优先级站得住、不塞入未请求功能；Exit Gate 与功能验证标准可观察；依赖关系图完整无环；brownfield 状态标注完整。
 
 校准标准：只标记会在后续阶段造成实际问题的事项。
 
 ### 步骤 5：合并总结 + 一次一问确认
 
-合并适用审查等级的结果展示给用户。用结构化 ASK 询问**一个问题**：
+合并审查结果展示给用户。用结构化 ASK 询问**一个问题**：
 - 选项 1（推荐）：确认路线图与功能列表，工作流结束
 - 选项 2：需要修改，回到步骤 2 重写
 - 选项 3：方向不对，回到步骤 1 重新 grill
@@ -187,7 +181,7 @@ digraph write_roadmap {
 - 把路线图当设计文档写模块职责、数据流、状态机
 - 把功能列表当实现计划写接口签名、类定义、目录结构
 - 跳过 grill 直接写阶段
-- 跳过当前 `review_level` 要求的审查
+- 跳过审查直接交付
 - 用"团队习惯"/"行业标准"/"AI 更明确"为由保留代码符号
 
 **以上任一情况发生时，停止写作，删除违规内容，重写。**
@@ -208,7 +202,7 @@ digraph roadmap_relations {
 - **上游**：[dd-project-research] 的技术调研结论作为路线图输入（最低系统要求、技术栈约束、brownfield 既有功能清单）
 - **下游**：[dd-write-architecture-contract] 基于路线图设计架构契约；[dd-write-requirements] 的第一阶段需求与验收基于路线图 P0 阶段
 - **被调度**：[dd-project-bootstrap-workflow] 的 Roadmap 节点调用本 skill
-- **审查与确认**：复用 [dd-shared-subagent]（风险分级审查）与 [dd-shared-ask]（结构化询问 + worktree 选择）
+- **审查与确认**：复用 [dd-shared-subagent]（审查）与 [dd-shared-ask]（结构化询问 + worktree 选择）
 - **与 dd-writing-specs 的边界**：dd-writing-specs 是功能级规格套件工作流（需求+设计+原型+测试用例），本 skill 是项目级路线图，粒度更粗，不写单个功能的 FR/AC
 
 ## 输出要求
@@ -256,7 +250,7 @@ digraph roadmap_relations {
 - [ ] 文档头部符合 `> 最后更新：YYYY-MM-DD | 版本：vX.Y`
 - [ ] 中文标点，英文术语保持原文
 - [ ] 不使用 emoji
-- [ ] 新增决策已持久化，适用 `review_level` 的审查通过
+- [ ] 新增决策已持久化，审查通过
 - [ ] 文档换实现语言/换框架/换类名不需要改
 
 **任一项失败，修订后重新验证。**

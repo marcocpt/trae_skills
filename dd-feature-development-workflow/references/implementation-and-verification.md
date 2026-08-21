@@ -6,24 +6,22 @@
 
 - [Phase Loop](#1-phase-loop)
 - [TDD](#2-tdd)
-- [Code Review](#3-code-review)
-- [Local Gate](#4-local-gate)
-- [Risk-based UI Smoke](#5-risk-based-ui-smoke)
-- [Final Candidate](#6-final-candidate)
+- [Local Gate](#3-local-gate)
+- [Risk-based UI Smoke](#4-risk-based-ui-smoke)
+- [Final Candidate](#5-final-candidate)
 
 ## 1. Phase Loop
 
 每个 Phase：
 
-1. 读取当前 Phase 子计划（`phase_plan_paths` 中 `phase_id == current_phase` 的文件；简单档读取总计划）、规格和 review；
+1. 读取当前 Phase 子计划（`phase_plan_paths` 中 `phase_id == current_phase` 的文件；简单档读取总计划）与规格；
 2. 按任务执行 TDD；
-3. 完成代码复核；
-4. 保存 UI/运行证据；
-5. 按逻辑提交当前 Phase；
-6. 执行 Local Gate；
-7. 原子更新状态；
-8. 判断是否触发远程 UI Smoke；
-9. 进入下一 Phase。
+3. 保存 UI/运行证据；
+4. 按逻辑提交当前 Phase；
+5. 执行 Local Gate；
+6. 原子更新状态；
+7. 判断是否触发远程 UI Smoke；
+8. 进入下一 Phase。
 
 多个任务可有多个小 commit；Phase 结束时工作区必须无未解释变更，并记录完成 SHA。不要创建空提交。
 
@@ -49,21 +47,7 @@
 
 失败少于三轮时带新证据回到根因/实现；连续三轮无效时 ASK 继续、回到 Planning/Specification 或停止。修改既有回归预期必须先证明需求确实改变并获得所需确认。
 
-## 3. Code Review
-
-复核：
-
-1. 规格、计划和项目规则符合性；
-2. AC 覆盖与范围；
-3. 受影响旧行为；
-4. 错误、日志、并发和边界；
-5. UI 用户可见证据；
-6. 临时日志、TODO、未解释 skip；
-7. 测试是否绑定内部实现或过度 mock。
-
-必须修复项修复后重新复核。没有子 Agent 时由主线程用三次独立视角完成，不降低检查项。
-
-## 4. Local Gate
+## 3. Local Gate
 
 每个 Phase 提交后执行不依赖不稳定桌面状态的快速检查：
 
@@ -71,6 +55,11 @@
 - build / typecheck；
 - 当前 Phase 相关单元测试；
 - UI 测试 target 的编译或静态可执行性检查；
+- AC → 测试/证据映射无缺口；
+- 实现与规格、当前 Phase Plan 和项目规则一致；
+- 受影响回归、错误、边界与并发相关测试通过；
+- 测试不绑定非契约内部实现，不使用会掩盖真实行为的过度 mock；
+- 当前 Phase 提交范围（已记录 SHA range 的 diff）无新增临时日志、TODO 或未解释 skip；
 - 项目规定的其他快速 Gate。
 
 Swift/Xcode 构建遵循 `dd-shared-ci` 的项目/工作区检测和签名合同；不要在本文件硬编码证书或 scheme。
@@ -88,7 +77,7 @@ commits:
   phase-2: <sha>
 ```
 
-## 5. Risk-based UI Smoke
+## 4. Risk-based UI Smoke
 
 下列任一情况默认 high risk：
 
@@ -107,7 +96,7 @@ High risk：push 当前工作分支，运行 5–10 个核心 UI Smoke，包括�
 
 Smoke 通过后记录 Phase、run URL/ID、SHA 和结果；没有 SHA 关联的“CI 通过”无效。
 
-## 6. Final Candidate
+## 5. Final Candidate
 
 所有 Phase Gate 通过后：
 

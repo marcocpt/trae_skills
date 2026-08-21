@@ -187,7 +187,7 @@ phase_contract_path: null
 
 读取 [specification-and-planning.md](references/specification-and-planning.md) 的 Specification。
 
-调用 `dd-writing-specs` 完成 Requirements、Design、Visual（如适用）和 Test Cases。Gate：产物与审查有效、用户确认、路径写入状态、规格提交策略满足。
+调用 `dd-writing-specs` 完成 Requirements、Design、Visual（如适用）和 Test Cases。Gate：产物与自检有效、用户确认、路径写入状态、规格提交策略满足。
 
 ### Planning
 
@@ -197,9 +197,9 @@ phase_contract_path: null
 
 ### Implementation
 
-读取 [implementation-and-verification.md](references/implementation-and-verification.md) 的 Phase Loop、TDD、Review、Local Gate 和 UI Smoke。
+读取 [implementation-and-verification.md](references/implementation-and-verification.md) 的 Phase Loop、TDD、Local Gate 和 UI Smoke。
 
-按 Phase 顺序执行；每个 Phase 必须完成 TDD、代码复核、用户可见证据、本地 Gate 和风险判断。Gate：`completed_phases` 覆盖全部 Phase，状态和提交证据一致。
+按 Phase 顺序执行；每个 Phase 必须完成 TDD、用户可见证据、本地 Gate 和风险判断。Gate：`completed_phases` 覆盖全部 Phase，状态和提交证据一致。
 
 ### Final Candidate
 
@@ -238,7 +238,6 @@ phase_contract_path: null
 - UI AC 不能只由内部状态、mock、日志、layer count 或组件渲染证明；
 - 自动化不可行时保留手动步骤、证据路径、责任人和风险；
 - 测试位置与证书规则遵循 `test-location-strategy` 和 `dd-shared-ci`；
-- 三视角复核遵循 `dd-shared-subagent`；没有子 Agent 时主线程执行同义复核；
 - Git 操作遵循 `dd-git-workflow`，不混入无关脏文件。
 
 ## 红线

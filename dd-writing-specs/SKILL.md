@@ -7,7 +7,7 @@ description: 编写新功能、重大重构或 API 迁移的整套规格文档�
 
 ## 目标
 
-先读规则和 grill，再按“需求 → 设计 → 视觉原型（UI）→ 测试用例表”逐篇完成。每篇都经过独立三视角审查、用户确认和原子提交，不能批量生成后一次确认。
+先读规则和 grill，再按"需求 → 设计 → 视觉原型（UI）→ 测试用例表"逐篇完成。每篇都经过用户确认和原子提交，不能批量生成后一次确认。
 
 长流程遵循 [dd-shared-workflow-runtime](../dd-shared-workflow-runtime/SKILL.md)；默认只加载本文件，进入具体 Stage 时再读 reference，以减少 token 而不降低 Gate。
 
@@ -72,19 +72,19 @@ Rules & References
         ↓
 Grill / Upstream Seed Check
         ↓
-Requirements → 3-view review → Confirm → Commit
+Requirements → Confirm → Commit
         ↓
-Design       → 3-view review → Confirm → Commit
+Design       → Confirm → Commit
         ↓
-Visual (UI)  → 3-view review → Confirm → Commit
+Visual (UI)  → Confirm → Commit
         ↓
-Test Matrix  → 3-view review → Confirm → Commit
+Test Matrix  → Confirm → Commit
         ↓
 Cleanup → Return to parent / Host Close
 ```
 
 <HARD-GATE>
-严格按依赖推进。每篇文档必须“写 → 三视角审 → 合并总结 → 用户确认 → 提交”，其 Commit 可追溯后才能进入下一篇。禁止并行编写不同文档、批量确认、跨阶段累积未提交变更。
+严格按依赖推进。每篇文档必须"写 → 自检 → 用户确认 → 提交"，其 Commit 可追溯后才能进入下一篇。禁止并行编写不同文档、批量确认、跨阶段累积未提交变更。
 </HARD-GATE>
 
 ## Stage 0：规则与参考
@@ -115,7 +115,7 @@ Cleanup → Return to parent / Host Close
 - 不含类名、方法、字段、枚举、框架 API、并发原语或文件路径；
 - 无 TODO/TBD/占位符。
 
-写入后先提交 draft，再进入三视角审查与确认。完整写作与检查见 [intake-and-requirements.md](references/intake-and-requirements.md)。
+写入后先落盘 draft 并完成自检，再进入确认与提交。完整写作与检查见 [intake-and-requirements.md](references/intake-and-requirements.md)。
 
 ## Stage 3：Design
 
@@ -143,22 +143,20 @@ Cleanup → Return to parent / Host Close
 
 测试策略和 UI 可观测性属于测试用例表，不回填 Design。
 
-## 三视角审查与确认
+## 自检与确认
 
-每篇文档都做三个独立角色：
+写作时同步完成 A/B/C 三方向自检，不单设审查轮次：
 
-| 角色 | 关注点 |
+| 方向 | 关注点 |
 |---|---|
 | A | 完整性、一致性、项目规则与文档层级 P0 |
 | B | 范围、YAGNI、可设计/架构质量 |
 | C | 可验证性、FR/AC 映射、UI 可观测性 |
 
-有子 Agent 时并行；不可用时主线程按三个独立 pass 执行。能力差异不能减少角色或检查项。
-
-必须修复项自动修复并重新三视角；仅建议不阻塞。确认前完整展示各角色状态、问题和建议，然后一次 ASK：
+自检发现的问题立即修复后再提交确认。确认前展示自检结论和遗留建议，然后一次 ASK：
 
 1. 确认并进入下一篇；
-2. 修改本篇并重新审查；
+2. 修改本篇并重新确认；
 3. 回到上游文档/需求澄清。
 
 最后一篇也必须确认。详细模板、Commit 和恢复规则见 [review-and-delivery.md](references/review-and-delivery.md)。
@@ -195,9 +193,8 @@ Codex：正常交付最终摘要，除非用户或项目规则要求额外确认
 - 未读规则/参考就 grill 或写文档；
 - 未 grill/Seed Check 就写 Requirements；
 - 一次问多个 grill 问题；
-- 用单一混合审查代替三个独立角色；
 - 并行写多篇或批量确认；
-- 未完整展示 review 就确认；
+- 未完整展示自检结论就确认；
 - Requirements/Design 违反文档层级 P0；
 - 上一步未确认、未提交就进入下游；
 - child 自行 Host Close；
@@ -207,4 +204,4 @@ Codex：正常交付最终摘要，除非用户或项目规则要求额外确认
 
 - 规则、grill、Requirements：[references/intake-and-requirements.md](references/intake-and-requirements.md)
 - Design、Visual、Test Matrix：[references/downstream-documents.md](references/downstream-documents.md)
-- 三视角、确认、提交、恢复与补救：[references/review-and-delivery.md](references/review-and-delivery.md)
+- 自检、确认、提交、恢复与补救：[references/review-and-delivery.md](references/review-and-delivery.md)

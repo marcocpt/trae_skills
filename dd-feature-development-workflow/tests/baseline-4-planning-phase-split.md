@@ -9,7 +9,7 @@ Feature F5.2「可视化工具栏」，规格套件已批准。Requirements 中�
 - Phase 3：UI 层（ToolbarView + 交互）
 - Phase 4：集成与回归（端到端 + 兼容性）
 
-`host=trae`，进入 Planning Stage。规格套件位于 `docs/superpowers/specs/2026-07-30-F5.2-visual-toolbar/`，已通过三视角审查与用户确认。
+`host=trae`，进入 Planning Stage。规格套件位于 `docs/superpowers/specs/2026-07-30-F5.2-visual-toolbar/`，已通过审查与用户确认。
 
 状态文件 `feature-development-state.json` 关键字段：
 ```json

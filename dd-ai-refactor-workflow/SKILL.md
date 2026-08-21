@@ -65,7 +65,7 @@ Roadmap / Dependency Batches
     ↓
 Small-step Execution
     ↓
-3-view Review + CI
+CI
     ↺ next batch / Complete
 ```
 
@@ -114,15 +114,14 @@ Gate：
 - commit 遵循 [dd-git-merge](../dd-git-merge/SKILL.md)，禁止 rebase、`--no-verify`、force push；
 - 不暂存无关脏文件。
 
-### 6. Review + CI
+### 6. CI 验证
 
-每个 Commit 后按当前 `review_level` 执行 [dd-shared-subagent](../dd-shared-subagent/SKILL.md) 的三视角审查；无子 Agent 时主线程完成同义复核，不降低语义。随后按 [dd-shared-ci](../dd-shared-ci/SKILL.md) push 并等待 CI。
-
-行为保持必须同时满足：
+每个 Commit 后按 [dd-shared-ci](../dd-shared-ci/SKILL.md) push 并等待 CI。行为保持由测试证明，不再做 commit 后 LLM 审查：
 
 1. Characterization Test 在 CI 全绿；
-2. 三视角没有未解决的行为漂移风险；
-3. 远端 CI 全绿。
+2. 远端 CI 全绿。
+
+覆盖充分性不变量：所有受影响的可观察行为必须映射到 Characterization Test；存在未覆盖路径时先补测试，不得进入重构；重构 Commit 不得同时弱化 characterization oracle；CI 必须在同一 SHA 运行这些测试。
 
 本地测试只可辅助定位，不能替代 CI。CI 失败处置、回滚和覆盖边界见 [verification-and-delivery.md](references/verification-and-delivery.md)。
 
@@ -146,7 +145,6 @@ ASK 前先核验文件路径和行号，并附查证摘要；null 必须重问�
 - 所有计划批次已完成或有明确、非阻塞的延后记录；
 - Characterization Test 与必需 CI 全绿；
 - 无新增 Warning；
-- 三视角复核无 blocking issue；
 - 报告、路线图、提交、CI 和回滚证据可追溯；
 - Git/交付边界满足用户与项目规则；
 - 状态已原子持久化。
@@ -171,7 +169,7 @@ Codex：正常输出最终摘要，除非用户或项目规则要求额外确认
 - 未理解或未锁定行为就改实现；
 - 一次性重写；
 - AI 无依据自行判定 Bug/Feature；
-- 跳过三视角或 CI 后合并；
+- 跳过 CI 后合并；
 - 用本地测试替代 CI；
 - 把 CI 排队/未触发当作可跳过；
 - 重构和功能修正混在同一 Commit；

@@ -24,7 +24,6 @@ description: 当需要为项目准备阶段、Brownfield 迁移阶段或兼容�
 - `worktree_path`
 - `resolved_decisions`
 - `artifact_paths`
-- `review_level`
 - `delivery_policy`
 - `phase_id` 与 `phase_name`
 
@@ -79,7 +78,7 @@ Characterization Test 只证明“当前怎样”，不自动证明“未来应�
 3. 对 Brownfield Characterization Test 完成处置映射；
 4. 只询问阶段特有的缺失 blocker；
 5. 编写阶段合同；
-6. 按 `review_level` 覆盖三个审查视角；
+6. 按 [dd-shared-subagent](../dd-shared-subagent/SKILL.md) 的 A/B/C 语义审查；
 7. 修复 blocker 并复验；
 8. 更新 Bootstrap state 中的 artifact、decision、gap 和当前节点。
 
@@ -175,7 +174,7 @@ docs/phases/{X}_{阶段名}/{X}_01_阶段需求与验收.md
 
 ## 审查
 
-审查语义与执行等级遵循 [dd-shared-subagent](../dd-shared-subagent/SKILL.md)。
+审查语义遵循 [dd-shared-subagent](../dd-shared-subagent/SKILL.md)。
 
 必须检查：
 
@@ -183,7 +182,12 @@ docs/phases/{X}_{阶段名}/{X}_01_阶段需求与验收.md
 - 一致与正确：Constraints、AC 和 Architecture 是否冲突；
 - 可验证与可观测：每条 AC 是否有真实可执行证据。
 
-默认 `review_level=standard`。存在兼容迁移、持久化数据、Public API 或用户可见高风险行为时使用 `high`。
+审查遵循 [dd-shared-subagent](../dd-shared-subagent/SKILL.md)。存在兼容迁移、持久化数据、Public API 或用户可见高风险行为时附加以下检查：
+
+- 兼容迁移：新旧数据转换是否有回滚方案；
+- 持久化数据：数据格式变更是否向后兼容；
+- Public API：签名变更是否有废弃策略；
+- 高风险 UI：关键用户路径是否有真实可见证据（非内部状态/mock）。
 
 ## HARD-GATE
 
@@ -208,7 +212,6 @@ docs/phases/{X}_{阶段名}/{X}_01_阶段需求与验收.md
 phase_contract:
   path: docs/phases/{X}_{阶段名}/{X}_01_阶段需求与验收.md
   status: approved
-  review_level: standard
 blocking_gaps: []
 resolved_decisions: []
 ```

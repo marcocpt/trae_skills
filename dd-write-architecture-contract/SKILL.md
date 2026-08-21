@@ -32,7 +32,7 @@ description: Use when 编写项目级全局架构契约与 ADR 索引，或在 A
 
 ## 上游上下文协议
 
-被 `dd-project-bootstrap-workflow` 调用时，先读取 `project_mode`、`host`、`worktree_path`、`resolved_decisions`、`artifact_paths`、`review_level` 和 `delivery_policy`，并消费 Roadmap、Research/ADR 候选与 Brownfield Baseline（如适用）。
+被 `dd-project-bootstrap-workflow` 调用时，先读取 `project_mode`、`host`、`worktree_path`、`resolved_decisions`、`artifact_paths` 和 `delivery_policy`，并消费 Roadmap、Research/ADR 候选与 Brownfield Baseline（如适用）。
 
 - 已解决事实、工作环境和已批准边界不得重复询问；
 - 只询问会阻塞架构契约的未知决策；
@@ -112,15 +112,15 @@ digraph write_contract {
     "0. 读 docs.md + 上游产物" -> "1. 补齐阻塞决策（按需）";
     "1. 补齐阻塞决策（按需）" -> "2. 写全局架构契约.md";
     "2. 写全局架构契约.md" -> "3. 写 ADR 索引.md（+ 候选 ADR 文件）";
-    "3. 写 ADR 索引.md（+ 候选 ADR 文件）" -> "4. 风险分级审查";
-    "4. 风险分级审查" -> "5. 合并总结 + 一次一问确认";
+    "3. 写 ADR 索引.md（+ 候选 ADR 文件）" -> "4. 审查";
+    "4. 审查" -> "5. 合并总结 + 一次一问确认";
     "5. 合并总结 + 一次一问确认" -> "结束" [label="确认通过"];
     "5. 合并总结 + 一次一问确认" -> "2. 写全局架构契约.md" [label="需修改", style=dashed];
 }
 ```
 
 <HARD-GATE>
-按 0→1→2→3→4→5 执行。步骤 1 只补齐 blocker，可以因上游上下文完整而无提问；步骤 3 没有 ADR 主题时只维护索引。不得跳过适用 `review_level` 的审查与确认。
+按 0→1→2→3→4→5 执行。步骤 1 只补齐 blocker，可以因上游上下文完整而无提问；步骤 3 没有 ADR 主题时只维护索引。不得跳过审查与确认。
 
 节点完成以产物存在、验证通过、阻塞决策归零和状态持久化为准；是否逐步 commit 遵循 `delivery_policy`。
 </HARD-GATE>
@@ -129,7 +129,7 @@ digraph write_contract {
 
 **通用规则**（结构化询问、null 输入重问、文档规则优先、提交边界、worktree 选择模板）遵循 [dd-shared-ask](../dd-shared-ask/SKILL.md)（含 worktree 选择模板）。
 
-**风险分级审查规则**遵循 [dd-shared-subagent](../dd-shared-subagent/SKILL.md)。
+**审查规则**遵循 [dd-shared-subagent](../dd-shared-subagent/SKILL.md)。
 
 ## 工作环境前置询问（强制，先于步骤 0）
 
@@ -216,17 +216,9 @@ digraph write_contract {
 
 ---
 
-## 步骤 4：风险分级审查
+## 步骤 4：审查
 
-按上游 `review_level` 遵循 [dd-shared-subagent](../dd-shared-subagent/SKILL.md)；独立调用默认 `standard`。Level 决定执行成本，不改变 A/B/C 语义。
-
-### 方向映射
-
-| 方向 | 名称 | 检查项 |
-|------|------|--------|
-| **A** | 覆盖与范围 | 不变量是否覆盖所有路线级约束、allowlist 是否完整、ADR 候选是否遗漏 |
-| **B** | 一致与正确 | 依赖方向图与禁止依赖方向是否矛盾、章节结构是否符合 docs.md、编号是否连续 |
-| **C** | 可验证与可观测 | 不变量是否可检验（非模糊词）、ADR 流程是否可执行、是否有"优化/改进"等模糊词 |
+按 [dd-shared-subagent](../dd-shared-subagent/SKILL.md) 的通用 A/B/C 语义自检。架构契约附加检查：不变量是否覆盖所有路线级约束、allowlist 是否完整、ADR 候选是否遗漏；依赖方向图与禁止依赖方向是否矛盾、章节结构是否符合 docs.md、编号是否连续；不变量是否可检验（非模糊词）、ADR 流程是否可执行、是否有"优化/改进"等模糊词。
 
 ### P0 必检项
 
@@ -240,7 +232,7 @@ digraph write_contract {
 
 将审查结果合并为修订清单，分类为「必须修复」「建议修复」「可选优化」。用宿主可用的结构化 ASK 一次一问确认：问题 1 修订清单是否采纳（全部采纳/部分采纳/不采纳）；问题 2（如需修订）是否重新审查（重新审查/跳过审查直接确认）。
 
-**修订与重审**：“必须修复”自动采纳后按当前 `review_level` 重审；重试上限 3 次，第 3 次未通过 → 结构化 ASK 升级处理。
+**修订与重审**：“必须修复”自动采纳后重审；重试上限 3 次，第 3 次未通过 → 结构化 ASK 升级处理。
 
 最终产物与状态按 `delivery_policy` 交付；若创建了临时笔记，确认其内容已进入 SSOT 后再清理。
 

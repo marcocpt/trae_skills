@@ -195,7 +195,6 @@ worktree_path: /absolute/path
 resolved_decisions: []
 artifact_paths: {}
 blocking_questions: []
-review_level: standard
 delivery_policy: project-rules
 ```
 
@@ -207,15 +206,9 @@ delivery_policy: project-rules
 - 发现上游冲突时返回 blocker；
 - 独立触发时才执行自己的最小 Preflight。
 
-## 7. Review Budget
+## 7. 审查规则
 
-审查遵循 [dd-shared-subagent](../../dd-shared-subagent/SKILL.md)：
-
-- `low`：机械迁移和低风险格式；
-- `standard`：普通 writer 产物；
-- `high`：Baseline、Architecture、兼容迁移、持久化和高风险 UI。
-
-检查语义不随执行等级减少。
+审查遵循 [dd-shared-subagent](../../dd-shared-subagent/SKILL.md)：主 Agent 按 A/B/C 三方向自检；命中高风险附加检查触发器时追加对应检查。检查语义不因执行方式简化而减少。
 
 ## 8. Delivery Gate
 
@@ -256,7 +249,6 @@ blocking_questions: []
 baseline_path: null
 phase_contract_path: null
 phase_contract_status: null
-review_level: standard
 delivery_policy: project-rules
 ```
 

@@ -15,12 +15,11 @@
 1. 只修改一个重构意图；
 2. 运行允许的快速静态/局部诊断；
 3. 提交，不夹带无关文件；
-4. 三视角复核；
-5. push；
-6. 按 [dd-shared-ci](../../dd-shared-ci/SKILL.md) 等待同一 SHA 的 CI；
-7. 保存 run、结论与下一批状态。
+4. push；
+5. 按 [dd-shared-ci](../../dd-shared-ci/SKILL.md) 等待同一 SHA 的 CI；
+6. 保存 run、结论与下一批状态。
 
-三视角通过只是必要条件，远端 CI 通过才满足行为保持 Gate。
+行为保持由 Characterization Test 与远端 CI 证明；远端 CI 通过才满足行为保持 Gate。前提：受影响可观察行为已全部映射到 Characterization Test，未覆盖路径先补测试再重构，重构 Commit 不得弱化 characterization oracle。
 
 ## CI 失败
 

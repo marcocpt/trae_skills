@@ -42,7 +42,7 @@ CODING_STANDARDS.md 是整个 AI Coding 项目的"写法契约"。它回答：�
 
 ## 上游上下文协议
 
-被 `dd-project-bootstrap-workflow` 调用时，先读取 `project_mode`、`host`、`worktree_path`、`resolved_decisions`、`artifact_paths`、`review_level`、`delivery_policy` 和已批准架构契约。
+被 `dd-project-bootstrap-workflow` 调用时，先读取 `project_mode`、`host`、`worktree_path`、`resolved_decisions`、`artifact_paths`、`delivery_policy` 和已批准架构契约。
 
 - 已确定的语言、工具链、工作环境和架构边界不得重复询问；
 - 先检查现有 lint/test/CI 配置，只询问仍会阻塞规范的未知决策；
@@ -137,7 +137,7 @@ digraph coding_standards_flow {
     grill [label="补齐阻塞决策\n(按需, 一次一问)", shape=box, style=filled, fillcolor=lightyellow];
     write_core [label="写 CODING_STANDARDS.md\n(8 核心章节)"];
     write_lint [label="写/校 lint 配置\n(可选, 按语言栈)"];
-    review [label="风险分级审查\n(dd-shared-subagent)"];
+    review [label="审查\n(dd-shared-subagent)"];
     ask [label="结构化确认\n(dd-shared-ask)"];
     gate [label="HARD-GATE\n(用户确认)", shape=box, style=filled, fillcolor=lightcoral];
 
@@ -199,15 +199,9 @@ digraph coding_standards_flow {
 
 ## 审查与确认
 
-### 风险分级审查（复用 dd-shared-subagent）
+### 审查（复用 dd-shared-subagent）
 
-按上游 `review_level` 调用 [dd-shared-subagent](../dd-shared-subagent/SKILL.md)；独立调用默认 `standard`。Level 决定成本，不改变 A/B/C 语义：
-
-| 方向 | 名称 | 检查项 |
-|------|------|--------|
-| **A** | 覆盖与范围 | 8 章节齐全、lint 配置存在且与规范一致、不混入架构契约内容、不混入需求内容 |
-| **B** | 一致与正确 | 命名约定前后一致、并发边界明确、错误处理策略明确、不与架构契约冲突 |
-| **C** | 可验证与可观测 | 验证命令可执行、规则可机器检查（lint 能覆盖）、规则可人工检查 |
+按 [dd-shared-subagent](../dd-shared-subagent/SKILL.md) 的通用 A/B/C 语义自检。编码规范附加检查：8 章节齐全、lint 配置存在且与规范一致、不混入架构契约/需求内容、命名约定前后一致、并发边界明确、错误处理策略明确、不与架构契约冲突、验证命令可执行、规则可机器检查且可人工检查。
 
 ### 结构化确认（复用 dd-shared-ask）
 
@@ -226,7 +220,7 @@ null 输入按 dd-shared-ask 规则重问，不得假设默认值。
 
 1. CODING_STANDARDS.md 8 章节齐全
 2. lint 配置（如需）已写且与规范一致
-3. 适用 `review_level` 的「必须修复」项全部处理
+3. 审查的「必须修复」项全部处理
 4. 已确认输入与新增决策全部纳入规范
 5. 用户通过结构化 ASK 明确确认"编码规范完成"
 
@@ -252,7 +246,7 @@ digraph skill_relation {
 - **上游**：dd-write-architecture-constraint 的分层结构与依赖方向作为约束输入（编码规范不重复分层，只补充写法）
 - **下游**：dd-write-ai-conventions 的 AGENTS.md 引用编码规范；功能开发时所有代码需遵守
 - **流程 skill**：dd-project-bootstrap-workflow 的 Coding Standards 节点调度本 skill
-- **共享**：复用 dd-shared-subagent（风险分级审查）、dd-shared-ask（结构化询问 + null 重问）
+- **共享**：复用 dd-shared-subagent（审查）、dd-shared-ask（结构化询问 + null 重问）
 
 ## 输出要求
 
@@ -277,7 +271,7 @@ digraph skill_relation {
 - [ ] 全文无"优化 / 改进 / 更好"等模糊词
 - [ ] 验证命令可执行
 - [ ] Greenfield/Brownfield 质量政策与验证命令明确
-- [ ] 适用 `review_level` 的「必须修复」项全部处理
+- [ ] 审查的「必须修复」项全部处理
 - [ ] 用户通过结构化 ASK 明确确认完成
 
 **任一项失败，修订后重新验证。**

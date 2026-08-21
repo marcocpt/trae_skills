@@ -175,15 +175,13 @@ Stage Gate 与 Delivery Gate 分离：
 - Delivery Gate：commit、push、merge、PR、cleanup；
 - 调用方可要求 commit 作为 Stage 产物，但必须明确声明，不能默认等同。
 
-## 8. Review Budget
+## 8. 审查规则
 
-建议等级：
+审查按 [dd-shared-subagent](../../dd-shared-subagent/SKILL.md) 的 A/B/C 语义由主 Agent 自检。命中该技能高风险附加检查表中的任一触发器时，追加对应检查。
 
-- `low`：机械迁移、格式和确定性校验；
-- `standard`：普通计划、代码和文档；
-- `high`：兼容性、持久化、并发、安全、公共 API、高风险 UI。
+执行方式简化不减少检查项/检查语义。自检发现必须修复项时自动修复并复验；重大产品或架构变化才 ASK。
 
-等级改变执行者数量和验证范围，不改变检查问题本身。复核发现必须修复项时自动修复并复核；重大产品或架构变化才 ASK。
+兼容合同：恢复旧 state/handoff 时允许并忽略 legacy `review_level` 字段；下次原子写回时删除该字段。
 
 ## 9. Completion Receipt
 

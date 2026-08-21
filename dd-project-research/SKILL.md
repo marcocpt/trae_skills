@@ -29,7 +29,7 @@ dd-project-research 是项目级调研子 skill，被 dd-project-bootstrap-workf
 
 ## 上游上下文与触发协议
 
-被 `dd-project-bootstrap-workflow` 调用时，先读取 `project_mode`、`host`、`worktree_path`、`resolved_decisions`、`artifact_paths`、`review_level` 和 `delivery_policy`。
+被 `dd-project-bootstrap-workflow` 调用时，先读取 `project_mode`、`host`、`worktree_path`、`resolved_decisions`、`artifact_paths` 和 `delivery_policy`。
 
 - 已解决事实不得重复询问；
 - 先读取 Gap Scan、Baseline、已有调研和可靠外部证据；
@@ -77,15 +77,15 @@ digraph project_research {
     "0. 读 docs.md + 上游证据" -> "1. 补齐阻塞决策（按需）";
     "1. 补齐阻塞决策（按需）" -> "2. 写技术调研文档";
     "2. 写技术调研文档" -> "3. 写 ADR 候选（按主题）";
-    "3. 写 ADR 候选（按主题）" -> "4. 风险分级审查";
-    "4. 风险分级审查" -> "5. 合并总结 + 一次一问确认";
+    "3. 写 ADR 候选（按主题）" -> "4. 审查";
+    "4. 审查" -> "5. 合并总结 + 一次一问确认";
     "5. 合并总结 + 一次一问确认" -> "结束" [label="确认通过"];
     "5. 合并总结 + 一次一问确认" -> "2. 写技术调研文档" [label="需修改", style=dashed];
 }
 ```
 
 <HARD-GATE>
-存在调研必要性时按 0→1→2→3→4→5 执行。步骤 1 只补齐 blocker，可以因上游上下文完整而无提问；步骤 3 没有 ADR 主题时可跳过。不得跳过适用 `review_level` 的审查。
+存在调研必要性时按 0→1→2→3→4→5 执行。步骤 1 只补齐 blocker，可以因上游上下文完整而无提问；步骤 3 没有 ADR 主题时可跳过。不得跳过审查。
 
 节点通过要求产物存在、已验证、阻塞决策归零并写入上游状态。是否逐步 commit 属于 Delivery Policy，不得把“尚未 commit”误判为调研内容未完成。
 </HARD-GATE>
@@ -203,19 +203,9 @@ digraph project_research {
 
 写完后验证候选状态与调研结论一致。是否提交遵循 `delivery_policy`。
 
-## 步骤 4：风险分级审查
+## 步骤 4：审查
 
-按上游 `review_level` 调用 [dd-shared-subagent](../dd-shared-subagent/SKILL.md)；独立调用默认 `standard`。Level 决定执行成本，不改变 A/B/C 语义。
-
-### 4.1 方向分工映射
-
-| 方向 | 名称 | 核心关注 | 本步骤检查项 |
-|------|------|----------|------------|
-| A | 覆盖与范围 | 该有的有没有 | 选型对比是否覆盖候选、竞品分析是否遗漏关键竞品、风险是否漏识别 |
-| B | 一致与正确 | 互相矛盾吗 | 调研结论与对比依据是否一致、ADR 候选与调研结论是否对齐、文档头部格式合规 |
-| C | 可验证与可观测 | 能验证吗 | 风险影响等级是否可判断、可行性依据是否可追溯、是否混入代码原型或最终决策 |
-
-### 4.2 汇总与处理
+按 [dd-shared-subagent](../dd-shared-subagent/SKILL.md) 的通用 A/B/C 语义自检。技术调研附加检查：选型对比是否覆盖候选、竞品分析是否遗漏关键竞品、风险是否漏识别；调研结论与对比依据是否一致、ADR 候选与调研结论是否对齐；风险影响等级是否可判断、可行性依据是否可追溯、是否混入代码原型或最终决策。
 
 按 [dd-shared-subagent](../dd-shared-subagent/SKILL.md) 的汇总规则处理：必须修复自动采纳，建议修复仅重大项询问用户。审查结果写入 `技术调研_审查结果.md`。
 
@@ -285,7 +275,7 @@ digraph project_research {
 - [ ] 文档头部格式正确（`> 最后更新：YYYY-MM-DD | 版本：vX.Y`）
 - [ ] 中文标点，英文术语保持原文，无 emoji
 - [ ] 无"优化/改进/更好"等模糊词
-- [ ] 适用 `review_level` 的审查已执行，必须修复项已处理
+- [ ] 审查已执行，必须修复项已处理
 - [ ] 用户已通过一次一问确认
 
 **任一项失败，修订后重新验证。**
