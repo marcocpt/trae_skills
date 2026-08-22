@@ -236,6 +236,8 @@ Constraints-1：模板匹配置信度阈值默认 0.8，支持运行时修改即
 
 **禁止：** 在 Then 里写"调用 `XXXManager.render()` 渲染 Overlay"。
 
+**AC 只断言，不复述：** Then 只写判定通过与否所需的最小可观察断言；规则细节（支持域枚举、fallback 顺序、分类边界等）已存在于 FR 条目或 RULE 分片时，用 ID 引用（如"fallback 顺序遵循 RULE-X-001"），禁止把 FR 规范要求整段搬进 Then。反模式：一条 AC 的 Then 成为复述对应 FR 十余条规则细节的巨段文字——同一事实形成双份维护，且下游测试用例表还会再复写一遍。
+
 ## 12 章节速查
 
 | 章节 | 核心问题 | 代码细节 | 篇幅 |
@@ -247,7 +249,7 @@ Constraints-1：模板匹配置信度阈值默认 0.8，支持运行时修改即
 | FR | 系统应做什么 | ❌ 绝不 | 编号，可观察 |
 | NFR | 质量要求 | ❌ | 可测量 |
 | Constraints | 边界 | ⚠️ 仅业务约束 | 清单 |
-| AC | 如何验证 | ❌ | Given/When/Then |
+| AC | 如何验证 | ❌ | Given/When/Then，引用 FR 不复述 |
 | Out of Scope | 明确不做（唯一清单，不与 Scope 重复） | ❌ | 清单 |
 | Terminology | 业务术语 | ❌ 绝不写代码符号 | 字典 |
 | Decision Freedom | AI 自由度 | ❌（描述边界） | 允许/禁止清单 |
@@ -421,6 +423,7 @@ digraph doc_layers {
 - [ ] 每条 NFR 可测量
 - [ ] 每个 FR 至少被一个 AC 覆盖（AC 可跨 FR，描述场景而非一对一）
 - [ ] AC 用 Given/When/Then
+- [ ] AC 只断言，不复述（Then 无 FR/RULE 细则复写，细节用 ID 引用）
 - [ ] 12 章节全部存在
 - [ ] Terminology 只定义业务术语，无代码符号
 - [ ] Decision Freedom 双向（允许 + 禁止）

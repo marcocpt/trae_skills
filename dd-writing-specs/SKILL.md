@@ -133,15 +133,16 @@ Cleanup → Return to parent / Host Close
 
 ## Stage 5：Test Matrix
 
-测试用例表：
+测试用例表是验证合同，只登记 Requirements / Design 没有的新信息：
 
-- 每个 FR 至少映射一个 AC/用例；
-- Given/When/Then 和证据可判定；
+- 每个 FR 至少映射一个 Test ID / 用例，引用 AC 编号；不复写 Given/When/Then（唯一属主是 AC，多用例只写差异化断言）；
+- 登记 Population 分母与 item registry（紧凑记法，不机械展开）、oracle、数值 policy、Evidence schema；
+- 追溯矩阵不在正文手写，由 trace_map 或生成产物承载；
 - 标记现有覆盖 `COVERED / PARTIAL / MISSING / DEFERRED`；
 - UI AC 有真实可见证据；
 - 头部记录所基于的 Requirements/Design 版本。
 
-测试策略和 UI 可观测性属于测试用例表，不回填 Design。
+测试策略和 UI 可观测性属于测试用例表，不回填 Design。反冗余细则见 [downstream-documents.md](references/downstream-documents.md)。
 
 ## 自检与确认
 
