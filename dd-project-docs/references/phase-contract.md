@@ -1,4 +1,4 @@
-> 迁移来源：`dd-project-docs/phase-contract/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
+> 迁移来源：`dd-write-phase-contract/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
 
 # 编写阶段需求与验收合同
 
@@ -168,6 +168,20 @@ docs/phases/{X}_{阶段名}/{X}_01_阶段需求与验收.md
 - **Common Failure Modes**：13 条失败模式（FM-001 至 FM-013），含"类名当业务术语""保留英文状态枚举""算法常量名当行业标准"等
 
 阶段合同场景同样适用上述红线，不得以"阶段合同需要更具体"为由保留代码符号。需要区分 Requirements 与 Design 时，遵循 dd-writing-specs/requirements-writer 的层级原则。
+
+## 反冗余与篇幅治理
+
+每条事实只有一个属主文档；下游章节与下游文档引用 ID，不复制正文：
+
+- AC Then = 判定所需的最小可观察断言 + FR / RULE ID 引用；禁止把 FR 规范要求或 RULE 细则整段搬进 Then。反模式：一条 AC 的 Then 复述对应 RULE 的全部正 / 反例判定条件——同一事实形成双份维护，下游测试用例表还会再复写一遍。
+- FR 细节（支持域枚举、判定细则、正反例）已存在 `requirements/` 分片时，FR 正文只保留 SHALL 断言 + 分片引用；分片是细节唯一属主。候选语义索引表（如附录索引）只写一句话摘要，不重复分片正文。
+- 版本记录：每版一行摘要语义变化；逐条复审修复细节（H1/M1/L1 修复过程、finding 闭环记录）落 `artifacts/` 的复审记录，不进正文。反模式：每个版本条目写满一整段修复过程，十余版累积上百行。
+- 动态 Gate 状态（readiness、上游 Gate 未闭合、"尚未形成"类表述）全文只集中一处并标注"快照"；禁止在定位、风险、交接、版本记录等各章节散布"不授权实施 / 不得宣称 PASS"防御性文案。
+- 历史研究台账（unresolved 逐 ID 汇总、旧编号映射等）归档 `artifacts/`，正文只留指针与计数口径。
+
+`artifacts/` 位于阶段文档同目录（`docs/phases/{X}_{阶段名}/artifacts/`），一类内容一文件、逐版追加（如 `review-log.md`、`research-ledger.md`）；正文只引用文件路径与版本号。
+
+完成前自检：扫描 AC Then 是否复述 FR/RULE 细则、版本记录是否每版一行、防御性文案是否只出现一处、追溯矩阵是否在正文手写、台账是否留在正文——任一命中，按本节规则收敛后重写，不修补。
 
 ## 审查
 

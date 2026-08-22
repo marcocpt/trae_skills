@@ -1,4 +1,4 @@
-> 迁移来源：`dd-project-docs/research/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
+> 迁移来源：`dd-project-research/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
 
 # 项目调研（dd-project-docs/research）
 

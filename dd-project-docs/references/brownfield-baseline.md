@@ -1,4 +1,4 @@
-> 迁移来源：`dd-project-docs/brownfield-baseline/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
+> 迁移来源：`dd-brownfield-baseline/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
 
 # 老项目基线盘点（dd-project-docs/brownfield-baseline）
 

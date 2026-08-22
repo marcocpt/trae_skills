@@ -1,4 +1,5 @@
-> 原独立 planning 能力已下沉为本 reference，不再参与顶层 Skill 路由。
+> 迁移来源：`writing-plans/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
+
 
 # 编写计划
 

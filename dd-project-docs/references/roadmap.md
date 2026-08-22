@@ -1,4 +1,4 @@
-> 迁移来源：`dd-project-docs/roadmap/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
+> 迁移来源：`dd-write-roadmap/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
 
 # 编写路线图与功能列表（dd-project-docs/roadmap）
 

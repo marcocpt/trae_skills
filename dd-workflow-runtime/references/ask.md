@@ -1,4 +1,4 @@
-> 迁移来源：`dd-workflow-runtime/ask/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
+> 迁移来源：`dd-shared-ask/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
 
 # dd 共享询问规则
 

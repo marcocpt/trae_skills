@@ -44,13 +44,13 @@ dd-project-bootstrap-workflow/SKILL.md
          ├─ references/execution-contract.md
          └─ references/brownfield-policy.md
               │
-              ├─ dd-project-docs/brownfield-baseline
-              ├─ dd-project-docs/research
-              ├─ dd-project-docs/roadmap
-              ├─ dd-project-docs/architecture-contract
-              ├─ dd-project-docs/coding-standards
-              ├─ dd-project-docs/ai-conventions
-              └─ dd-project-docs/phase-contract
+              ├─ dd-brownfield-baseline
+              ├─ dd-project-research
+              ├─ dd-write-roadmap
+              ├─ dd-write-architecture-contract
+              ├─ dd-write-coding-standards
+              ├─ dd-write-ai-conventions
+              └─ dd-write-phase-contract
                        ↓
               structured handoff
                        ↓
@@ -80,15 +80,15 @@ dd-project-bootstrap-workflow/SKILL.md
 
 | 文件 | 职责 |
 |---|---|
-| `dd-project-docs/phase-contract/SKILL.md` | 独立编写准备阶段或迁移阶段的 `{X}_01_阶段需求与验收.md` |
-| `dd-project-docs/phase-contract/tests/baseline-1-brownfield-classification.md` | 验证 Characterization 分类到 AC 的映射 |
-| `dd-project-docs/phase-contract/tests/baseline-2-known-defect-not-ac.md` | 验证 KNOWN_DEFECT 不升级为目标契约 |
-| `dd-project-docs/phase-contract/tests/baseline-3-upstream-context.md` | 验证复用 Bootstrap 上游事实且不重复 grill |
+| `dd-write-phase-contract/SKILL.md` | 独立编写准备阶段或迁移阶段的 `{X}_01_阶段需求与验收.md` |
+| `dd-write-phase-contract/tests/baseline-1-brownfield-classification.md` | 验证 Characterization 分类到 AC 的映射 |
+| `dd-write-phase-contract/tests/baseline-2-known-defect-not-ac.md` | 验证 KNOWN_DEFECT 不升级为目标契约 |
+| `dd-write-phase-contract/tests/baseline-3-upstream-context.md` | 验证复用 Bootstrap 上游事实且不重复 grill |
 
-`dd-project-docs/phase-contract` 与 `dd-writing-specs/requirements-writer` 的边界：
+`dd-write-phase-contract` 与 `dd-write-requirements` 的边界：
 
-- `dd-writing-specs/requirements-writer` 面向功能或产品需求合同；
-- `dd-project-docs/phase-contract` 面向项目准备、迁移、兼容基线和阶段 Exit Gate；
+- `dd-write-requirements` 面向功能或产品需求合同；
+- `dd-write-phase-contract` 面向项目准备、迁移、兼容基线和阶段 Exit Gate；
 - 两者共享 Requirements 层原则，但触发条件、上游输入和验收映射不同。
 
 ### 5.3 共享协议
@@ -103,12 +103,12 @@ dd-project-bootstrap-workflow/SKILL.md
 
 | 文件 | 修改职责 |
 |---|---|
-| `dd-project-docs/brownfield-baseline/SKILL.md` | 使用历史义务定义；输出完整处置分类；区分旧兼容面与目标公开面 |
-| `dd-project-docs/research/SKILL.md` | 接收上游上下文；只为未验证高风险假设触发技术探针 |
-| `dd-project-docs/roadmap/SKILL.md` | 消费 Gap Scan、研究和基线事实，不重复询问；明确路线级 Gate |
-| `dd-project-docs/architecture-contract/SKILL.md` | 区分 provisional/approved/frozen；拆分 Legacy/Target Public Surface |
-| `dd-project-docs/coding-standards/SKILL.md` | Greenfield 零新增违规；Brownfield baseline + changed-code ratchet |
-| `dd-project-docs/ai-conventions/SKILL.md` | 生成短 `AGENTS.md`、按需 nested `AGENTS.md`、薄 Trae adapter，并固化 Trae 最终 ASK |
+| `dd-brownfield-baseline/SKILL.md` | 使用历史义务定义；输出完整处置分类；区分旧兼容面与目标公开面 |
+| `dd-project-research/SKILL.md` | 接收上游上下文；只为未验证高风险假设触发技术探针 |
+| `dd-write-roadmap/SKILL.md` | 消费 Gap Scan、研究和基线事实，不重复询问；明确路线级 Gate |
+| `dd-write-architecture-contract/SKILL.md` | 区分 provisional/approved/frozen；拆分 Legacy/Target Public Surface |
+| `dd-write-coding-standards/SKILL.md` | Greenfield 零新增违规；Brownfield baseline + changed-code ratchet |
+| `dd-write-ai-conventions/SKILL.md` | 生成短 `AGENTS.md`、按需 nested `AGENTS.md`、薄 Trae adapter，并固化 Trae 最终 ASK |
 | `dd-feature-development-workflow/SKILL.md` | 接收 Bootstrap Handoff，复用工作环境、目标、范围、阶段合同和已确认决策 |
 
 ## 6. Preflight 与模式判定
@@ -323,7 +323,7 @@ Trae 完成约束：
    - `还有其他任务`
 3. 选择“还有其他任务”时接收新任务并继续；
 4. 选择“结束本次任务”后把状态更新为 `completed`，再输出最终摘要；
-5. `dd-project-docs/ai-conventions` 必须把该规则写入项目 AI 入口与 Trae 薄适配器。
+5. `dd-write-ai-conventions` 必须把该规则写入项目 AI 入口与 Trae 薄适配器。
 
 Codex 不强制无意义的结束确认；按当前任务完成后正常交付，除非项目规则另有要求。
 
@@ -357,7 +357,7 @@ Codex 不强制无意义的结束确认；按当前任务完成后正常交付�
 ## 17. 已决策事项
 
 1. 采用完整生态方案 3。
-2. 新建 `dd-project-docs/phase-contract`。
+2. 新建 `dd-write-phase-contract`。
 3. Bootstrap 与 Feature workflow 使用统一 Handoff。
 4. `SKILL.md` 采用 progressive disclosure，详细政策进入三份 reference。
 5. 审查质量标准固定，执行强度按风险调整。

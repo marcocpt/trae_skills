@@ -1,4 +1,4 @@
-> 迁移来源：`dd-writing-specs/design-writer/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
+> 迁移来源：`dd-write-design/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
 
 # 编写设计文档（02_Design.md）
 
@@ -95,6 +95,8 @@ digraph design_layers {
 | Code | 具体实现 | ✅ 一直变化 | ✅ 完整代码 | `func recognize() { ... }` |
 
 **关键区分：** Design 写"模块职责、边界、协作"，Implementation Plan 写"接口签名、类定义、目录结构"。类名、协议名、方法签名、字段类型属于 Implementation Plan，不属于 Design。
+
+**Design 的唯一增量：** 相对 Requirements，Design 只新增模块划分、职责边界、数据流、协作结构与设计决策。Requirements 已有的边界条款（"不决定 X，路由下游"类表述）不在 Design 中成段复述，引用编号即可。
 
 ## Design 必须回答的五个问题
 

@@ -1,4 +1,4 @@
-> 迁移来源：`gpt-grilling-review/transport/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
+> 迁移来源：`gpt-review-loop/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
 
 # ChatGPT 审核闭环
 

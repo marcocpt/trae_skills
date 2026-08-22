@@ -1,4 +1,4 @@
-> 迁移来源：`dd-git-workflow/ci/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
+> 迁移来源：`dd-git-ci/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
 
 # Git CI 和合并前检查
 

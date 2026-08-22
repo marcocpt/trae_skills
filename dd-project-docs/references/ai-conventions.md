@@ -1,4 +1,4 @@
-> 迁移来源：`dd-project-docs/ai-conventions/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
+> 迁移来源：`dd-write-ai-conventions/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
 
 # 编写 AI 协作约束
 

@@ -1,4 +1,4 @@
-> 迁移来源：`dd-project-docs/coding-standards/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
+> 迁移来源：`dd-write-coding-standards/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
 
 # 编写编码规范（CODING_STANDARDS.md）
 

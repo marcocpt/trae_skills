@@ -1,4 +1,4 @@
-> 迁移来源：`dd-git-workflow/merge/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
+> 迁移来源：`dd-git-merge/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
 
 # Git 合并流程
 

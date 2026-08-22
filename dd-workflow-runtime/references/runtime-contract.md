@@ -1,3 +1,5 @@
+> 迁移来源：`dd-shared-workflow-runtime/references/runtime-contract.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
+
 # Shared Workflow Runtime Contract
 
 按需读取。Preflight/恢复只读对应章节；最终完成时再读 Completion Receipt 与 Host Close。

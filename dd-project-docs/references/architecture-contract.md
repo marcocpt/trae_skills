@@ -1,4 +1,4 @@
-> 迁移来源：`dd-project-docs/architecture-contract/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
+> 迁移来源：`dd-write-architecture-contract/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
 
 # 编写全局架构契约（dd-project-docs/architecture-contract）
 

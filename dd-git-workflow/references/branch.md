@@ -1,4 +1,4 @@
-> 迁移来源：`dd-git-workflow/branch/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
+> 迁移来源：`dd-git-branch/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
 
 # Git 分支管理
 

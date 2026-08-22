@@ -1,4 +1,4 @@
-> 迁移来源：`dd-workflow-runtime/state/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
+> 迁移来源：`dd-shared-state/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
 
 # dd 共享状态持久化
 

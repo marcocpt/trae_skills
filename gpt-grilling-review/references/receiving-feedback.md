@@ -1,4 +1,5 @@
-> 该规则原为独立 review 反馈处理入口，现作为按需 reference 使用，不参与顶层 Skill 路由。
+> 迁移来源：`receiving-code-review/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
+
 
 # 接收代码审查
 

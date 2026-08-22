@@ -1,4 +1,4 @@
-> 迁移来源：`dd-workflow-runtime/ci/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
+> 迁移来源：`dd-shared-ci/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
 
 # dd 共享 CI 验证规则
 
@@ -36,7 +36,7 @@ gh run watch <run-id> --exit-status
 ```
 
 - **当前分支未 push 时不得以此为由降级本地**——先查 BASE_BRANCH 已有结果，或用结构化 ASK 询问是否 push 后触发 CI
-- `gh workflow run` 本身报错（ref 不存在、鉴权失败等）→ 按 test-location-strategy 步骤 2 的结构化 ASK 流程处理，**不得降级本地**
+- `gh workflow run` 本身报错（ref 不存在、鉴权失败等）→ 按 [test-location.md](test-location.md) 步骤 2 的结构化 ASK 流程处理，**不得降级本地**
 
 ## 场景 2：回归 CI 验证（提交后必须 push + 触发 CI）
 

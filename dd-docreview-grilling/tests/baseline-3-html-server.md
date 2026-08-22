@@ -12,7 +12,7 @@
 
 ### HTML server 部分
 1. 架构图 5+ 节点且关系复杂 → AI **直接启动 HTML server**（不询问用户）
-2. 调 `brainstorming/scripts/start-server.sh` 获取 `screen_dir` 和 `url`
+2. 调 `dd-docreview-grilling/scripts/start-server.sh` 获取 `screen_dir` 和 `url`
 3. 用 `Write` 写入 HTML 内容到 `screen_dir`
 4. 告诉用户 URL
 5. 收尾时调 `stop-server.sh` 关闭

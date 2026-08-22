@@ -41,11 +41,11 @@ flowchart TD
 
 ## 复杂 HTML
 
-复杂 UI/架构场景可使用 brainstorming Skill 提供的 HTML server 脚本：
+复杂 UI/架构场景可使用本 Skill 自带的 HTML server 脚本（位于 [scripts/](../scripts/)，2026-08-23 由已删除的 brainstorming Skill 迁入）：
 
 ```bash
 SCREEN_DIR=/tmp/docreview-<topic>
-bash <brainstorming-skill>/scripts/start-server.sh "$SCREEN_DIR"
+bash <dd-docreview-grilling>/scripts/start-server.sh "$SCREEN_DIR"
 ```
 
 保存 HTML 的绝对路径和 URL 到状态/TODO。收尾调用对应 `stop-server.sh`；HTML 文件保留。脚本不可用时退化为 Mermaid 或静态 HTML 文件，不降低内容质量。
