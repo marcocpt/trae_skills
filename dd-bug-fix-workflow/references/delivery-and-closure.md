@@ -76,7 +76,7 @@ next_safe_action: verify merge commit before retry
 6. 对 merge SHA 执行合并后 CI；
 7. CI 通过后写 `status=completed`。
 
-base 在验证期间变化时重新生成并验证合并结果。merge 失败或冲突时保留状态，按 `dd-git-conflict` 处理；不得删除 worktree 或状态掩盖失败。
+base 在验证期间变化时重新生成并验证合并结果。merge 失败或冲突时保留状态，按 `dd-git-workflow/conflict` 处理；不得删除 worktree 或状态掩盖失败。
 
 ### 放弃
 
@@ -109,7 +109,7 @@ next_safe_action: resume integration decision
 
 ## 5. Host Close
 
-真正完成并持久化 completed 后遵循 `dd-shared-workflow-runtime`：
+真正完成并持久化 completed 后遵循 `dd-workflow-runtime`：
 
 - Trae 必须 ASK，且只提供 `结束本次任务` / `还有其他任务`；
 - “还有其他任务”创建新的 `workflow_id`，从新 Intake/Preflight 开始；

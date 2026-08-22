@@ -1,0 +1,257 @@
+> 迁移来源：`dd-project-docs/roadmap/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
+
+# 编写路线图与功能列表（dd-project-docs/roadmap）
+
+## 概述
+
+**路线图描述"项目分几步走、每步走到哪算完"，功能列表描述"每步里包含哪些功能、它们如何排序"，两者都不描述"代码怎么写"。**
+
+路线图与功能列表是 AI Coding 项目级规划的"阶段合同"与"功能版图"。它们回答五个问题：项目要做什么、分几个阶段、每阶段的进入与退出标准、功能如何按优先级排序、功能之间如何依赖。即使后续架构、类名、实现语言全部重构，两者基本不需要改。
+
+调用时声明 `invocation_mode=standalone|child`。`child` 消费 Bootstrap 事实并只返回产物/Gate；`standalone` 由顶层会话按 [dd-workflow-runtime/ask](../../dd-workflow-runtime/references/ask.md) 收尾，禁止 child 重复最终 ASK。
+
+**路线图写的是"阶段目标与可观察的退出标准（Exit Gate）"，不写"模块职责/数据流/状态机"——后者属于 Design。** 功能列表写的是"功能编号 + 子功能分解 + 可观察的验证标准 + 依赖 + 状态"，不写接口签名、类定义、目录结构。
+
+**违反规则的字面意思就是违反规则的精神。**
+
+## Priority 分层（规则权重）
+
+| 优先级 | 含义 | 示例 | 违反后果 |
+|--------|------|------|---------|
+| **P0** | 绝不能违反 | 不写代码符号（类名/协议名/方法签名/字段类型/枚举值/文件路径/并发原语/框架 API/实现语言选型） | 立即重写 |
+| **P1** | 尽量遵守 | 阶段有 Goal/IN/OUT/Exit Gate、功能有编号与验证标准、brownfield 标注状态 | 补齐缺失项 |
+| **P2** | 建议 | 中文标点、文档头部版本号、依赖图用 mermaid | 提醒修正 |
+
+**冲突处理优先级：** User > Skill > Default behavior。与 P0 冲突时用宿主可用的结构化 ASK 提出。
+
+## 何时使用
+
+- 新项目创建、大规模迁移、产品定位调整、阶段重排
+- 用户提到"路线图"、"roadmap"、"功能列表"、"P0/P1 阶段"、"Exit Gate"、"项目规划"
+- dd-project-bootstrap-workflow 的 Roadmap 节点调用
+- 上游 dd-project-docs/research 完成技术调研后转入规划
+- brownfield 项目纳入既有功能进行整体规划
+
+**不适用：** 单个功能的需求/设计/实现（用 dd-writing-specs + dd-writing-specs/requirements-writer + dd-writing-specs/design-writer）、bug 修复、实现计划（接口/类/目录）、架构契约（用 dd-project-docs/architecture-contract）
+
+## 上游上下文协议
+
+被 `dd-project-bootstrap-workflow` 调用时，先读取 `project_mode`、`host`、`worktree_path`、`resolved_decisions`、`artifact_paths` 和 `delivery_policy`，并消费 Gap Scan、Research 与 Brownfield Baseline（如适用）。
+
+- 已确定的产品定位、项目模式、工作环境、技术约束和兼容性义务不得重复询问；
+- 功能状态必须来自 Baseline/测试/发布证据，不按代码数量猜测；
+- 只询问会阻塞 Roadmap 的未知决策；
+- 上游产物互相冲突时返回 blocker，不在 Roadmap 中静默选边。
+
+独立调用时执行最小 Preflight；工作环境或输入已明确时不重问。
+
+## 项目规则优先（强制首步）
+
+写路线图前，**必须先读取项目的 docs.md**。docs.md 的规则优先于 skill 的默认规则。
+
+```bash
+test -f .trae/rules/docs.md && cat .trae/rules/docs.md
+test -f docs/docs.md && cat docs/docs.md
+test -f docs.md && cat docs.md
+```
+
+从 docs.md 提取并记录：规划文档存放路径、文件命名规则（`路线图.md`/`功能列表.md` 或 `Roadmap.md`/`FeatureList.md`）、文档头部格式、标点符号规则、mermaid 规则、同步更新规则、阶段命名规则（准备阶段 `P{n}_` 前缀 vs 功能阶段 `F{n}_` 前缀 vs 功能优先级 P0/P1/P2）。
+
+**处理规则：** docs.md 存在则优先；不存在用默认规则；与 P0 冲突时 P0 优先，用结构化 ASK 提出冲突。
+
+## 流程
+
+```dot
+digraph write_roadmap {
+    rankdir=TB;
+    node [shape=box];
+    "0. 读 docs.md + 上游产物" -> "1. 补齐阻塞决策（按需）";
+    "1. 补齐阻塞决策（按需）" -> "2. 写路线图.md";
+    "2. 写路线图.md" -> "3. 写功能列表.md";
+    "3. 写功能列表.md" -> "4. 审查";
+    "4. 审查" -> "5. 合并总结 + 一次一问确认";
+    "5. 合并总结 + 一次一问确认" -> "结束" [label="确认通过"];
+    "5. 合并总结 + 一次一问确认" -> "2. 写路线图.md" [label="需修改", style=dashed];
+}
+```
+
+### 工作环境前置询问
+
+进入步骤 0 前，按 [dd-workflow-runtime/ask](../../dd-workflow-runtime/references/ask.md) 的「工作环境询问」模板询问。**被 dd-project-bootstrap-workflow 调度时不询问**（工作环境已由上游确定）。
+
+### 步骤 0：读 docs.md + 上游调研结论
+
+读取 docs.md、Gap Scan、dd-project-docs/research 的技术调研结论（如存在）和 Brownfield Baseline（如适用）。提取并记录：项目规则、调研约束、功能状态与兼容性义务。
+
+### 步骤 1：grill 拷问（一次一问）
+
+仅对上游上下文和仓库证据无法回答的 blocker 使用 grilling。**铁律：一次只问一个问题。** 已解决问题不重问；能通过探索回答的，自己探索。
+
+拷问范围（至少覆盖）：
+
+1. **产品核心定位**：一句话核心目标（用户是谁、解决什么问题、关键差异点）
+2. **最低系统要求与开发工具**：最低系统版本、开发语言/工具链、CI 环境
+3. **阶段如何划分**：准备阶段（P 前缀，如技术探针/基线盘点）+ 功能阶段（F 前缀，按功能优先级推进）。每阶段定位与 Exit Gate
+4. **每阶段的 Exit Gate 标准**：可观察的退出标准（不是内部状态）
+5. **功能优先级如何排序**：哪些功能必须在 P0、哪些可延后
+6. **功能依赖关系**：哪些功能依赖其他功能先完成
+7. **Brownfield 状态确认**：Baseline 是否仍有未决分类或证据冲突
+
+出口判定：输出规划摘要，用结构化 ASK 询问（选项 1 推荐：确认进入步骤 2；选项 2：补充 grill；选项 3：理解有误重新描述）。
+
+### 步骤 2：写路线图.md
+
+按"产出文件结构 - 路线图.md"章节执行。P0 铁律：不写代码符号。
+
+### 步骤 3：写功能列表.md
+
+按"产出文件结构 - 功能列表.md"章节执行。P0 铁律：不写代码符号；验证标准是可观察行为。
+
+### 步骤 4：审查
+
+按 [dd-workflow-runtime/review-gate](../../dd-workflow-runtime/references/review-gate.md) 的通用 A/B/C 语义自检。路线图附加检查：阶段/功能齐全且路线图与功能列表一致；全文搜索代码符号应为 0；阶段划分合理、P0 不过载、优先级站得住、不塞入未请求功能；Exit Gate 与功能验证标准可观察；依赖关系图完整无环；brownfield 状态标注完整。
+
+校准标准：只标记会在后续阶段造成实际问题的事项。
+
+### 步骤 5：合并总结 + 一次一问确认
+
+合并审查结果展示给用户。用结构化 ASK 询问**一个问题**：
+- 选项 1（推荐）：确认路线图与功能列表，工作流结束
+- 选项 2：需要修改，回到步骤 2 重写
+- 选项 3：方向不对，回到步骤 1 重新 grill
+
+确认通过后按 `delivery_policy` 提交或交付；Workflow Gate 不以 commit 是否存在判定内容有效性。
+
+## 产出文件结构
+
+### 路线图.md（必含）
+
+文档头部 `> 最后更新：YYYY-MM-DD | 版本：vX.Y`，正文含 4 章：
+
+1. **产品定位**：核心目标（一句话，用户是谁、解决什么问题、关键差异点）+ 最低系统要求 + 开发工具
+2. **阶段划分**：每阶段含 Goal / IN（进入条件，含上游调研结论、依赖项）/ OUT（退出条件，本阶段产出的可观察结果）/ Exit Gate（可观察的退出标准列表，每条都能被验收）。**阶段命名区分两类前缀**：
+   - **准备阶段** `P{n}_{准备阶段名}`：技术验证、项目骨架或基线盘点，**不参与功能编号**（如 `P0_技术探针`、`P-1_基线盘点`）
+   - **功能阶段** `F{功能编号}_{简短功能名}`：每个目录对应一个功能（如 `F0_权限引导`、`F1_窗口编排核心`）
+3. **阶段依赖关系图**（mermaid `graph LR`，节点用阶段名，区分 P 前缀与 F 前缀）
+4. **版本记录**（表格：版本 / 日期 / 变更）
+
+> **命名说明**：`docs/phases/` 下的 `P{n}` 指准备阶段，`F{n}` 既指功能编号也指功能开发阶段；`docs/planning/功能列表.md` 中的 `P0/P1/P2` 指**功能优先级**（Priority），是独立维度。
+
+### 功能列表.md（必含）
+
+文档头部 `> 最后更新：YYYY-MM-DD | 版本：vX.Y`，正文含 3 章：
+
+1. **功能优先级分组**：按 P0/P1/P2 分组。每个功能条目含：
+   - 编号（F0/F1/F2...）+ 功能名
+   - 子功能分解（F0.1 / F0.2 ...）
+   - 验证标准（可观察行为，每条可被验收）
+   - 依赖（其他功能编号，或"无"）
+   - 状态（未实现 / 部分实现 / 已实现，**brownfield 必填**）
+2. **依赖关系图**（mermaid `graph LR`，节点用功能编号 F0/F1/F2）
+3. **版本记录**（表格：版本 / 日期 / 变更）
+
+### 阶段ExitGate.md（可选）
+
+当 Exit Gate 内容较多、需跨多份文档引用时，从路线图抽出为独立文件，路线图中改用编号引用（如 `Exit Gate 见 阶段ExitGate.md#P0`）。
+
+## 禁止清单（P0 铁律）
+
+| 禁止类别 | 示例（禁止） | 替代表述（允许） |
+|---------|-------------|----------------|
+| 类名/协议名 | `RecognitionEngine`、`OverlayController` | 识别引擎、覆盖层控制器 |
+| 方法签名 | `recognize(screen:)` | 执行识别 |
+| 字段类型 | `rect: CGRect` | 位置属性 |
+| 枚举值 | `idle`/`capturing` | 待激活/采集 |
+| 实现语言 | "采用 Swift 实现" | （删除，留给实现计划） |
+| 框架 API | `vDSP.meanv`、`Accelerate` | 向量运算、系统图像处理框架 |
+| 并发原语 | `async let`、`TaskGroup` | 并行执行 |
+| 文件路径/完整代码块/配置键名 | `Sources/Recognition/`、`struct VisualElement { ... }`、`com.xxx.threshold` | 删除 / 文字描述 / 配置项名 |
+
+**判定方法：** 如果一个词出现在代码里能被编译器识别为符号，它就不能出现在路线图或功能列表。
+
+## 红线 — 停下来重写
+
+- 路线图或功能列表出现类名、协议名、方法签名、字段类型、枚举值、文件路径、并发原语、框架 API、实现语言
+- 阶段没有 Exit Gate 或 Exit Gate 不可观察（描述内部状态而非可观察行为）
+- 功能没有编号、验证标准或依赖标注
+- brownfield 项目未标注"已实现/未实现/部分实现"状态
+- 把路线图当设计文档写模块职责、数据流、状态机
+- 把功能列表当实现计划写接口签名、类定义、目录结构
+- 跳过 grill 直接写阶段
+- 跳过审查直接交付
+- 用"团队习惯"/"行业标准"/"AI 更明确"为由保留代码符号
+
+**以上任一情况发生时，停止写作，删除违规内容，重写。**
+
+## 与其他 skill 的关系
+
+```dot
+digraph roadmap_relations {
+    rankdir=LR;
+    node [shape=box];
+    "dd-project-docs/research\n(技术调研)" -> "dd-project-docs/roadmap\n(路线图+功能列表)";
+    "dd-project-docs/roadmap\n(路线图+功能列表)" -> "dd-project-docs/architecture-contract\n(架构契约)";
+    "dd-project-docs/roadmap\n(路线图+功能列表)" -> "dd-writing-specs/requirements-writer\n(P0 阶段需求)";
+    "dd-project-bootstrap-workflow\n(项目启动工作流)" -> "dd-project-docs/roadmap\n(Roadmap 节点)";
+}
+```
+
+- **上游**：[dd-project-docs/research] 的技术调研结论作为路线图输入（最低系统要求、技术栈约束、brownfield 既有功能清单）
+- **下游**：[dd-project-docs/architecture-contract] 基于路线图设计架构契约；[dd-writing-specs/requirements-writer] 的第一阶段需求与验收基于路线图 P0 阶段
+- **被调度**：[dd-project-bootstrap-workflow] 的 Roadmap 节点调用本 skill
+- **审查与确认**：复用 [dd-workflow-runtime/review-gate]（审查）与 [dd-workflow-runtime/ask]（结构化询问 + worktree 选择）
+- **与 dd-writing-specs 的边界**：dd-writing-specs 是功能级规格套件工作流（需求+设计+原型+测试用例），本 skill 是项目级路线图，粒度更粗，不写单个功能的 FR/AC
+
+## 输出要求
+
+- 文件名：`路线图.md` / `功能列表.md`（按 docs.md 调整）
+- 格式：Markdown，层级标题
+- 文档头部：`> 最后更新：YYYY-MM-DD | 版本：vX.Y`
+- 文末：版本记录列表
+- 中文标点（，。！？：；），英文术语保持原文
+- 图示用 mermaid，节点用中文模块名/阶段名/功能名
+- 不使用 emoji（除非用户明确要求）
+- 功能编号：F0/F1/F2...；阶段编号：准备阶段 `P{n}`（如 P0_技术探针、P-1_基线盘点）、功能阶段 `F{n}`（如 F0_首个功能）；功能优先级：P0/P1/P2（独立维度，按项目约定调整）
+
+## Output Review（生成后自检扫描）
+
+| 步骤 | 扫描模式 | 含义 | 发现时处理 |
+|------|---------|------|-----------|
+| 1 | CamelCase 词 | 类名/协议名/类型名 | 转换为业务术语 |
+| 2 | `xxx()` 含括号 | 方法/函数调用 | 转换为业务动作 |
+| 3 | `xxx: Yyy` 含冒号类型标注 | 字段类型定义 | 转换为业务属性 |
+| 4 | `protocol`/`func`/`class`/`struct`/`enum` 关键字 | 代码定义 | 删除，改用业务描述 |
+| 5 | `idle`/`capturing` 等英文状态 | 英文枚举 | 转换为中文业务术语 |
+| 6 | `async let`/`TaskGroup`/`DispatchQueue`/`actor` | 并发原语 | 转换为业务行为 |
+| 7 | `Swift`/`Rust`/`C++`/`Python` 等语言名 | 实现语言选型 | 删除，留给实现计划 |
+| 8 | `vDSP`/`Accelerate`/`CVPixelBuffer`/`CGRect` | 框架 API/类型 | 转换为业务能力描述 |
+| 9 | 复制设计文档的模块职责/数据流/状态机 | 越界内容 | 删除，改引用架构契约 |
+| 10 | Exit Gate 描述内部状态而非可观察行为 | 不可验证 | 改为可观察的退出标准 |
+
+**执行原则：** 扫描发现违规时，不要"修补"，直接重写违规段落。
+
+## 验证清单
+
+- [ ] 全文搜索类名/协议名/方法签名/字段类型/枚举值/文件路径/并发原语/框架 API/实现语言 — 应为 0
+- [ ] 路线图含产品定位、最低系统要求、开发工具
+- [ ] 每阶段含 Goal / IN / OUT / Exit Gate
+- [ ] 每条 Exit Gate 是可观察行为，不是内部状态
+- [ ] 阶段依赖关系图完整（mermaid）
+- [ ] 功能列表按 P0/P1/P2 分组
+- [ ] 每个功能含编号、子功能分解、验证标准、依赖、状态
+- [ ] 每条验证标准是可观察行为
+- [ ] brownfield 项目功能状态标注完整（已实现/部分实现/未实现）
+- [ ] 功能依赖关系图完整无环（mermaid）
+- [ ] 路线图未越界写模块职责/数据流/状态机（属于架构契约）
+- [ ] 功能列表未越界写接口签名/类定义/目录结构（属于实现计划）
+- [ ] 文档头部符合 `> 最后更新：YYYY-MM-DD | 版本：vX.Y`
+- [ ] 中文标点，英文术语保持原文
+- [ ] 不使用 emoji
+- [ ] 新增决策已持久化，审查通过
+- [ ] 文档换实现语言/换框架/换类名不需要改
+
+**任一项失败，修订后重新验证。**
+
+## Git 工作流合规
+
+本技能涉及 Git 操作时，遵循 [dd-git-workflow](../../dd-git-workflow/SKILL.md) 系列子技能。分支命名 `docs/roadmap` 或 `docs/{主题}`，merge-only，禁止 rebase。修改公共文件加 `PublicFile` tag。

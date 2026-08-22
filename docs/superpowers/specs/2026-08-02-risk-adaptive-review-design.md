@@ -24,11 +24,11 @@
 ## 实施范围
 
 1. 更新 `dd-shared-subagent/SKILL.md` 的等级定义、默认规则和升级条件。
-2. 更新 `dd-shared-workflow-runtime/SKILL.md`，明确风险调整的是执行成本，不是验收或确定性验证。
-3. 更新 `dd-brownfield-baseline/SKILL.md`，使基线盘点不再仅因任务类别默认 `high`，而按共享风险规则从 `low` 起逐级升级。
+2. 更新 `dd-workflow-runtime/SKILL.md`，明确风险调整的是执行成本，不是验收或确定性验证。
+3. 更新 `dd-project-docs/brownfield-baseline/SKILL.md`，使基线盘点不再仅因任务类别默认 `high`，而按共享风险规则从 `low` 起逐级升级。
 4. 更新 `dd-ai-refactor-workflow/SKILL.md`，移除“每个 Commit 后三视角并行”的硬编码，改为执行当前 `review_level` 要求的审查。
 5. 不修改领域工作流的交付 Gate、状态合同或用户可见证据要求。
 
 ## 验证
 
-检查两个 Skill 中的等级定义、升级条件与不变项彼此一致，并确保所有引用 `dd-shared-subagent` 的工作流仍可传递 `review_level`。
+检查两个 Skill 中的等级定义、升级条件与不变项彼此一致，并确保所有引用 `dd-workflow-runtime/review-gate` 的工作流仍可传递 `review_level`。

@@ -62,7 +62,7 @@
 - 当前 Phase 提交范围（已记录 SHA range 的 diff）无新增临时日志、TODO 或未解释 skip；
 - 项目规定的其他快速 Gate。
 
-Swift/Xcode 构建遵循 `dd-shared-ci` 的项目/工作区检测和签名合同；不要在本文件硬编码证书或 scheme。
+Swift/Xcode 构建遵循 `dd-workflow-runtime/ci` 的项目/工作区检测和签名合同；不要在本文件硬编码证书或 scheme。
 
 失败必须修复并重跑。通过后原子更新：
 

@@ -60,7 +60,7 @@ Gate：
 - 验证工作区状态与基线；
 - 基线失败时说明现有失败与本 Feature 风险，再 ASK 排查或停止。
 
-创建 worktree、分支命名和初始化遵循 `dd-git-worktree`、`dd-git-branch` 和项目脚本，不在本文件复制语言特定安装命令。
+创建 worktree、分支命名和初始化遵循 `dd-git-workflow/worktree`、`dd-git-workflow/branch` 和项目脚本，不在本文件复制语言特定安装命令。
 
 Gate：
 
@@ -109,7 +109,7 @@ Gate 通过后写路径、review 结论、规格提交 SHA，并更新 `current_
 
 ## 4. Planning
 
-读取已批准的全部规格与 review，先识别 Phase 数量与依赖，再调用 `writing-plans`。
+读取已批准的全部规格与 review，先识别 Phase 数量与依赖，再使用 planning reference。
 
 ### 拆分档位（按 Phase 数量强制）
 
@@ -125,9 +125,9 @@ Gate 通过后写路径、review 结论、规格提交 SHA，并更新 `current_
 Trae 宿主下不得以「总计划里分了 Phase 章节效果一样」「下游按 Phase 顺序读即可」为由降档；这些是合理化借口，参见 [baseline-4-planning-phase-split.md](../tests/baseline-4-planning-phase-split.md)。
 </HARD-GATE>
 
-### 调用 writing-plans 的合同
+### Planning reference 调用合同
 
-调用 [writing-plans](../../writing-plans/SKILL.md) 时必须显式传：
+调用 [planning.md](planning.md) 时必须显式传：
 
 ```yaml
 invocation_mode: helper
@@ -152,11 +152,11 @@ phase_list:
 
 `split_mode` 由上方拆分档位决定：
 
-- `simple`：`Phase ≤ 2`，`writing-plans` 产出 1 个总计划；
-- `per-phase`：`Phase ∈ [3, 5]`，`writing-plans` 按 `phase_list` 逐 Phase 产出独立文件，命名 `plan-phase-<NN>-<slug>.md`；
+- `simple`：`Phase ≤ 2`，`planning reference` 产出 1 个总计划；
+- `per-phase`：`Phase ∈ [3, 5]`，`planning reference` 按 `phase_list` 逐 Phase 产出独立文件，命名 `plan-phase-<NN>-<slug>.md`；
 - `per-phase-with-integration`：`Phase ≥ 6` 或跨子系统，在 `per-phase` 基础上额外产出 `plan-integration-cross-phase.md`。
 
-禁止不传 `phase_list` 与 `split_mode`，让 `writing-plans` 自行决定拆分。`writing-plans` 的「独立子系统」拆分逻辑与本 Phase 拆分概念不对应，必须由本工作流显式驱动。
+禁止不传 `phase_list` 与 `split_mode`，让 `planning reference` 自行决定拆分。`planning reference` 的「独立子系统」拆分逻辑与本 Phase 拆分概念不对应，必须由本工作流显式驱动。
 
 ### 计划至少包含
 
@@ -169,11 +169,6 @@ phase_list:
 - UI 真实入口、操作、断言和证据；
 - 提交边界和回滚；
 - AC → Task → Test/Evidence 映射。
-
-规格已冻结的事实引用不复制：
-
-- 计划引用 Test ID / population ID / policy 版本，不手工复制完整 item registry、seed manifest 或追溯矩阵；
-- 弱模型执行版是唯一允许内联冻结事实的位置（弱模型不跨文档导航）；内联内容必须标注来源并可与源文档核对——核对口径：来源 ID 清单 + 来源文档版本号，脚本生成的展开表附带脚本输出的 SHA；中间层总计划不得再复制一份。
 
 禁止 `TODO`、`待定`、笼统错误处理、未定义符号和“类似任务 N”。
 
@@ -204,7 +199,7 @@ current_phase: 0
 ### 红线
 
 - Phase ≥ 3 时只用一个总计划文件包含所有 Phase；
-- 调用 `writing-plans` 不传 `phase_list` 与 `split_mode`，让它自行决定拆分；
+- 使用 planning reference 不传 `phase_list` 与 `split_mode`，让它自行决定拆分；
 - 用同一文件内 `## Phase N` 二级标题代替独立文件；
 - 复杂档缺失跨 Phase 集成计划；
 - 状态文件未写 `phase_plan_paths` 数组就推进到 implementation。

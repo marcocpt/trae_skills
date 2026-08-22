@@ -1,4 +1,0 @@
-interface:
-  display_name: "DD Workflow Runtime"
-  short_description: "为长期工作流提供跨宿主状态恢复、Gate 与结束合同"
-  default_prompt: "Use $dd-shared-workflow-runtime to run this DD workflow with durable state, gates, and host-aware completion."

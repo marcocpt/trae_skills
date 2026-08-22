@@ -4,7 +4,7 @@
 
 **目标：** 将项目 Bootstrap 工作流及其直接依赖重构为可在 Trae/Codex 中跨会话恢复、按需加载、低重复询问并保持质量 Gate 的 Agent Skill 生态。
 
-**架构：** `dd-project-bootstrap-workflow/SKILL.md` 只保留路由、状态、依赖图、Gate 和 Handoff，详细治理规则拆入三份 reference。共享 skill 提供宿主询问、状态恢复和风险分级审查协议；原子 writer 消费统一上游上下文；新增 `dd-write-phase-contract`；最终统一交接给 Feature workflow。
+**架构：** `dd-project-bootstrap-workflow/SKILL.md` 只保留路由、状态、依赖图、Gate 和 Handoff，详细治理规则拆入三份 reference。共享 skill 提供宿主询问、状态恢复和风险分级审查协议；原子 writer 消费统一上游上下文；新增 `dd-project-docs/phase-contract`；最终统一交接给 Feature workflow。
 
 **技术栈：** Markdown Agent Skills、YAML frontmatter、Git、Python 3 静态验证、`rg`、Codex `quick_validate.py`
 
@@ -19,10 +19,10 @@
 - `dd-project-bootstrap-workflow/references/brownfield-policy.md`：模式判定、兼容分类、公开面、lint ratchet 和架构冻结。
 - `dd-project-bootstrap-workflow/tests/baseline-3-resume-without-reasking.md`：恢复后不重复询问。
 - `dd-project-bootstrap-workflow/tests/baseline-4-trae-final-ask.md`：Trae 最终 ASK。
-- `dd-write-phase-contract/SKILL.md`：准备/迁移阶段需求与验收 writer。
-- `dd-write-phase-contract/tests/baseline-1-brownfield-classification.md`：Characterization 分类映射。
-- `dd-write-phase-contract/tests/baseline-2-known-defect-not-ac.md`：已知缺陷不进入目标 AC。
-- `dd-write-phase-contract/tests/baseline-3-upstream-context.md`：上游事实复用。
+- `dd-project-docs/phase-contract/SKILL.md`：准备/迁移阶段需求与验收 writer。
+- `dd-project-docs/phase-contract/tests/baseline-1-brownfield-classification.md`：Characterization 分类映射。
+- `dd-project-docs/phase-contract/tests/baseline-2-known-defect-not-ac.md`：已知缺陷不进入目标 AC。
+- `dd-project-docs/phase-contract/tests/baseline-3-upstream-context.md`：上游事实复用。
 
 ### 修改
 
@@ -32,12 +32,12 @@
 - `dd-project-bootstrap-workflow/SKILL.md`：重写为短编排入口。
 - `dd-project-bootstrap-workflow/tests/baseline-1-greenfield-skip-phase-contract.md`：改用兼容义务判断。
 - `dd-project-bootstrap-workflow/tests/baseline-2-brownfield-baseline-first.md`：改用 requested entry + gap scan。
-- `dd-brownfield-baseline/SKILL.md`：兼容义务、处置分类和上游上下文。
-- `dd-project-research/SKILL.md`：上游上下文和风险触发研究。
-- `dd-write-roadmap/SKILL.md`：消费上游事实和 Gap Scan。
-- `dd-write-architecture-contract/SKILL.md`：状态三阶段与双公开面。
-- `dd-write-coding-standards/SKILL.md`：Greenfield/ Brownfield lint 策略。
-- `dd-write-ai-conventions/SKILL.md`：短入口、nested `AGENTS.md`、薄 Trae adapter 和最终 ASK。
+- `dd-project-docs/brownfield-baseline/SKILL.md`：兼容义务、处置分类和上游上下文。
+- `dd-project-docs/research/SKILL.md`：上游上下文和风险触发研究。
+- `dd-project-docs/roadmap/SKILL.md`：消费上游事实和 Gap Scan。
+- `dd-project-docs/architecture-contract/SKILL.md`：状态三阶段与双公开面。
+- `dd-project-docs/coding-standards/SKILL.md`：Greenfield/ Brownfield lint 策略。
+- `dd-project-docs/ai-conventions/SKILL.md`：短入口、nested `AGENTS.md`、薄 Trae adapter 和最终 ASK。
 - `dd-feature-development-workflow/SKILL.md`：消费统一 Bootstrap Handoff。
 
 ---
@@ -63,7 +63,7 @@ rg -n "project-bootstrap|requested_entry|session_close|结束本次任务|review
 
 预期：找不到完整的 Bootstrap 状态、Trae 会话结束合同和 `low/standard/high` 审查等级，命令返回 1。
 
-- [ ] **步骤 2：为 `dd-shared-ask` 增加宿主无关决策协议**
+- [ ] **步骤 2：为 `dd-workflow-runtime/ask` 增加宿主无关决策协议**
 
 在“结构化询问”后加入以下完整规则：
 
@@ -94,7 +94,7 @@ rg -n "project-bootstrap|requested_entry|session_close|结束本次任务|review
 Codex 和其他宿主不强制无意义的结束确认，除非用户或项目规则明确要求。
 ```
 
-- [ ] **步骤 3：将 `dd-shared-state` 泛化到 Bootstrap**
+- [ ] **步骤 3：将 `dd-workflow-runtime/state` 泛化到 Bootstrap**
 
 把参数表扩展为：
 
@@ -146,7 +146,7 @@ Codex 和其他宿主不强制无意义的结束确认，除非用户或项目�
 - 并发检查必须同时覆盖三个状态文件。
 ```
 
-- [ ] **步骤 4：将 `dd-shared-subagent` 改为风险分级审查**
+- [ ] **步骤 4：将 `dd-workflow-runtime/review-gate` 改为风险分级审查**
 
 保留三个固定语义视角，替换“所有检查必须三子代理”为：
 
@@ -204,14 +204,14 @@ git commit -m "refactor(skills): add portable bootstrap runtime contracts"
 
 ---
 
-### 任务 2：新增 `dd-write-phase-contract`
+### 任务 2：新增 `dd-project-docs/phase-contract`
 
 **文件：**
 
-- 创建：`dd-write-phase-contract/SKILL.md`
-- 创建：`dd-write-phase-contract/tests/baseline-1-brownfield-classification.md`
-- 创建：`dd-write-phase-contract/tests/baseline-2-known-defect-not-ac.md`
-- 创建：`dd-write-phase-contract/tests/baseline-3-upstream-context.md`
+- 创建：`dd-project-docs/phase-contract/SKILL.md`
+- 创建：`dd-project-docs/phase-contract/tests/baseline-1-brownfield-classification.md`
+- 创建：`dd-project-docs/phase-contract/tests/baseline-2-known-defect-not-ac.md`
+- 创建：`dd-project-docs/phase-contract/tests/baseline-3-upstream-context.md`
 
 - [ ] **步骤 1：建立三个失败场景**
 
@@ -250,18 +250,18 @@ git commit -m "refactor(skills): add portable bootstrap runtime contracts"
 验证失败：
 
 ```bash
-test -f dd-write-phase-contract/SKILL.md
+test -f dd-project-docs/phase-contract/SKILL.md
 ```
 
 预期：返回 1。
 
 - [ ] **步骤 2：创建 skill frontmatter 与边界**
 
-`dd-write-phase-contract/SKILL.md` 以以下内容开始：
+`dd-project-docs/phase-contract/SKILL.md` 以以下内容开始：
 
 ```markdown
 ---
-name: dd-write-phase-contract
+name: dd-project-docs/phase-contract
 description: 当需要为项目准备阶段、Brownfield 迁移阶段或兼容性阶段编写 `{X}_01_阶段需求与验收.md` 时使用。覆盖阶段 Goal、Scope、FR、NFR、Constraints、Acceptance Criteria、Out of Scope、Decision Freedom 和 Exit Gate；消费 Bootstrap baseline/roadmap/architecture 上游事实，不用于普通功能规格、设计文档或实现计划。
 ---
 
@@ -315,9 +315,9 @@ description: 当需要为项目准备阶段、Brownfield 迁移阶段或兼容�
 运行：
 
 ```bash
-python3 /Users/dengdeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py dd-write-phase-contract
-test "$(find dd-write-phase-contract/tests -maxdepth 1 -name 'baseline-*.md' | wc -l | tr -d ' ')" = "3"
-rg -n "KNOWN_DEFECT|TOLERATED_COMPATIBILITY|REVIEW|禁止重复询问|Exit Gate" dd-write-phase-contract
+python3 /Users/dengdeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py dd-project-docs/phase-contract
+test "$(find dd-project-docs/phase-contract/tests -maxdepth 1 -name 'baseline-*.md' | wc -l | tr -d ' ')" = "3"
+rg -n "KNOWN_DEFECT|TOLERATED_COMPATIBILITY|REVIEW|禁止重复询问|Exit Gate" dd-project-docs/phase-contract
 git diff --check
 ```
 
@@ -326,7 +326,7 @@ git diff --check
 - [ ] **步骤 5：Commit**
 
 ```bash
-git add dd-write-phase-contract
+git add dd-project-docs/phase-contract
 git commit -m "feat(skills): add phase contract writer"
 ```
 
@@ -359,7 +359,7 @@ rg -n "^## docs 治理规范|^## 流程|^## 步骤 0|^## 步骤 9" dd-project-bo
 ```markdown
 - 技术探针按风险触发，不再写“可选，greenfield 必含”；
 - Architecture 使用 hypothesis → provisional → approved baseline → frozen；
-- `AskUserQuestion` 改为引用 `dd-shared-ask` 的宿主协议；
+- `AskUserQuestion` 改为引用 `dd-workflow-runtime/ask` 的宿主协议；
 - Git 分支/merge/rebase 细则改为引用 `dd-git-workflow`；
 - AI 阅读策略明确“Always read / Read when relevant / Do not preload”。
 ```
@@ -479,7 +479,7 @@ Preflight → Docs Governance → Baseline?/Research? → Roadmap → Architectu
 - brownfield：`references/brownfield-policy.md`
 ```
 
-正文同时列出七个子 skill 的精确相对路径，并明确首次修改文件前复用 `dd-shared-ask` 的 worktree 选择。
+正文同时列出七个子 skill 的精确相对路径，并明确首次修改文件前复用 `dd-workflow-runtime/ask` 的 worktree 选择。
 
 - [ ] **步骤 6：验证瘦身与链接**
 
@@ -514,9 +514,9 @@ git commit -m "refactor(bootstrap): split orchestration from policy"
 
 **文件：**
 
-- 修改：`dd-brownfield-baseline/SKILL.md`
-- 修改：`dd-project-research/SKILL.md`
-- 修改：`dd-write-roadmap/SKILL.md`
+- 修改：`dd-project-docs/brownfield-baseline/SKILL.md`
+- 修改：`dd-project-docs/research/SKILL.md`
+- 修改：`dd-project-docs/roadmap/SKILL.md`
 
 - [ ] **步骤 1：加入统一上游上下文协议**
 
@@ -582,16 +582,16 @@ Gate 要求 REVIEW 阻塞，KNOWN_DEFECT 不得进入兼容 allowlist。
 运行：
 
 ```bash
-for d in dd-brownfield-baseline dd-project-research dd-write-roadmap; do
+for d in dd-project-docs/brownfield-baseline dd-project-docs/research dd-project-docs/roadmap; do
   python3 /Users/dengdeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py "$d"
 done
 rg -n "上游上下文协议|不得重复询问|review_level" \
-  dd-brownfield-baseline/SKILL.md \
-  dd-project-research/SKILL.md \
-  dd-write-roadmap/SKILL.md
-rg -n "PRESERVE|KNOWN_DEFECT|Legacy.*Surface|Target.*Surface" dd-brownfield-baseline/SKILL.md
+  dd-project-docs/brownfield-baseline/SKILL.md \
+  dd-project-docs/research/SKILL.md \
+  dd-project-docs/roadmap/SKILL.md
+rg -n "PRESERVE|KNOWN_DEFECT|Legacy.*Surface|Target.*Surface" dd-project-docs/brownfield-baseline/SKILL.md
 git diff --check
-git add dd-brownfield-baseline/SKILL.md dd-project-research/SKILL.md dd-write-roadmap/SKILL.md
+git add dd-project-docs/brownfield-baseline/SKILL.md dd-project-docs/research/SKILL.md dd-project-docs/roadmap/SKILL.md
 git commit -m "refactor(skills): consume bootstrap context upstream"
 ```
 
@@ -603,13 +603,13 @@ git commit -m "refactor(skills): consume bootstrap context upstream"
 
 **文件：**
 
-- 修改：`dd-write-architecture-contract/SKILL.md`
-- 修改：`dd-write-coding-standards/SKILL.md`
-- 修改：`dd-write-ai-conventions/SKILL.md`
+- 修改：`dd-project-docs/architecture-contract/SKILL.md`
+- 修改：`dd-project-docs/coding-standards/SKILL.md`
+- 修改：`dd-project-docs/ai-conventions/SKILL.md`
 
 - [ ] **步骤 1：加入统一上游上下文协议**
 
-复用任务 4 的“上游上下文协议”，并把无条件“三子代理审查”改为遵循 `dd-shared-subagent` 的 `review_level`。
+复用任务 4 的“上游上下文协议”，并把无条件“三子代理审查”改为遵循 `dd-workflow-runtime/review-gate` 的 `review_level`。
 
 - [ ] **步骤 2：修订 Architecture 状态与公开面**
 
@@ -685,17 +685,17 @@ Bootstrap 不得把 `approved-baseline` 误写成永久冻结。
 运行：
 
 ```bash
-for d in dd-write-architecture-contract dd-write-coding-standards dd-write-ai-conventions; do
+for d in dd-project-docs/architecture-contract dd-project-docs/coding-standards dd-project-docs/ai-conventions; do
   python3 /Users/dengdeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py "$d"
 done
-rg -n "approved-baseline|Legacy Compatibility Surface|Target Public Surface" dd-write-architecture-contract/SKILL.md
-rg -n "ratchet|changed code|new code" dd-write-coding-standards/SKILL.md
-rg -n "Always read|Do not preload|结束本次任务|还有其他任务|nested" dd-write-ai-conventions/SKILL.md
+rg -n "approved-baseline|Legacy Compatibility Surface|Target Public Surface" dd-project-docs/architecture-contract/SKILL.md
+rg -n "ratchet|changed code|new code" dd-project-docs/coding-standards/SKILL.md
+rg -n "Always read|Do not preload|结束本次任务|还有其他任务|nested" dd-project-docs/ai-conventions/SKILL.md
 git diff --check
 git add \
-  dd-write-architecture-contract/SKILL.md \
-  dd-write-coding-standards/SKILL.md \
-  dd-write-ai-conventions/SKILL.md
+  dd-project-docs/architecture-contract/SKILL.md \
+  dd-project-docs/coding-standards/SKILL.md \
+  dd-project-docs/ai-conventions/SKILL.md
 git commit -m "refactor(skills): align architecture quality and host rules"
 ```
 
@@ -871,16 +871,16 @@ git commit -m "test(bootstrap): cover entry resume and Trae completion"
 ```bash
 for d in \
   dd-project-bootstrap-workflow \
-  dd-write-phase-contract \
+  dd-project-docs/phase-contract \
   dd-shared-ask \
   dd-shared-state \
   dd-shared-subagent \
-  dd-brownfield-baseline \
-  dd-project-research \
-  dd-write-roadmap \
-  dd-write-architecture-contract \
-  dd-write-coding-standards \
-  dd-write-ai-conventions \
+  dd-project-docs/brownfield-baseline \
+  dd-project-docs/research \
+  dd-project-docs/roadmap \
+  dd-project-docs/architecture-contract \
+  dd-project-docs/coding-standards \
+  dd-project-docs/ai-conventions \
   dd-feature-development-workflow; do
   python3 /Users/dengdeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py "$d" || exit 1
 done
@@ -896,16 +896,16 @@ from pathlib import Path
 
 roots = [
     Path("dd-project-bootstrap-workflow"),
-    Path("dd-write-phase-contract"),
+    Path("dd-project-docs/phase-contract"),
     Path("dd-shared-ask"),
     Path("dd-shared-state"),
     Path("dd-shared-subagent"),
-    Path("dd-brownfield-baseline"),
-    Path("dd-project-research"),
-    Path("dd-write-roadmap"),
-    Path("dd-write-architecture-contract"),
-    Path("dd-write-coding-standards"),
-    Path("dd-write-ai-conventions"),
+    Path("dd-project-docs/brownfield-baseline"),
+    Path("dd-project-docs/research"),
+    Path("dd-project-docs/roadmap"),
+    Path("dd-project-docs/architecture-contract"),
+    Path("dd-project-docs/coding-standards"),
+    Path("dd-project-docs/ai-conventions"),
     Path("dd-feature-development-workflow"),
 ]
 for root in roots:
@@ -918,7 +918,7 @@ print("markdown fences: ok")
 PY
 
 rg -n ">=1 个源文件.*brownfield|严格按 0→1→2→3→4→5→6→7→8→9|每步产物已 git commit" \
-  dd-project-bootstrap-workflow dd-write-phase-contract
+  dd-project-bootstrap-workflow dd-project-docs/phase-contract
 
 git diff --check
 ```
@@ -962,16 +962,16 @@ git diff origin/develop...HEAD --stat
 ```bash
 git add \
   dd-project-bootstrap-workflow \
-  dd-write-phase-contract \
+  dd-project-docs/phase-contract \
   dd-shared-ask/SKILL.md \
   dd-shared-state/SKILL.md \
   dd-shared-subagent/SKILL.md \
-  dd-brownfield-baseline/SKILL.md \
-  dd-project-research/SKILL.md \
-  dd-write-roadmap/SKILL.md \
-  dd-write-architecture-contract/SKILL.md \
-  dd-write-coding-standards/SKILL.md \
-  dd-write-ai-conventions/SKILL.md \
+  dd-project-docs/brownfield-baseline/SKILL.md \
+  dd-project-docs/research/SKILL.md \
+  dd-project-docs/roadmap/SKILL.md \
+  dd-project-docs/architecture-contract/SKILL.md \
+  dd-project-docs/coding-standards/SKILL.md \
+  dd-project-docs/ai-conventions/SKILL.md \
   dd-feature-development-workflow/SKILL.md
 git commit -m "fix(skills): close bootstrap ecosystem validation gaps"
 ```

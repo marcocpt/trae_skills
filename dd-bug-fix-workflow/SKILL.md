@@ -18,7 +18,7 @@ description: 当修复需要证据驱动根因调查、隔离环境、TDD、回�
 
 ## 运行时
 
-开始或恢复时调用 [dd-shared-workflow-runtime](../dd-shared-workflow-runtime/SKILL.md)：
+开始或恢复时调用 [dd-workflow-runtime](../dd-workflow-runtime/SKILL.md)：
 
 ```yaml
 workflow_type: bug-fix
@@ -184,7 +184,7 @@ merge_commit: null
 - 根因必须由日志、数据流、对比或最小实验支持；
 - 不得为了绿灯随意修改旧测试预期；
 - UI 修复不能只用内部状态、mock 或日志证明；
-- XCTest/XCUITest 等执行位置遵循 `test-location-strategy` 和 `dd-shared-ci`；
+- XCTest/XCUITest 等执行位置遵循 `dd-workflow-runtime/test-location` 和 `dd-workflow-runtime/ci`；
 - 文档检查不能只看修改文件列表；
 - Git 操作遵循 `dd-git-workflow`，不混入无关脏文件；
 - 没有子 Agent 时由主线程执行同义复核，不降低检查项。

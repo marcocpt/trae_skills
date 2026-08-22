@@ -7,7 +7,7 @@ description: 用户想逐条交互式审核文档时使用。触发词：审核�
 
 ## 目标
 
-以“证据解答 → 可视化 → 满意度 → TODO/LATER 落盘 → 可选批量修复”持续审核文档。使用 [dd-shared-workflow-runtime](../dd-shared-workflow-runtime/SKILL.md) 保证长会话中断可恢复；默认只加载本文件，进入单轮问答或落盘/修复时再读对应 reference。
+以“证据解答 → 可视化 → 满意度 → TODO/LATER 落盘 → 可选批量修复”持续审核文档。使用 [dd-workflow-runtime](../dd-workflow-runtime/SKILL.md) 保证长会话中断可恢复；默认只加载本文件，进入单轮问答或落盘/修复时再读对应 reference。
 
 ## 两种模式
 
@@ -44,7 +44,7 @@ state_file: $(git rev-parse --git-dir)/docreview-state.json
 ## 启动
 
 1. 读取项目规则和被审核文档；
-2. 判断是否只读。预计写 TODO/LATER/代码时，首次修改前按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 选择 worktree；
+2. 判断是否只读。预计写 TODO/LATER/代码时，首次修改前按 [dd-workflow-runtime/ask](../dd-workflow-runtime/references/ask.md) 选择 worktree；
 3. 若未提供路径，ASK 一个问题获取路径；
 4. ASK 审核模式；
 5. ASK 起始章节；
@@ -59,7 +59,7 @@ state_file: $(git rev-parse --git-dir)/docreview-state.json
 每个用户问题固定执行：
 
 1. 定位文档锚点；
-2. 模式 B 额外验证代码、测试、装配和调用路径；模式 A 审核规格类文档（需求 / 设计 / 阶段合同 / 测试用例表）时，检查跨层重复——同一事实是否只有一个属主文档、下游是否引用编号而非复制正文；
+2. 模式 B 额外验证代码、测试、装配和调用路径；
 3. 给出证据结论与可点击位置；
 4. 对流程、状态、时序、架构或 UI 差异使用最小有效可视化；
 5. 多方案时列出候选、推荐与权衡，并 ASK 用户选择；
@@ -144,11 +144,7 @@ TODO 使用 Logseq 兼容的 Markdown task：
 
 ## Host Close
 
-仅 `invocation_mode=standalone` 执行。持久化 `status=completed` 后，按 [dd-shared-workflow-runtime](../dd-shared-workflow-runtime/SKILL.md) 的 Host Close 规范收尾：Trae 必须结构化 ASK `结束本次任务 / 还有其他任务`，null 重问；选择"结束本次任务"后输出最终摘要，禁止先摘要直接结束。
-
-失败信号：
-
-- 证据不足却下结论，或按功能标签代替文件冲突分组；
+仅 `invocation_mode=standalone` 执行。证据依据据却按功能标签代替文件冲突分组；
 - 未提交修复就标 `[x]`；
 - 同批混合 bug/feature 或超过 5 条；
 - child 修复工作流自行 Host Close；

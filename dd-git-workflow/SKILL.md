@@ -1,23 +1,22 @@
 ---
 name: dd-git-workflow
-description: 当需要了解 Git 工作流全貌、不确定应使用哪个子技能时使用。触发词：git workflow、git 工作流、分支模型。
+description: 当 AI Coding 任务涉及分支、worktree、commit、merge、冲突、CI、分支健康或清理时使用；也用于 Feature/Bug/Refactor/Bootstrap 的 Git Delivery Gate。触发词：git workflow、创建分支、worktree、commit、merge、冲突、pre-merge、cleanup。
 ---
 
-# Git 工作流入口
+# Git 工作流
 
-## 概述
+## 目标
 
-AI Coding 场景下的 Git 工作流守护技能，适用于 Cursor、Codex、Claude Code、Trae 等 AI Agent 在多分支并行开发时的版本管理。
-
-**核心原则：** 一个分支一个功能；每天必须有合并动作（不只是同步）；merge-only，不引入 rebase。
-
-本技能是 Git 子技能的路由入口。子技能一律以 `invocation_mode=helper` 返回；直接承接用户目标时由顶层 `standalone` 会话按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 完成 Trae/Codex 宿主收尾，禁止子技能重复 ASK 是否结束。
+为 AI Agent 提供一套统一、可按需加载的 Git 约束。Codex 可直接执行普通 Git 原子命令；本 Skill 只保留项目特有的分支模型、merge-only、worktree 隔离、CI SHA 绑定、冲突与清理规则。
 
 ## 核心原则
 
-1. 一个分支只做一个功能
-2. AI Coding 场景下分支每天必须有合并动作，无固定天数上限
-3. AI Coding 场景优先使用 **merge**，而不是长期使用 **rebase**
+1. 一个分支一个职责，一个 worktree 一个分支；
+2. `develop` 保持可编译、可测试；`main` 仅用于发布；
+3. 已共享开发分支优先 merge-only，不以长期 rebase 改写历史；
+4. 合并前必须验证准确候选 SHA；
+5. 不混入用户已有 dirty diff，不自动清理未确认分支；
+6. Git 原子动作由 Codex 直接执行，只有需要专项规则时再读 reference。
 
 ## 分支模型
 
@@ -30,87 +29,28 @@ main
       └── refactor/{模块}
 ```
 
-### 三层模型
+## 按需读取
 
-- `main`：仅用于正式发布，永远保持可发布状态
-- `develop`：开发主干，始终保持可编译、测试通过
-- `feature/*` / `fix/*` / `docs/*` / `refactor/*`：工作分支，一个功能一个分支，一个 AI Agent 一个分支
+| 场景 | Reference |
+|---|---|
+| 分支命名 / Feature Flag | [branch.md](references/branch.md) |
+| worktree 创建与隔离 | [worktree.md](references/worktree.md) |
+| commit 生成与 staging | [commit.md](references/commit.md) |
+| merge / push / commit 规范 | [merge.md](references/merge.md) |
+| 冲突与公共文件风险 | [conflict.md](references/conflict.md) |
+| 合并前 CI / PreMergeChecklist | [ci.md](references/ci.md) |
+| 分支健康 / daily sync | [health.md](references/health.md) |
+| 已合并分支与 worktree 清理 | [cleanup.md](references/cleanup.md) |
+| 仓库自带脚本调用合同 | [scripts.md](references/scripts.md) |
 
-### 分支命名规则
-
-| 前缀 | 用途 | 命名格式 | 示例 |
-|------|------|---------|------|
-| `feature/` | 新功能开发 | `feature/{F编号}-{描述}` | `feature/F3.1-ocr-acceleration` |
-| `fix/` | 缺陷修复 | `fix/{F编号}-{描述}` | `fix/F2.4-hotkey-conflict` |
-| `docs/` | 文档变更 | `docs/{主题}` | `docs/ai-git-workflow` |
-| `refactor/` | 重构 | `refactor/{模块}` | `refactor/core-state-machine` |
-
-命名约束：
-
-- 描述部分使用小写英文与连字符，避免下划线、空格、中文
-- 一个分支只承载一个职责，禁止在 `feature/` 分支混入 `fix/` 内容
-- 分支名总长度建议不超过 50 字符
-
-## 子技能导航
-
-| 子技能 | 职责 | 触发场景 |
-|--------|------|---------|
-| [dd-git-branch](../dd-git-branch/SKILL.md) | 分支命名、创建、Feature Flag | 新建分支、分支命名 |
-| [dd-git-merge](../dd-git-merge/SKILL.md) | merge-only、每天合并、Commit 规范 | 合并流程、提交规范 |
-| [dd-git-conflict](../dd-git-conflict/SKILL.md) | 冲突处理、公共文件锁、模块边界 | 冲突解决、公共文件修改 |
-| [dd-git-worktree](../dd-git-worktree/SKILL.md) | worktree 创建、命名、同步、清理 | 工作树管理 |
-| [dd-git-health](../dd-git-health/SKILL.md) | 健康度检查、每日同步 | 分支健康监控 |
-| [dd-git-cleanup](../dd-git-cleanup/SKILL.md) | 废弃分支检测、清理流程 | 分支清理 |
-| [dd-git-ci](../dd-git-ci/SKILL.md) | 合并前检查、CI 配置、JSON 输出 | 合并前自检、CI 配置 |
-
-## 被其他 skill 引用方式
-
-### 语义触发
-
-其他 skill 通过 description 字段语义触发本技能：
-
-- `dd-writing-specs`：编写规格文档套件涉及分支创建时引用
-- `dd-feature-development-workflow`：功能开发流程涉及合并检查时引用
-- `dd-bug-fix-workflow`：bug 修复流程涉及分支管理时引用
-- `finishing-a-development-branch`：分支收尾涉及合并检查时引用
-
-### 调用入口
-
-| 时机 | 调用入口 | 输出 |
-|------|---------|------|
-| 分支创建 | `../dd-ai-git-workflow/scripts/create-worktree.sh` | 分支名 + worktree 路径 |
-| 日常同步 | `../dd-ai-git-workflow/scripts/daily-sync.sh` | 同步结果 + 冲突清单 |
-| 合并前检查 | `../dd-ai-git-workflow/scripts/pre-merge-check.sh` | PreMergeChecklist JSON |
-| 冲突处理 | `../dd-ai-git-workflow/scripts/conflict-predict.sh` | ConflictPredictionReport JSON |
-| 健康监控 | `../dd-ai-git-workflow/scripts/branch-health.sh` | BranchHealthReport JSON |
-| 废弃清理 | `../dd-ai-git-workflow/scripts/cleanup-suggest.sh` | CleanupSuggestion JSON |
-
-### 输出引用
-
-其他 skill 可读取本技能输出的结构化数据：
-
-- `PreMergeChecklist.all_pass` 为 `false` 时，调用方必须阻止合并
-- `BranchHealthReport.grade` 为 `dangerous` 时，调用方必须提示干预
-- `ConflictPredictionReport.severity` 为 `high` 时，调用方必须提示先解决冲突
-- `CleanupSuggestion.stale_worktrees` 非空时，调用方可提示用户清理
-
-### 协同约定
-
-- 本技能**不替代**项目文档同步技能，仅在合并前检查中引用其能力
-- 本技能**不替代**项目编码规范，仅在 SwiftLint 检查中调用
-- 本技能**不重复**项目规则，只在分支管理维度补充
+脚本位于 [scripts/](scripts/)：`create-worktree.sh`、`daily-sync.sh`、`pre-merge-check.sh`、`conflict-predict.sh`、`branch-health.sh`、`cleanup-suggest.sh`。
 
 ## 全局禁止事项
 
-- 长期未同步 develop 的分支（超过 1 天未合并视为陈旧）
-- 一个分支多个独立功能
-- Merge 前不测试
-- 修改大量公共文件
-- 已共享分支频繁 Rebase
-- **禁止 worktree 跨分支共享工作区**：一个 worktree 只属于一个分支
-- **禁止公共文件长期独立修改**：公共文件分支必须 <1 天合并
-- **禁止跨模块边界修改**：单个 Agent 不得同时修改 3 个以上模块
-- **禁止用 `--ff-only` 替代功能合并**：功能合并必须 `--no-ff` 保留分支历史
-- **禁止跳过 AI 自检直接合并**：合并前必须运行 `pre-merge-check.sh`
-- **禁止自动清理未确认分支**：清理脚本仅输出建议，必须用户确认
-- **禁止用固定 sleep 掩盖合并竞态**：合并冲突必须显式解决
+- 一个分支混入多个独立功能；
+- worktree 跨分支共享工作区；
+- Merge 前不测试或用旧 CI 结果冒充当前 SHA；
+- 未经确认覆盖/清理用户已有改动；
+- 已共享分支频繁 rebase / force push；
+- 用固定 sleep 掩盖 Git/CI 竞态；
+- 自动删除未确认分支或 worktree。

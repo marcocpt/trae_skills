@@ -18,7 +18,7 @@ description: 当实现需要规格套件、分阶段计划、TDD、CI 或用户�
 
 ## 运行时
 
-开始或恢复时调用 [dd-shared-workflow-runtime](../dd-shared-workflow-runtime/SKILL.md)：
+开始或恢复时调用 [dd-workflow-runtime](../dd-workflow-runtime/SKILL.md)：
 
 ```yaml
 workflow_type: feature-development
@@ -193,7 +193,7 @@ phase_contract_path: null
 
 读取 [specification-and-planning.md](references/specification-and-planning.md) 的 Planning。
 
-按 Phase 数量强制拆分档位（`<HARD-GATE>`），调用 `writing-plans` 时显式传 `split_mode` 与 `phase_list`，禁止让 `writing-plans` 自行决定拆分。Gate：无占位符、AC 映射完整、验证与提交边界明确、`phase_plan_paths` 数组与 `split_mode` 一致、计划已按项目规则交付。
+按 Phase 数量强制拆分档位（`<HARD-GATE>`），使用 [planning.md](references/planning.md) 时显式传 `split_mode` 与 `phase_list`，禁止让 `planning reference` 自行决定拆分。Gate：无占位符、AC 映射完整、验证与提交边界明确、`phase_plan_paths` 数组与 `split_mode` 一致、计划已按项目规则交付。
 
 ### Implementation
 
@@ -237,7 +237,7 @@ phase_contract_path: null
 - 每个 AC 映射到计划、测试或明确证据；
 - UI AC 不能只由内部状态、mock、日志、layer count 或组件渲染证明；
 - 自动化不可行时保留手动步骤、证据路径、责任人和风险；
-- 测试位置与证书规则遵循 `test-location-strategy` 和 `dd-shared-ci`；
+- 测试位置与证书规则遵循 `dd-workflow-runtime/test-location` 和 `dd-workflow-runtime/ci`；
 - Git 操作遵循 `dd-git-workflow`，不混入无关脏文件。
 
 ## 红线
@@ -246,7 +246,7 @@ phase_contract_path: null
 - 重问 Handoff 或状态中已解决事实；
 - 跨 worktree 引用未提交状态；
 - 未通过 Phase Local Gate 就进入下一 Phase；
-- Phase ≥ 3 时只用一个总计划文件包含所有 Phase，或调用 `writing-plans` 不传 `split_mode` 与 `phase_list`；
+- Phase ≥ 3 时只用一个总计划文件包含所有 Phase，或使用 planning reference 不传 `split_mode` 与 `phase_list`；
 - 用内部状态宣称 UI 已验证；
 - 完整 CI 没有验证最终候选 SHA 就推进 develop；
 - 候选过期后仍推进；

@@ -4,7 +4,7 @@
 
 **目标：** 让 GPT-5.6 默认以主 Agent 三视角自检完成审查，并只在显式高风险或上一层发现争议时升级为独立或三代理审查。
 
-**架构：** `dd-shared-subagent` 是等级与升级条件的唯一权威；运行时保留“固定语义、风险决定成本”的全局约束。Brownfield 和重构工作流不再把任务类别或每次提交直接映射为三个 reviewer，而是消费当前 `review_level`。
+**架构：** `dd-workflow-runtime/review-gate` 是等级与升级条件的唯一权威；运行时保留“固定语义、风险决定成本”的全局约束。Brownfield 和重构工作流不再把任务类别或每次提交直接映射为三个 reviewer，而是消费当前 `review_level`。
 
 **技术栈：** Markdown Skill 契约、`rg` 文本断言、Git。
 
@@ -13,8 +13,8 @@
 ## 文件结构
 
 - 修改：`dd-shared-subagent/SKILL.md` — 定义三档执行方式、默认等级、显式升级触发器及复验规则。
-- 修改：`dd-shared-workflow-runtime/SKILL.md` — 说明风险仅调整执行成本，确定性验证与验收条件不变。
-- 修改：`dd-brownfield-baseline/SKILL.md` — 移除基线盘点的类别型 `high` 默认值，改为共享规则的初始等级和升级路径。
+- 修改：`dd-workflow-runtime/SKILL.md` — 说明风险仅调整执行成本，确定性验证与验收条件不变。
+- 修改：`dd-project-docs/brownfield-baseline/SKILL.md` — 移除基线盘点的类别型 `high` 默认值，改为共享规则的初始等级和升级路径。
 - 修改：`dd-ai-refactor-workflow/SKILL.md` — 移除每次提交后三代理并行的硬编码，改为当前等级的三视角审查。
 
 ### 任务 1：将共享审查等级改为风险触发升级
@@ -59,14 +59,14 @@ git commit -m "refactor(skills): make shared review risk-adaptive"
 ### 任务 2：同步运行时与 Brownfield 入口
 
 **文件：**
-- 修改：`dd-shared-workflow-runtime/SKILL.md:105-113`
-- 修改：`dd-brownfield-baseline/SKILL.md:200-223`
+- 修改：`dd-workflow-runtime/SKILL.md:105-113`
+- 修改：`dd-project-docs/brownfield-baseline/SKILL.md:200-223`
 - 测试：上述两个文件
 
 - [ ] **步骤 1：运行会失败的入口断言**
 
 ```bash
-LC_ALL=en_US.UTF-8 ruby -EUTF-8:UTF-8 -e 'runtime = File.read("dd-shared-workflow-runtime/SKILL.md"); baseline = File.read("dd-brownfield-baseline/SKILL.md"); abort "runtime invariant missing" unless runtime.include?("不删除验收条件"); abort "baseline default remains high" if baseline.include?("基线盘点默认 `review_level=high`"); abort "baseline low default missing" unless baseline.include?("默认 `review_level=low`")'
+LC_ALL=en_US.UTF-8 ruby -EUTF-8:UTF-8 -e 'runtime = File.read("dd-workflow-runtime/SKILL.md"); baseline = File.read("dd-project-docs/brownfield-baseline/SKILL.md"); abort "runtime invariant missing" unless runtime.include?("不删除验收条件"); abort "baseline default remains high" if baseline.include?("基线盘点默认 `review_level=high`"); abort "baseline low default missing" unless baseline.include?("默认 `review_level=low`")'
 ```
 
 预期：失败；Brownfield 当前默认 `high`。
@@ -82,7 +82,7 @@ LC_ALL=en_US.UTF-8 ruby -EUTF-8:UTF-8 -e 'runtime = File.read("dd-shared-workflo
 - [ ] **步骤 4：提交运行时与 Brownfield 入口**
 
 ```bash
-git add dd-shared-workflow-runtime/SKILL.md dd-brownfield-baseline/SKILL.md
+git add dd-workflow-runtime/SKILL.md dd-project-docs/brownfield-baseline/SKILL.md
 git commit -m "refactor(skills): apply risk-adaptive review defaults"
 ```
 
@@ -105,13 +105,13 @@ LC_ALL=en_US.UTF-8 ruby -EUTF-8:UTF-8 -e 'text = File.read("dd-ai-refactor-workf
 - [ ] **步骤 2：替换提交后审查句**
 
 ```markdown
-每个 Commit 后按当前 `review_level` 执行 [dd-shared-subagent](../dd-shared-subagent/SKILL.md) 的三视角审查；无子 Agent 时主线程完成同义复核，不降低语义。随后按 [dd-shared-ci](../dd-shared-ci/SKILL.md) push 并等待 CI。
+每个 Commit 后按当前 `review_level` 执行 [dd-shared-subagent](../dd-workflow-runtime/references/review-gate.md) 的三视角审查；无子 Agent 时主线程完成同义复核，不降低语义。随后按 [dd-shared-ci](../dd-workflow-runtime/references/ci.md) push 并等待 CI。
 ```
 
 - [ ] **步骤 3：运行全量策略检查**
 
 ```bash
-LC_ALL=en_US.UTF-8 ruby -EUTF-8:UTF-8 -e 'shared = File.read("dd-shared-subagent/SKILL.md"); runtime = File.read("dd-shared-workflow-runtime/SKILL.md"); baseline = File.read("dd-brownfield-baseline/SKILL.md"); refactor = File.read("dd-ai-refactor-workflow/SKILL.md"); abort "shared default missing" unless shared.include?("默认等级：`low`"); abort "runtime invariant missing" unless runtime.include?("不删除验收条件"); abort "baseline default missing" unless baseline.include?("默认 `review_level=low`"); abort "refactor level rule missing" unless refactor.include?("按当前 `review_level` 执行")'
+LC_ALL=en_US.UTF-8 ruby -EUTF-8:UTF-8 -e 'shared = File.read("dd-shared-subagent/SKILL.md"); runtime = File.read("dd-workflow-runtime/SKILL.md"); baseline = File.read("dd-project-docs/brownfield-baseline/SKILL.md"); refactor = File.read("dd-ai-refactor-workflow/SKILL.md"); abort "shared default missing" unless shared.include?("默认等级：`low`"); abort "runtime invariant missing" unless runtime.include?("不删除验收条件"); abort "baseline default missing" unless baseline.include?("默认 `review_level=low`"); abort "refactor level rule missing" unless refactor.include?("按当前 `review_level` 执行")'
 git diff --check
 ```
 

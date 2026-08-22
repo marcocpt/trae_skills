@@ -9,7 +9,7 @@ description: 当需要从零创建 Greenfield 项目、为 Brownfield 项目重�
 
 把 Greenfield 或 Brownfield repository 推进到可由 [dd-feature-development-workflow](../dd-feature-development-workflow/SKILL.md) 稳定开发首个 Feature 的状态。
 
-本 skill 只负责编排、状态、Gate 和 Handoff。具体产物由原子 writer 编写；长流程运行遵循 [dd-shared-workflow-runtime](../dd-shared-workflow-runtime/SKILL.md)，详细政策按需读取 references。
+本 skill 只负责编排、状态、Gate 和 Handoff。具体项目级产物由 `dd-project-docs` 按 `requested_artifact` 编写；长流程运行遵循 [dd-workflow-runtime](../dd-workflow-runtime/SKILL.md)，详细政策按需读取 references。
 
 ## 不适用
 
@@ -48,7 +48,7 @@ description: 当需要从零创建 Greenfield 项目、为 Brownfield 项目重�
 
 ## 状态恢复
 
-状态持久化遵循 [dd-shared-state](../dd-shared-state/SKILL.md)：
+状态持久化遵循 [dd-workflow-runtime/state](../dd-workflow-runtime/references/state.md)：
 
 ```text
 WORKFLOW_TYPE=project-bootstrap
@@ -107,19 +107,19 @@ Gate：
 
 ### Brownfield Baseline
 
-Brownfield 必须调用 [dd-brownfield-baseline](../dd-brownfield-baseline/SKILL.md)。Greenfield 跳过。
+Brownfield 必须调用 [dd-project-docs](../dd-project-docs/SKILL.md)，`requested_artifact=brownfield-baseline`。Greenfield 跳过。
 
 产物必须包含能力、使用关系、处置和 Characterization Test 清单。
 
 ### Research / Technical Validation
 
-调用 [dd-project-research](../dd-project-research/SKILL.md)。
+调用 [dd-project-docs](../dd-project-docs/SKILL.md)，`requested_artifact=research`。
 
 仅在未验证高风险假设会改变 Roadmap/Architecture、外部证据不足或用户明确要求时执行。可靠证据已存在时记录证据并跳过重复研究。
 
 ### Roadmap
 
-调用 [dd-write-roadmap](../dd-write-roadmap/SKILL.md)。
+调用 [dd-project-docs](../dd-project-docs/SKILL.md)，`requested_artifact=roadmap`。
 
 Gate：
 
@@ -129,7 +129,7 @@ Gate：
 
 ### Architecture Contract
 
-调用 [dd-write-architecture-contract](../dd-write-architecture-contract/SKILL.md)。
+调用 [dd-project-docs](../dd-project-docs/SKILL.md)，`requested_artifact=architecture-contract`。
 
 Gate：
 
@@ -140,7 +140,7 @@ Gate：
 
 ### Coding Standards
 
-调用 [dd-write-coding-standards](../dd-write-coding-standards/SKILL.md)。
+调用 [dd-project-docs](../dd-project-docs/SKILL.md)，`requested_artifact=coding-standards`。
 
 Gate：
 
@@ -151,7 +151,7 @@ Gate：
 
 ### AI Conventions
 
-调用 [dd-write-ai-conventions](../dd-write-ai-conventions/SKILL.md)。
+调用 [dd-project-docs](../dd-project-docs/SKILL.md)，`requested_artifact=ai-conventions`。
 
 Gate：
 
@@ -163,7 +163,7 @@ Gate：
 
 ### Phase Contract
 
-Brownfield 调用 [dd-write-phase-contract](../dd-write-phase-contract/SKILL.md)。Greenfield 默认跳过，由 Feature workflow 编写首个功能规格。
+Brownfield 调用 [dd-project-docs](../dd-project-docs/SKILL.md)，`requested_artifact=phase-contract`。Greenfield 默认跳过，由 Feature workflow 编写首个功能规格。
 
 Gate：
 
@@ -191,11 +191,11 @@ delivery_policy: project-rules
 
 所有子 skill 一律传 `invocation_mode=child`（原子 Git/CI/shared 能力传 `helper`），完成后返回本编排器；不得自行执行最终 Host Close。
 
-询问和 worktree 选择遵循 [dd-shared-ask](../dd-shared-ask/SKILL.md)。
+询问和 worktree 选择遵循 [dd-workflow-runtime/ask](../dd-workflow-runtime/references/ask.md)。
 
 ## 审查与 Gate
 
-审查语义遵循 [dd-shared-subagent](../dd-shared-subagent/SKILL.md)。
+审查语义遵循 [dd-workflow-runtime/review-gate](../dd-workflow-runtime/references/review-gate.md)。
 
 通用 Workflow Gate：
 
@@ -247,7 +247,7 @@ Brownfield：
 
 ## 宿主结束合同
 
-遵循 [dd-shared-ask](../dd-shared-ask/SKILL.md)。
+遵循 [dd-workflow-runtime/ask](../dd-workflow-runtime/references/ask.md)。
 
 仅 `invocation_mode=standalone` 执行 Host Close。Trae：
 
