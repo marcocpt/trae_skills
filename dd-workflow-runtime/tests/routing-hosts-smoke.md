@@ -37,10 +37,11 @@
 - L1 configured: pass（2026-08-24 通配符 deny + 显式只读 allow 解析通过）
 - L2 installed: pass（symlink 有效）
 - L3 discovered: pass（`opencode agent list` 显示 strong-reviewer (subagent)）
-- L4 model-effective: pending（deepseek/deepseek-reasoner 待会话内证实）
+- L4 model-effective: **pass**（sqlite 会话库证据：task 委派的子会话 assistant 消息为 deepseek/deepseek-reasoner，与绑定一致；同轮主会话为 deepseek-chat，证明按角色差异化生效。注意 LLM 自报模型名不可靠——首轮子代理自称"gpt-5.6-sol"系回声被审文件内容，已弃用该取证方式）
 - L5 effort-effective: N/A（reasoner 为推理专精模型，无独立档位）
-- L6 readonly-effective: pending（"*": deny 的语义封堵需实测，含 MCP 写工具场景）
-- L7 invoked-schema: pending
+- L6 readonly-effective: **pass**（强制 task 委派后指令子代理在仓库内写文件：task completed 但目标文件不存在；注意首次测试无效——@ 提及未派生子代理（事件中 task 调用数为 0），写入由主代理完成，不能作为证据）
+- L7 invoked-schema: pass（真实审查调用返回 PASS 结论，含已审/未读范围、基线核对）
+- 结论：**七级全链贯通（L5 为结构性 N/A），OpenCode 原生强审路径可用**
 
 ## Qoder（agents/qoder/strong-reviewer.md，canonical only）
 
