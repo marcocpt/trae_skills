@@ -111,7 +111,8 @@ recovery_evidence: []
 - 歧义、失败、冲突、破坏性分支或重大产品/架构变化才 ASK；
 - null、取消或空输入视为未回答，必须重问；
 - 子 Agent 不可用时在主线程完成相同检查，不降低检查语义；
-- 审查按 [dd-workflow-runtime/review-gate](../dd-workflow-runtime/references/review-gate.md) 的 A/B/C 语义自检；命中高风险触发器时追加对应检查；检查范围和 CI 证据成本随之调整，但不删除验收条件或确定性验证。
+- 审查按 [dd-workflow-runtime/review-gate](../dd-workflow-runtime/references/review-gate.md) 的 A/B/C 语义自检；命中高风险触发器时追加对应检查并按审查等级参数升级；检查范围和 CI 证据成本随之调整，但不删除验收条件或确定性验证；
+- 升级到独立强审时，执行路径、角色合同与宿主能力按 [dd-workflow-runtime/model-routing](references/model-routing.md) 路由。
 
 ## Workflow Gate 与 Delivery Gate
 

@@ -4,7 +4,7 @@
 
 ## 概述
 
-本技能固定审查语义：主 Agent 一次完成 A/B/C 三方向自检。不派独立 reviewer 子代理，质量标准不因单 Agent 执行而下降。
+本技能固定审查语义：A/B/C 三方向检查不因执行方式而降级。默认 `review_level=low`，由主 Agent 一次完成 A/B/C 自检，不派独立强审；按风险升级到独立强审时，审查语义不变，执行方式与角色按 [model-routing.md](model-routing.md) 路由。
 
 本技能固定为 `invocation_mode=helper`：返回分方向结论和证据，不自行 Host Close。顶层会话结束遵循 [dd-workflow-runtime/ask](../../dd-workflow-runtime/references/ask.md)。
 
@@ -28,9 +28,25 @@
 
 汇总分为"必须修复""建议修复""可选优化"。
 
+## 审查等级与执行方式参数
+
+```yaml
+review_level: low        # low | standard | high，默认 low
+review_execution: auto   # inline | native-agent | external | auto，默认 auto
+max_rework_cycles: 2     # 独立强审 finding 的返工上限
+```
+
+| review_level | 审查语义 |
+|---|---|
+| low | 主 Agent A/B/C 自检 + 高风险附加检查，零独立强审消耗（默认） |
+| standard | A/B/C 基础上由独立强审者只读审查冻结范围 |
+| high | standard 基础上追加安全、并发或架构专项强审 |
+
+`review_execution` 的路径选择、角色合同和宿主能力矩阵由 [model-routing.md](model-routing.md) 拥有，此处只声明参数。约束：确定性验证通过前不得发起强审（FR-007）；强审必须绑定冻结基线，基线变化即失效（FR-009）。
+
 ## 高风险附加检查
 
-命中以下任一风险触发器时，在 A/B/C 基础上追加对应检查：
+命中以下任一风险触发器时，在 A/B/C 基础上追加对应检查；同一触发器同时决定审查升级：常规触发器升到至少 `standard`，安全或权限、不可逆数据迁移、兼容性或架构争议升到 `high`，不允许静默降级：
 
 | 风险触发器 | 附加检查 |
 |---|---|
@@ -50,6 +66,8 @@
 - blocker 和"必须修复"项自动修复并复验；
 - 建议项只有涉及范围、产品语义、架构或高风险处置时 ASK；
 - 同一检查最多重试 3 次，仍失败时按 `dd-workflow-runtime/ask` 升级；
+- 独立强审的 finding 必须返回实现执行者核对、修复并复验，受 `max_rework_cycles` 上限约束；超限停止并报告阻塞，不得无限循环（FR-011、FR-012）；
+- 外部强审提出且涉及生产代码或测试语义的 finding，关闭权属 [gpt-grilling-review](../../gpt-grilling-review/SKILL.md)，本地不得自行 CLOSED；
 - 禁止为了省 Token 跳过确定性 lint、解析、链接、映射或测试检查。
 
 ## 被其他 skill 引用方式
