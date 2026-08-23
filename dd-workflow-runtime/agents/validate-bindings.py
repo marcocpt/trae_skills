@@ -41,14 +41,23 @@ def load_bindings(path: Path) -> dict:
             val = val.split("#", 1)[0].strip()
             if val in ("", "null"):
                 continue
-            if key == "readonly_tools":
+            if val.startswith("["):
                 val = [v.strip() for v in val.strip("[]").split(",") if v.strip()]
             bindings[host][role][key] = val
     return bindings
 
 
+EXPECTED_HOSTS = {"codex", "zcode", "qoder", "opencode", "codebuddy", "trae"}
+
+
 def check_native(bindings: dict) -> list[str]:
     errors = []
+    missing = EXPECTED_HOSTS - set(bindings)
+    extra = set(bindings) - EXPECTED_HOSTS
+    if missing:
+        errors.append(f"canonical 缺少目标宿主: {sorted(missing)}")
+    if extra:
+        errors.append(f"canonical 出现未知宿主: {sorted(extra)}")
     for host, roles in bindings.items():
         for role, spec in roles.items():
             fpath = AGENTS_DIR / spec["file"]
@@ -70,9 +79,27 @@ def check_native(bindings: dict) -> list[str]:
                         errors.append(f"{host}/{role}: 缺必需字段 {req}")
             else:
                 fm = content.split("---")[1]
-                model_re = re.compile(rf"^model:\s*{re.escape(spec['model'])}\s*(#.*)?$", re.M)
-                if not model_re.search(fm):
-                    errors.append(f"{host}/{role}: model 漂移，未找到 'model: {spec['model']}'")
+
+                def fm_has(key: str, value: str, what: str) -> None:
+                    pat = re.compile(rf"^{re.escape(key)}:\s*{re.escape(value)}\s*(#.*)?$", re.M)
+                    if not pat.search(fm):
+                        errors.append(f"{host}/{role}: {what} 漂移，未找到 '{key}: {value}'")
+
+                fm_has("model", str(spec["model"]), "model")
+                ek = spec.get("effort_key")
+                if ek and spec.get("effort"):
+                    fm_has(ek, str(spec["effort"]), ek)
+                tl = spec.get("thought_level")
+                if tl:
+                    fm_has("thoughtLevel", str(tl), "thoughtLevel")
+                if str(spec.get("permission_default_deny", "")).lower() == "true":
+                    if not re.search(r'^\s*"\*":\s*deny\s*$', fm, re.M):
+                        errors.append(f'{host}/{role}: 缺默认拒绝 "*" deny')
+                allows = spec.get("readonly_allows")
+                if allows:
+                    for a in allows:
+                        if not re.search(rf"^\s*{re.escape(a)}:\s*allow\s*$", fm, re.M):
+                            errors.append(f"{host}/{role}: 只读放行缺 '{a}: allow'")
                 tools = spec.get("readonly_tools")
                 if tools:
                     for t in tools:
