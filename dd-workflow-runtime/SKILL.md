@@ -62,7 +62,7 @@ delivery_policy: project-rules
 6. 标记产物为 `missing`、`partial`、`valid`、`stale` 或 `conflicting`；
 7. 生成 `blocking_gaps`、`deferred_gaps` 和下一 Stage；
 8. 只询问无法由状态、仓库或已批准文档回答的 blocker；
-9. 首次写文件前确定并持久化工作环境。
+9. 首次写文件前确定并持久化工作环境，并按 [state](references/state.md) 的写入租约取得跨宿主唯一写者租约；取不到时保持只读或停止，不得静默并行写入。
 
 纯查询或只读审查不创建工作流状态，也不询问 worktree。
 

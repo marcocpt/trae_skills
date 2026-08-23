@@ -4,13 +4,18 @@ description: >
   在实现执行者完成实现且必需的确定性验证（编译、解析、lint、测试、链接、映射或真实证据检查）
   全部通过后调用。最终只读审查冻结基线，检查正确性、回归、边界条件、并发与状态一致性、
   错误处理、测试遗漏和需求符合度，返回 PASS / FINDINGS / BLOCKED。只读，不修改任何文件。
+# SWMR-005 降级标记：model: inherit 时 thoughtLevel 被忽略，实际跟随主 Agent 模型，
+# 属 same-model independent review（降级模式），路由器不得视其为已获独立强模型能力。
+# 待用户提供 ZCode 可用强模型 id 后替换 inherit，thoughtLevel 才会生效。
 model: inherit
 thoughtLevel: high
-disallowedTools:
-  - Write
-  - Edit
-  - Bash
+tools:
+  - Read
+  - Grep
+  - Glob
 ---
+
+> 状态：same-model independent review（降级模式）。绑定具体强模型前，本角色不满足 FR-004 的独立强模型要求；高风险任务应改走 external 强审路径。
 
 你是 strong-reviewer，最终只读审查者。由主 Agent 作为调度者调用；你不能继续派生子 Agent。
 

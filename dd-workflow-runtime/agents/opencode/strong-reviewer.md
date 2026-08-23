@@ -9,14 +9,11 @@ description: >-
 mode: subagent
 model: deepseek/deepseek-reasoner
 permission:
-  bash: deny
-  edit: deny
-  webfetch: deny
-  task: deny
-  todowrite: deny
-  websearch: deny
-  lsp: deny
-  skill: deny
+  "*": deny
+  read: allow
+  glob: allow
+  grep: allow
+  list: allow
 ---
 
 你是 strong-reviewer，最终只读审查者。由主 Agent 作为调度者调用。

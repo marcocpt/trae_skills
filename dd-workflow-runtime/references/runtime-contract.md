@@ -77,6 +77,25 @@ completed_stages:
   - environment
   - specification
   - planning
+routing:
+  review_level: standard
+  review_execution: native-agent
+  max_rework_cycles: 2
+review:
+  baseline_sha: null
+  head_sha: null
+  scope: []
+  verification_evidence: []
+  reviewer: null
+  reviewed: []
+  unreadable: []
+  result: null
+  findings: []
+  rework_cycle: 0
+external_review:
+  authorization: none
+  task_ref: null
+  status: not-started
 artifacts: {}
 decisions: []
 blocking_gaps: []
@@ -87,6 +106,14 @@ next_safe_action: run phase-2 local gate
 ```
 
 调用方可保留 `current_step`、`current_node`、`current_phase` 等兼容字段，但必须与 `current_stage` 一致。字段冲突时先根据产物和仓库证据修正，再继续。
+
+`routing` / `review` / `external_review` 子对象语义由 [model-routing.md](model-routing.md) 拥有。持久化纪律（FR-009、FR-012、NFR-005）：
+
+- 进入强审前必须原子写入 `review.baseline_sha/head_sha/scope`；基线变化即结论失效；
+- 向外部审核发起请求**之前**必须原子写入 `external_review.task_ref` 与 `authorization`；恢复后只查询原任务，重复提交次数为零；
+- `review.rework_cycle` 每次返工后递增，达到 `routing.max_rework_cycles` 停止并 BLOCKED。
+
+迁移合同：旧 state 缺失 `routing` 字段时视为未设置，在下一个路由决策点按当前风险重新解析；禁止把已有值降级或删除——恢复值与重新扫描结果冲突时取更严格值，否则 BLOCKED。
 
 状态值：
 
@@ -183,7 +210,7 @@ Stage Gate 与 Delivery Gate 分离：
 
 执行方式简化不减少检查项/检查语义。自检发现必须修复项时自动修复并复验；重大产品或架构变化才 ASK。
 
-兼容合同：恢复旧 state/handoff 时允许并忽略 legacy `review_level` 字段；下次原子写回时删除该字段。
+兼容合同：恢复旧 state/handoff 时，缺失的 `routing` 字段按 State Schema 迁移合同处理（视为未设置、重新解析、取更严格值），禁止忽略或删除已存在的 `review_level` / `review_execution` / `max_rework_cycles` 值。
 
 ## 9. Completion Receipt
 

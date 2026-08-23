@@ -257,6 +257,32 @@ print(d.get('workflow_type','unknown'), d.get('status','active'))
 done
 ```
 
+## 写入租约（跨宿主唯一写者）
+
+状态文件扫描是 check-then-act，两个宿主同时启动会同时看到"无 active state"。真正的互斥由 git common dir 下的原子租约提供（DD-006、FR-008、NFR-007）——common dir 对同仓库所有 worktree 和宿主共享：
+
+```bash
+# 取得租约：mkdir 是原子操作，只有第一个创建者成功
+lease_dir="$(git rev-parse --path-format=absolute --git-common-dir)/dd-workflow-lease"
+lease="$lease_dir/$(git rev-parse --path-format=absolute --show-toplevel)"
+if mkdir "$lease" 2>/dev/null; then
+  cat > "$lease/holder.json" <<EOF
+{"workflow_id":"$WORKFLOW_ID","host":"$HOST","holder_pid":$$,"acquired_at":"$(date -u +%FT%TZ)","last_validated_at":"$(date -u +%FT%TZ)"}
+EOF
+else
+  echo "写入租约被占：$(cat "$lease/holder.json" 2>/dev/null)"; exit 1
+fi
+
+# 持有期间每次写状态前刷新 last_validated_at；超过 2 小时未刷新视为 stale，可接管并记录原 holder
+# 释放：审查通过或任务结束后 rm -rf "$lease"
+```
+
+约束：
+
+- 同一时刻任一工作环境最多一个实现执行者持有租约；第二个入口必须保持只读、转入隔离 worktree 或明确停止；
+- 强审期间实现执行者**保留租约但暂停写入**（FR-008 只要求无并发写，不要求释放后让其他宿主抢写）；
+- 接管 stale 租约必须先记录原 holder 信息到状态文件，不得静默覆盖。
+
 ## 被其他 skill 引用方式
 
 各 dd 工作流技能在“上下文恢复机制”章节引用本技能，替换重复的状态文件规则。调用方声明 `WORKFLOW_TYPE`，并使用对应的 `current_step` 或 `current_node` 进度字段。
