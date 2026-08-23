@@ -94,8 +94,9 @@ review:
   rework_cycle: 0
 external_review:
   authorization: none
-  task_ref: null
-  status: not-started
+  client_request_id: null
+  provider_task_ref: null
+  dispatch_status: not-started
 artifacts: {}
 decisions: []
 blocking_gaps: []
@@ -110,7 +111,7 @@ next_safe_action: run phase-2 local gate
 `routing` / `review` / `external_review` 子对象语义由 [model-routing.md](model-routing.md) 拥有。持久化纪律（FR-009、FR-012、NFR-005）：
 
 - 进入强审前必须原子写入 `review.baseline_sha/head_sha/scope`；基线变化即结论失效；
-- 向外部审核发起请求**之前**必须原子写入 `external_review.task_ref` 与 `authorization`；恢复后只查询原任务，重复提交次数为零；
+- 外部审核防重（供应商中立）：发起请求**之前**原子写入 `external_review.client_request_id`（幂等键，由本地生成）与 `authorization`，置 `dispatch_status=prepared`；提交动作开始时置 `submitting`；拿到 provider 返回的任务标识后立即原子写入 `provider_task_ref` 并置 `running`。恢复时若停在 `submitting`，必须先用 `client_request_id` 向 provider 对账确认无在途任务，才允许重新提交——重复提交次数为零；
 - `review.rework_cycle` 每次返工后递增，达到 `routing.max_rework_cycles` 停止并 BLOCKED。
 
 迁移合同：旧 state 缺失 `routing` 字段时视为未设置，在下一个路由决策点按当前风险重新解析；禁止把已有值降级或删除——恢复值与重新扫描结果冲突时取更严格值，否则 BLOCKED。

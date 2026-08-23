@@ -1,0 +1,68 @@
+# DD 跨宿主强弱角色绑定 —— 独立路由配置域（DD-008 的 canonical 源）
+#
+# 本文件是六家宿主模型绑定的唯一事实源；agents/<host>/ 下的原生文件是
+# 按 here 声明生成/校验的产物，不得脱离本文件独立演化。
+# 校验：python3 agents/validate-bindings.py（任何漂移都以非零退出）
+
+schema: dd-model-bindings/1
+updated: 2026-08-24
+
+roles:
+  worker: implementation-worker
+  reviewer: strong-reviewer
+
+defaults:
+  rework_cycles: 2
+
+hosts:
+  codex:
+    worker:
+      file: codex/luna-worker.toml
+      model: gpt-5.6-luna
+      effort_key: model_reasoning_effort
+      effort: max
+    reviewer:
+      file: codex/strong-reviewer.toml
+      model: gpt-5.6-sol
+      effort_key: model_reasoning_effort
+      effort: high
+      sandbox: read-only
+    install: "~/.codex/agents/"
+    status: installed-schema-only   # L2+ 见 tests/routing-hosts-smoke.md
+
+  zcode:
+    reviewer:
+      file: zcode/strong-reviewer.md
+      model: inherit                  # SWMR-005：降级模式，待绑定强模型 id
+      thought_level: high             # inherit 下被宿主忽略，仅绑定具体模型后生效
+      degraded: true
+      readonly_tools: [Read, Grep, Glob]
+    install: "~/.zcode/agents/"
+    status: installed-degraded
+
+  qoder:
+    reviewer:
+      file: qoder/strong-reviewer.md
+      model: performance
+      effort_key: effort
+      effort: high
+      readonly_tools: [Read, Glob, Grep]
+    install: null                     # R-003：Qoder CN 权威配置根待实机确认
+    status: canonical-only
+
+  opencode:
+    reviewer:
+      file: opencode/strong-reviewer.md
+      model: deepseek/deepseek-reasoner
+      permission_default_deny: true
+      readonly_allows: [read, glob, grep, list]
+    install: "~/.config/opencode/agents/"
+    status: installed-discovered      # L3 已过，L4-L7 pending
+
+  codebuddy:
+    reviewer: null                    # adapter 未落地
+    status: todo
+
+  trae:
+    reviewer: null                    # 无原生绑定，走 external（chatgpt-review MCP）
+    status: external-only

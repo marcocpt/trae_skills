@@ -37,7 +37,7 @@
 - 确定性验证通过后才可发起独立强审（FR-007）；
 - 实现执行者是唯一写入者；强审者只读（FR-008）；
 - 强审绑定冻结基线，基线变化即结论失效，须重验重审（FR-009）；
-- 强审结论必须区分 PASS / FINDINGS / 等待授权 / BLOCKED，并说明已审与未读范围（FR-010）；
+- Reviewer 只返回三态 PASS / FINDINGS / BLOCKED，并说明已审与未读范围（FR-010）；"等待授权"由主调度者的编排状态承载，不是 Reviewer 返回值；
 - 返工上限默认 2 轮（`max_rework_cycles`），超限停止并报告阻塞（FR-012）；
 - 外部 finding 字段沿用 gpt-grilling-review 的 SEVERITY / CLASSIFICATION / CHANGE_RISK，不另造 schema（CON-002）；
 - 低风险任务独立强模型调用次数为零（NFR-002）；不得为省 Token 删除确定性验证（NFR-001）。
@@ -58,4 +58,4 @@
 
 ## 绑定配置属主
 
-按 DD-008，模型绑定策略集中维护：本目录 `agents/<host>/` 是各宿主绑定文件的 canonical 源，宿主侧通过 symlink 安装引用（安装即 DD-008 所述"生成、安装或一致性检查保持同步"模式），不维护可独立编辑副本。更换任一宿主的模型或推理强度，只改本目录对应文件，不改公共 Skill 正文（FR-002、NFR-009）。配套的宿主级校验器/生成器记入 TODO；落地前由 [routing-hosts-smoke](../tests/routing-hosts-smoke.md) 冒烟清单承担一致性检查职责。
+按 DD-008，模型绑定策略集中维护：canonical 源是宿主中立的 [agents/model-bindings.yaml](../agents/model-bindings.yaml)（独立路由配置域）；`agents/<host>/` 下的原生文件是它的产物，由 [agents/validate-bindings.py](../agents/validate-bindings.py) 机械校验等价性，任何漂移非零退出。宿主侧通过 symlink 安装引用，不维护可独立编辑副本。更换任一宿主的模型或推理强度：先改 model-bindings.yaml，跑校验器确认原生文件同步（当前为"手写 native + 机械校验"模式；自动生成器记 TODO）。公共 Skill 正文不因换模型而改动（FR-002、NFR-009）。

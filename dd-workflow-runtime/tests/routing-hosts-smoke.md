@@ -17,7 +17,7 @@
 
 ## Codex（agents/codex/{luna-worker,strong-reviewer}.toml → ~/.codex/agents/）
 
-- L1 configured: pending（tomllib 解析通过 2026-08-24，schema 修正后待复跑）
+- L1 configured: pass（2026-08-24 tomllib 解析通过且含必需键 name/description/model/model_reasoning_effort；SWMR-014 修正本行状态滞后）
 - L2 installed: pending（symlink 就绪；config.toml `[agents.*]` 注册确认）
 - L3 discovered: pending（需 `/agent` 或等价发现验证）
 - L4-L7: pending

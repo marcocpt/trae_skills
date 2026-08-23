@@ -262,26 +262,30 @@ done
 状态文件扫描是 check-then-act，两个宿主同时启动会同时看到"无 active state"。真正的互斥由 git common dir 下的原子租约提供（DD-006、FR-008、NFR-007）——common dir 对同仓库所有 worktree 和宿主共享：
 
 ```bash
-# 取得租约：mkdir 是原子操作，只有第一个创建者成功
-lease_dir="$(git rev-parse --path-format=absolute --git-common-dir)/dd-workflow-lease"
-lease="$lease_dir/$(git rev-parse --path-format=absolute --show-toplevel)"
+# 取得租约：先建根目录（幂等），再对最终 lease 目录做原子 mkdir 竞争；
+# key 用 worktree 绝对路径的哈希，避免把路径字符直接拼进目录名
+lease_root="$(git rev-parse --path-format=absolute --git-common-dir)/dd-workflow-lease"
+worktree="$(git rev-parse --path-format=absolute --show-toplevel)"
+mkdir -p "$lease_root"
+lease="$lease_root/$(printf '%s' "$worktree" | shasum -a 256 | cut -c1-16)"
 if mkdir "$lease" 2>/dev/null; then
-  cat > "$lease/holder.json" <<EOF
-{"workflow_id":"$WORKFLOW_ID","host":"$HOST","holder_pid":$$,"acquired_at":"$(date -u +%FT%TZ)","last_validated_at":"$(date -u +%FT%TZ)"}
-EOF
+  printf '{"workflow_id":"%s","host":"%s","worktree":"%s","holder_pid":%s,"acquired_at":"%s","last_validated_at":"%s"}\n' \
+    "$WORKFLOW_ID" "$HOST" "$worktree" "$$" \
+    "$(date -u +%FT%TZ)" "$(date -u +%FT%TZ)" > "$lease/holder.json"
 else
   echo "写入租约被占：$(cat "$lease/holder.json" 2>/dev/null)"; exit 1
 fi
 
-# 持有期间每次写状态前刷新 last_validated_at；超过 2 小时未刷新视为 stale，可接管并记录原 holder
-# 释放：审查通过或任务结束后 rm -rf "$lease"
+# 持有期间每次写状态前刷新 last_validated_at
+# 释放时机：仅限任务完成、已阻塞或显式移交（记录接管方）后 rm -rf "$lease"；
+# Review PASS 不等于 Workflow 完成，审查期间保留租约但暂停写入
 ```
 
 约束：
 
 - 同一时刻任一工作环境最多一个实现执行者持有租约；第二个入口必须保持只读、转入隔离 worktree 或明确停止；
-- 强审期间实现执行者**保留租约但暂停写入**（FR-008 只要求无并发写，不要求释放后让其他宿主抢写）；
-- 接管 stale 租约必须先记录原 holder 信息到状态文件，不得静默覆盖。
+- `last_validated_at` 超过 2 小时未刷新只触发**重新核对**，不自动获得接管权：必须核实原 holder 进程是否存活、其状态文件的 `status` 是否仍 active/paused、宿主是否可达；全部证据表明已废弃，才可接管，且必须先把原 holder 信息记入本工作流状态文件；
+- 禁止静默覆盖他人租约。
 
 ## 被其他 skill 引用方式
 
