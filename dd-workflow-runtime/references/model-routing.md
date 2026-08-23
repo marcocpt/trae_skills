@@ -43,7 +43,7 @@
 | ZCode | 支持（Beta；subagent 不能继续派生） | 主 Agent 编排原生角色 | chatgpt-review MCP |
 | CodeBuddy（CLI 能力域） | 支持（插件 agent yaml） | 原生 | chatgpt-review MCP |
 | WorkBuddy App | 待逐项核实，不继承 CodeBuddy 结论 | 按实际能力原生或降级 | chatgpt-review MCP |
-| Trae | 不支持固定子代理模型 | 主会话实现 + external 强审 | chatgpt-review MCP（宿主内验证待做） |
+| Trae | 不支持固定子代理模型 | 主会话实现 + external 强审 | chatgpt-review MCP（已确认 CN 与 SOLO 均有配置） |
 
 ## 绑定配置属主
 
