@@ -60,8 +60,13 @@ hosts:
     status: installed-discovered      # L3 已过，L4-L7 pending
 
   codebuddy:
-    reviewer: null                    # adapter 未落地
-    status: todo
+    reviewer:
+      file: codebuddy/strong-reviewer.md
+      model: inherit                  # 待绑定：用户确认套餐内强模型 id 后替换
+      effort: high
+      readonly_tools: [Read, Grep, Glob]
+    install: null                     # 插件 agents/ 目录，待实装验证
+    status: canonical-only
 
   trae:
     reviewer: null                    # 无原生绑定，走 external（chatgpt-review MCP）

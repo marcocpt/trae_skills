@@ -49,9 +49,11 @@
 - L2 installed: **blocked**（R-003：Qoder CN 权威配置根待实机确认后再装）
 - L3-L7: pending（依赖 L2）
 
-## CodeBuddy CLI
+## CodeBuddy CLI（agents/codebuddy/strong-reviewer.md，canonical only）
 
-- 全部 pending：adapter 未落地（插件 agent yaml 格式待核对官方文档）。
+- L1 configured: pass（2026-08-24 frontmatter 与官方插件 agent schema 一致：name/model/effort/tools 白名单；validator 6 宿主 6 角色通过）
+- L2 installed: **blocked**（需在 CodeBuddy 插件 agents/ 目录实装；model: inherit 待绑定强模型 id，绑定前为降级模式）
+- L3-L7: pending（依赖 L2）
 
 ## Trae
 
