@@ -27,7 +27,7 @@
 - 根因修正：此前 `config_file` 指向 `~/.codex/agents/*.toml` symlink；角色加载先报 `Too many levels of symbolic links (os error 62)`，router 随后将其模糊为 `agent type is currently not available`。把 `config_file` 临时覆盖为 canonical 普通文件后立即派生成功，故 `74a7049` 的“上游 rollout 门控”定性作废。
 - 安装去重：改为 direct `config_file` 后若保留 `~/.codex/agents/{luna-worker,strong-reviewer}.toml`，CLI 会报告 `duplicate agent role name ... declared in the same config layer`；删除两个冗余 symlink 后，以 `config.toml` 注册作为唯一发现入口。
 - 冒烟约束：多 Agent 测试不要使用 `--ephemeral`。本轮 strong-reviewer 在 ephemeral 父会话遇到 `collab spawn failed: no thread with id`，改用持久会话后成功；这是独立的父线程生命周期问题，不是角色绑定失败。
-- 当前结论：Codex worker + reviewer 在正常父 sandbox 下 L1-L7 全链贯通；危险父 sandbox override 下 L6 明确失败，不能作为只读执行环境；完整宿主结论继续保留 `VERIFICATION_PENDING`。
+- 当前结论：Codex worker + reviewer 在正常父 sandbox 下 L1-L7 全链贯通；危险父 sandbox override 下 L6 明确失败，不能作为只读执行环境，但按 2026-08-24 用户决策该模式仍可使用（调用方必须自行承担写入风险）；完整宿主结论继续保留 `VERIFICATION_PENDING`。
 
 ## ZCode（agents/zcode/strong-reviewer.md → ~/.zcode/agents/）
 

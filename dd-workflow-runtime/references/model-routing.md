@@ -48,7 +48,7 @@
 
 | 宿主 | 原生角色绑定 | 日常路径 | 外部强审 |
 |---|---|---|---|
-| Codex | 支持（独立模型、推理强度、只读 Agent）；`config_file` 必须直连 canonical 普通文件 | 原生 worker + reviewer（正常父 sandbox 的 L1-L7 已通；危险父 sandbox override 会覆盖子代理只读限制，L6 fail） | chatgpt-review MCP |
+| Codex | 支持（独立模型、推理强度、只读 Agent）；`config_file` 必须直连 canonical 普通文件 | 原生 worker + reviewer（正常父 sandbox 的 L1-L7 已通；危险父 sandbox override 可使用，但会覆盖子代理只读限制，L6 fail） | chatgpt-review MCP |
 | OpenCode | 支持（agent 配置 + 权限白名单） | 原生 | chatgpt-review MCP |
 | Qoder | 支持（frontmatter model/effort、worktree 隔离） | 原生 | chatgpt-review MCP |
 | ZCode | 支持（Beta；subagent 不能继续派生）；当前绑定为 **inherit 降级模式**（同模型独立审查，待绑定强模型 id） | 主 Agent 编排原生角色（高风险走 external） | chatgpt-review MCP |
