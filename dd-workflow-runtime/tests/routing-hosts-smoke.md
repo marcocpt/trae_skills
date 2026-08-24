@@ -22,12 +22,13 @@
 - L3 discovered: **pass**（2026-08-24 `codex exec` 实测：主代理正确列出当前自定义代理 `luna-worker`、`strong-reviewer`，消耗 ~33k tokens）
 - L4 model-effective: **pass**（2026-08-24 本地 `state_5.sqlite` 的 parent→child spawn edge 及 child thread 元数据分别记录 `strong-reviewer → gpt-5.6-sol`、`luna-worker → gpt-5.6-luna`；不采用 LLM 自报模型名）
 - L5 effort-effective: **pass**（同一宿主元数据分别记录 `strong-reviewer → high`、`luna-worker → max`）
-- L6 readonly-effective: **pass（正常父 sandbox）/ fail（危险父 sandbox override）**（2026-08-24 正常父 sandbox 下，子代理真实调用 `touch /tmp/.../l6-should-not-exist`，Seatbelt 记录 `operation_not_permitted`，命令退出 1，目标文件复查不存在；child thread 元数据同时记录文件系统仅 root read、网络 restricted。经用户授权，另在隔离目录 `/tmp/codex-l6-danger-oyjciU` 以 `codex exec --dangerously-bypass-approvals-and-sandbox` 启动父会话，委派 `strong-reviewer` 执行唯一的 `touch`。命令退出 0，父会话独立复查确认目标存在，故 bypass 会覆盖子代理的只读限制，禁止在此模式下把该角色当作只读边界。）
+- L6 readonly-effective: **pass（正常父 sandbox）/ fail（危险父 sandbox 的原生能力）/ guarded（工作流路由）**（2026-08-24 正常父 sandbox 下，子代理真实调用 `touch /tmp/.../l6-should-not-exist`，Seatbelt 记录 `operation_not_permitted`，命令退出 1，目标文件复查不存在；child thread 元数据同时记录文件系统仅 root read、网络 restricted。经用户授权，另在隔离目录 `/tmp/codex-l6-danger-oyjciU` 以 `codex exec --dangerously-bypass-approvals-and-sandbox` 启动父会话，委派 `strong-reviewer` 执行唯一的 `touch`。命令退出 0，父会话独立复查确认目标存在，证明 bypass 会覆盖子代理只读限制。修复后 `agents/check-review-route.py` 在派生前阻止危险/未知父 sandbox 进入原生 Reviewer Gate，仅允许转本次上下文已授权且可用的 external，否则 BLOCKED。）
 - L7 invoked-schema: **pass**（2026-08-24 CLI 0.149.0：直连 canonical 普通文件后，luna-worker 成功派生并返回 `2+2=4`；strong-reviewer 在持久会话成功派生，并对冻结命题返回 `PASS`。不启用 `multi_agent_v2` 仍成功，排除该 flag 为必要条件）
 - 根因修正：此前 `config_file` 指向 `~/.codex/agents/*.toml` symlink；角色加载先报 `Too many levels of symbolic links (os error 62)`，router 随后将其模糊为 `agent type is currently not available`。把 `config_file` 临时覆盖为 canonical 普通文件后立即派生成功，故 `74a7049` 的“上游 rollout 门控”定性作废。
 - 安装去重：改为 direct `config_file` 后若保留 `~/.codex/agents/{luna-worker,strong-reviewer}.toml`，CLI 会报告 `duplicate agent role name ... declared in the same config layer`；删除两个冗余 symlink 后，以 `config.toml` 注册作为唯一发现入口。
 - 冒烟约束：多 Agent 测试不要使用 `--ephemeral`。本轮 strong-reviewer 在 ephemeral 父会话遇到 `collab spawn failed: no thread with id`，改用持久会话后成功；这是独立的父线程生命周期问题，不是角色绑定失败。
-- 当前结论：Codex worker + reviewer 在正常父 sandbox 下 L1-L7 全链贯通；危险父 sandbox override 下 L6 明确失败，不能作为只读执行环境，但按 2026-08-24 用户决策该模式仍可使用（调用方必须自行承担写入风险）；完整宿主结论继续保留 `VERIFICATION_PENDING`。
+- 路由守卫回归：`python3 -m unittest dd-workflow-runtime/tests/test_check_review_route.py` 覆盖 13 个分支：low/auto 内联、read-only 父原生强审、workspace-write 证据不足阻断、危险父阻断、危险父转已授权 external、未授权 external 阻断、未知父 fail-closed、standard/inline 冲突、从 Codex thread SQLite 自动识别 disabled/read-only 策略、异常及非 restricted 策略 fail-closed、restricted 读写混合绝不判为 read-only、生产 CLI 拒绝证据覆盖。测试以脚本绝对路径从系统临时目录执行，同时覆盖 cwd 无关性；系统 Python 3.9 与 Homebrew Python 均须通过。
+- 当前结论：Codex worker + reviewer 在正常父 sandbox 下 L1-L7 全链贯通；危险父 sandbox 下原生 L6 能力明确失败，因此 DD 工作流不再派生该 Reviewer Gate，而是转已授权 external 或 BLOCKED，重新满足 FR-008/DD-006。完整宿主结论继续保留 `VERIFICATION_PENDING`。
 
 ## ZCode（agents/zcode/strong-reviewer.md → ~/.zcode/agents/）
 

@@ -30,12 +30,27 @@
 | standard / high | external | 需授权 Gate；未批准且外审强制 → BLOCKED，非强制 → 本地收尾并记录未执行 |
 | 任意 | auto | 按 level 对应风险 + 宿主能力解析；解析结果持久化到 `routing.review_execution` |
 
+### Codex 原生强审派生前守卫
+
+Codex 父会话 sandbox 会重新应用到子代理；`danger-full-access`（包括 `--dangerously-bypass-approvals-and-sandbox`）会覆盖 `strong-reviewer.toml` 的 `read-only`。因此任何 DD 工作流在把 `standard`/`high` 解析为 Codex `native-agent` 后、派生 Reviewer 前，必须运行：
+
+```bash
+RUNTIME_SKILL_ROOT=/absolute/path/to/dd-workflow-runtime
+python3 "$RUNTIME_SKILL_ROOT/agents/check-review-route.py" \
+  --review-level <low|standard|high> \
+  --requested-execution <inline|native-agent|external|auto> \
+  --external-status <unavailable|available-unapproved|available-authorized>
+```
+
+`RUNTIME_SKILL_ROOT` 必须由宿主解析当前实际加载的 `dd-workflow-runtime/SKILL.md` 所在目录，不能假设当前工作目录。守卫通过 `CODEX_THREAD_ID` 查询操作系统账户目录下 Codex thread 元数据中的真实 `sandbox_policy`；生产 CLI 不接受 `parent-sandbox`、`thread-id` 或 `state-db` 覆盖，确定性测试直接调用内部纯函数。只有退出 0 且 JSON 中 `native_spawn_allowed=true` 才能派生原生 `strong-reviewer`。当前只有已证明的 `read-only` 父会话满足该条件；`workspace-write` 在专门 L6 通过前同样 fail-closed。其他模式只能解析为本次上下文已授权且可用的 `external`，否则返回 `BLOCKED`；不得先派生再依靠 Reviewer 指令自律，也不得把危险模式下的直接调用结果计作强审 Gate。该检查是 FR-008/DD-006 的 fail-closed 执行边界。
+
 升级触发器由 [review-gate.md](review-gate.md) 的高风险附加检查表拥有：常规触发器至少 `standard`，安全或权限、不可逆数据迁移、兼容性或架构争议必须 `high`。
 
 ## 硬约束
 
 - 确定性验证通过后才可发起独立强审（FR-007）；
 - 实现执行者是唯一写入者；强审者只读（FR-008）；
+- Reviewer 的只读边界无法被当前执行环境强制时，该 `native-agent` 能力检查视为失败；禁止派生后以提示词自律代替隔离，必须转已授权的强审路径或 `BLOCKED`；
 - 强审绑定冻结基线，基线变化即结论失效，须重验重审（FR-009）；
 - Reviewer 只返回三态 PASS / FINDINGS / BLOCKED，并说明已审与未读范围（FR-010）；"等待授权"由主调度者的编排状态承载，不是 Reviewer 返回值；
 - 返工上限默认 2 轮（`max_rework_cycles`），超限停止并报告阻塞（FR-012）；
@@ -48,7 +63,7 @@
 
 | 宿主 | 原生角色绑定 | 日常路径 | 外部强审 |
 |---|---|---|---|
-| Codex | 支持（独立模型、推理强度、只读 Agent）；`config_file` 必须直连 canonical 普通文件 | 原生 worker + reviewer（正常父 sandbox 的 L1-L7 已通；危险父 sandbox override 可使用，但会覆盖子代理只读限制，L6 fail） | chatgpt-review MCP |
+| Codex | 支持（独立模型、推理强度、只读 Agent）；`config_file` 必须直连 canonical 普通文件 | 已证明 read-only 父：原生 reviewer；其他父模式：派生前守卫禁止直接 Reviewer Gate，改用单独 read-only 父、已授权 external 或 BLOCKED | chatgpt-review MCP |
 | OpenCode | 支持（agent 配置 + 权限白名单） | 原生 | chatgpt-review MCP |
 | Qoder | 支持（frontmatter model/effort、worktree 隔离） | 原生 | chatgpt-review MCP |
 | ZCode | 支持（Beta；subagent 不能继续派生）；已绑套餐内最强 GLM-5.3 + 强制 high 思考档（主会话同为 5.3 时为同模型独立审查，单供应商上限） | 主 Agent 编排原生角色（高风险走 external） | chatgpt-review MCP |

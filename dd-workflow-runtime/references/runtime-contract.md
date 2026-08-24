@@ -48,6 +48,7 @@ delivery_policy: project-rules
 检测并记录：
 
 - `host`：`trae`、`codex` 或 `other`；
+- 当前父会话 sandbox 及其证据来源；无法证明时记为 `unknown`，不得推断为安全；
 - `structured_ask`；
 - `subagents`；
 - `git_write`；
@@ -57,6 +58,8 @@ delivery_policy: project-rules
 判定优先级：调用参数中的明确值 → 当前宿主事实 → 项目规则 → `other`。不要仅为记录 host 询问用户；只有无法识别会改变阻塞行为时才 ASK。
 
 能力缺失改变执行方式，不改变 Gate。例如没有子 Agent 时改为主线程多视角复核；没有结构化 ASK 时改用同义短文本；不能因此跳过复核或决定。
+
+Codex 的 `native-agent` 还必须通过从 Skill 实际根目录调用的 `agents/check-review-route.py` 派生前检查。守卫默认用 `CODEX_THREAD_ID` 只读查询操作系统账户目录下 `.codex/state_5.sqlite` 的真实 `sandbox_policy`，且生产 CLI 不接受 sandbox、thread 或数据库路径覆盖；缺失、不可读或未识别时按 `unknown` fail-closed。运行时把守卫 JSON 结果和 `sandbox_evidence` 持久化到 `routing` 证据；守卫非零退出或 `native_spawn_allowed=false` 时禁止派生原生 Reviewer。只有已证明的 `read-only` 父会话可直接派生；`workspace-write` 尚无 L6 证据，也必须转入单独的只读父会话重新检查，或使用已针对本次上下文授权且可用的外部只读审查，否则保持 `BLOCKED`。直接调用一个可写的 Reviewer 不构成 FR-008/DD-006 Gate 证据。
 
 ## 3. State Schema
 

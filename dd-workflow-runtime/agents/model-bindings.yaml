@@ -29,7 +29,7 @@ hosts:
       effort: high
       sandbox: read-only
     install: "~/.codex/config.toml direct canonical config_file; no duplicate ~/.codex/agents entry"
-    status: installed-invoked-l6-override-unsafe  # L1-L5/L7 pass；L6 normal pass、危险父 sandbox override fail
+    status: installed-invoked-parent-override-guarded  # 正常父 L1-L7 pass；危险/未知父禁止 native Reviewer Gate
 
   zcode:
     reviewer:
