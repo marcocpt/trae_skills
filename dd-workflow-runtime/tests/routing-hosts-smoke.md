@@ -31,12 +31,13 @@
 
 ## ZCode（agents/zcode/strong-reviewer.md → ~/.zcode/agents/）
 
-- L1 configured: pending（frontmatter 符合 Beta 合同）
-- L2 installed: pending（symlink 就绪）
-- L3 discovered: pending（新会话生效，未验证）
-- L4-L5: **降级模式**——model: inherit 下 thoughtLevel 被忽略；绑定具体强模型 id 前标记 N/A（degraded），高风险任务走 external
-- L6 readonly-effective: pending（tools 白名单 Read/Grep/Glob）
-- L7: pending
+- L1 configured: pass（2026-08-24 frontmatter 符合 Beta 合同：name/description 必需、model 绑定具体 id、tools 白名单 Read/Grep/Glob、无 unknown key）
+- L2 installed: pass（symlink 有效，指向 canonical）
+- L3 discovered: pending（新会话生效，未验证——本会话启动早于安装，无法自证）
+- L4 model-effective: pending（绑定 GLM-5.3 = 套餐内最强；主会话同为 5.3 时属同模型独立审查+强制 high 思考档，单供应商上限）
+- L5 effort-effective: pending（thoughtLevel: high 需随 L4 一并取证）
+- L6 readonly-effective: pending（tools 白名单 Read/Grep/Glob；参照 Codex 教训需行为探针而非配置推断）
+- L7 invoked-schema: pending
 
 ## OpenCode（agents/opencode/strong-reviewer.md → ~/.config/opencode/agents/）
 

@@ -34,12 +34,11 @@ hosts:
   zcode:
     reviewer:
       file: zcode/strong-reviewer.md
-      model: inherit                  # SWMR-005：降级模式，待绑定强模型 id
-      thought_level: high             # inherit 下被宿主忽略，仅绑定具体模型后生效
-      degraded: true
+      model: GLM-5.3                  # 套餐内最强模型；主会话同为 GLM-5.3 时属同模型独立审查（强制 high 思考档）
+      thought_level: high
       readonly_tools: [Read, Grep, Glob]
     install: "~/.zcode/agents/"
-    status: installed-degraded
+    status: installed-schema-only     # L1/L2 pass；L3+ 待新会话取证
 
   qoder:
     reviewer:

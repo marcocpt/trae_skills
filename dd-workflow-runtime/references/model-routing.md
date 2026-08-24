@@ -51,7 +51,7 @@
 | Codex | 支持（独立模型、推理强度、只读 Agent）；`config_file` 必须直连 canonical 普通文件 | 原生 worker + reviewer（正常父 sandbox 的 L1-L7 已通；危险父 sandbox override 可使用，但会覆盖子代理只读限制，L6 fail） | chatgpt-review MCP |
 | OpenCode | 支持（agent 配置 + 权限白名单） | 原生 | chatgpt-review MCP |
 | Qoder | 支持（frontmatter model/effort、worktree 隔离） | 原生 | chatgpt-review MCP |
-| ZCode | 支持（Beta；subagent 不能继续派生）；当前绑定为 **inherit 降级模式**（同模型独立审查，待绑定强模型 id） | 主 Agent 编排原生角色（高风险走 external） | chatgpt-review MCP |
+| ZCode | 支持（Beta；subagent 不能继续派生）；已绑套餐内最强 GLM-5.3 + 强制 high 思考档（主会话同为 5.3 时为同模型独立审查，单供应商上限） | 主 Agent 编排原生角色（高风险走 external） | chatgpt-review MCP |
 | CodeBuddy（CLI 能力域） | 支持（插件 agent yaml） | 原生 | chatgpt-review MCP |
 | WorkBuddy App | 待逐项核实，不继承 CodeBuddy 结论 | 按实际能力原生或降级 | chatgpt-review MCP |
 | Trae | 不支持固定子代理模型 | 主会话实现 + external 强审 | chatgpt-review MCP（已确认 CN 与 SOLO 均有配置） |
