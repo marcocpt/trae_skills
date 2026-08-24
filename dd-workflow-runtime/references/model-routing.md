@@ -48,7 +48,7 @@
 
 | 宿主 | 原生角色绑定 | 日常路径 | 外部强审 |
 |---|---|---|---|
-| Codex | 支持（独立模型、推理强度、只读 Agent） | 原生 worker + reviewer | chatgpt-review MCP |
+| Codex | 支持（独立模型、推理强度、只读 Agent）；`config_file` 必须直连 canonical 普通文件 | 原生 worker + reviewer（正常父 sandbox 的 L1-L7 已通；危险父 sandbox override 会覆盖子代理只读限制，L6 fail） | chatgpt-review MCP |
 | OpenCode | 支持（agent 配置 + 权限白名单） | 原生 | chatgpt-review MCP |
 | Qoder | 支持（frontmatter model/effort、worktree 隔离） | 原生 | chatgpt-review MCP |
 | ZCode | 支持（Beta；subagent 不能继续派生）；当前绑定为 **inherit 降级模式**（同模型独立审查，待绑定强模型 id） | 主 Agent 编排原生角色（高风险走 external） | chatgpt-review MCP |
@@ -58,4 +58,4 @@
 
 ## 绑定配置属主
 
-按 DD-008，模型绑定策略集中维护：canonical 源是宿主中立的 [agents/model-bindings.yaml](../agents/model-bindings.yaml)（独立路由配置域）；`agents/<host>/` 下的原生文件是它的产物，由 [agents/validate-bindings.py](../agents/validate-bindings.py) 机械校验等价性，任何漂移非零退出。宿主侧通过 symlink 安装引用，不维护可独立编辑副本。更换任一宿主的模型或推理强度：先改 model-bindings.yaml，跑校验器确认原生文件同步（当前为"手写 native + 机械校验"模式；自动生成器记 TODO）。公共 Skill 正文不因换模型而改动（FR-002、NFR-009）。
+按 DD-008，模型绑定策略集中维护：canonical 源是宿主中立的 [agents/model-bindings.yaml](../agents/model-bindings.yaml)（独立路由配置域）；`agents/<host>/` 下的原生文件是它的产物，由 [agents/validate-bindings.py](../agents/validate-bindings.py) 机械校验等价性，任何漂移非零退出。宿主侧不维护可独立编辑副本，但安装引用必须遵循宿主实测约束：Codex 的 `~/.codex/config.toml [agents.*].config_file` 必须直接指向 canonical 普通文件，不能指向 `~/.codex/agents/` symlink；CLI 0.149.0 对 symlink 返回 ELOOP，外层错误会被模糊为 `agent type is currently not available`。直连注册后还必须删除 `~/.codex/agents/` 下的同名文件或 symlink，否则自动发现会产生 `duplicate agent role name`。其他宿主只有在各自验证通过时才使用 symlink。更换任一宿主的模型或推理强度：先改 model-bindings.yaml，跑校验器确认原生文件同步（当前为"手写 native + 机械校验"模式；自动生成器记 TODO）；Codex 本机安装另跑 `python3 agents/validate-bindings.py --check-codex-install`。公共 Skill 正文不因换模型而改动（FR-002、NFR-009）。

@@ -2,8 +2,11 @@
 """DD-008 机械校验器：验证 agents/<host>/ 原生绑定文件与 model-bindings.yaml 等价。
 
 canonical 源是 model-bindings.yaml；原生文件是产物。任何漂移以非零退出。
-用法：python3 validate-bindings.py（默认校验脚本所在目录）
+用法：
+  python3 validate-bindings.py
+  python3 validate-bindings.py --check-codex-install
 """
+import argparse
 import re
 import sys
 import tomllib
@@ -108,12 +111,98 @@ def check_native(bindings: dict) -> list[str]:
     return errors
 
 
+def check_codex_install(bindings: dict, config_path: Path) -> list[str]:
+    """验证 Codex 注册直接引用 canonical 普通文件，不经过 symlink。
+
+    Codex 0.149.0 的角色加载器读取 symlink config_file 时返回 ELOOP，外层会将其
+    模糊为 "agent type is currently not available"。因此这里不仅验证最终目标存在，
+    还明确拒绝 config_file 路径本身是符号链接。
+    """
+    errors = []
+    config_path = config_path.expanduser()
+    if not config_path.is_file():
+        return [f"Codex 安装配置不存在或不是普通文件: {config_path}"]
+
+    try:
+        config = tomllib.loads(config_path.read_text())
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        return [f"Codex 安装配置无法解析: {config_path}: {exc}"]
+
+    registered = config.get("agents", {})
+    if not isinstance(registered, dict):
+        return [f"Codex 安装配置的 [agents] 不是 table: {config_path}"]
+    for role, spec in bindings["codex"].items():
+        if "file" not in spec:
+            continue
+        canonical = AGENTS_DIR / spec["file"]
+        if not canonical.is_file():
+            errors.append(f"codex/{role}: canonical 不存在或不是普通文件: {canonical}")
+            continue
+        try:
+            native = tomllib.loads(canonical.read_text())
+        except (OSError, tomllib.TOMLDecodeError) as exc:
+            errors.append(f"codex/{role}: canonical 无法解析: {canonical}: {exc}")
+            continue
+        agent_name = native.get("name")
+        if not isinstance(agent_name, str) or not agent_name:
+            errors.append(f"codex/{role}: canonical 缺少有效 name: {canonical}")
+            continue
+        entry = registered.get(agent_name)
+        if not isinstance(entry, dict):
+            errors.append(f"codex/{role}: config.toml 缺少 [agents.{agent_name}]")
+            continue
+
+        raw_config_file = entry.get("config_file")
+        if not isinstance(raw_config_file, str) or not raw_config_file:
+            errors.append(f"codex/{role}: [agents.{agent_name}] 缺少 config_file")
+            continue
+
+        installed = Path(raw_config_file).expanduser()
+        if not installed.is_absolute():
+            errors.append(f"codex/{role}: config_file 必须是 canonical 绝对路径: {installed}")
+            continue
+        if installed.is_symlink():
+            errors.append(
+                f"codex/{role}: config_file 不得指向 symlink（Codex 角色加载会返回 ELOOP）: {installed}"
+            )
+            continue
+        if not installed.is_file():
+            errors.append(f"codex/{role}: config_file 不存在或不是普通文件: {installed}")
+            continue
+        if not installed.samefile(canonical):
+            errors.append(
+                f"codex/{role}: config_file 未直连 canonical: {installed} != {canonical}"
+            )
+        duplicate = config_path.parent / "agents" / f"{agent_name}.toml"
+        if duplicate.exists() or duplicate.is_symlink():
+            errors.append(
+                f"codex/{role}: 删除同名自动发现副本，避免 duplicate agent role: {duplicate}"
+            )
+    return errors
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--check-codex-install",
+        action="store_true",
+        help="同时检查 ~/.codex/config.toml 的 agent config_file 安装引用",
+    )
+    parser.add_argument(
+        "--codex-config",
+        type=Path,
+        default=Path.home() / ".codex" / "config.toml",
+        help="Codex config.toml 路径（默认 ~/.codex/config.toml）",
+    )
+    args = parser.parse_args()
+
     bindings = load_bindings(AGENTS_DIR / "model-bindings.yaml")
     if not bindings.get("codex"):
         print("解析失败：未从 model-bindings.yaml 读到任何宿主")
         return 2
     errors = check_native(bindings)
+    if args.check_codex_install:
+        errors.extend(check_codex_install(bindings, args.codex_config))
     if errors:
         print("BINDINGS DRIFTED:")
         for e in errors:
@@ -121,6 +210,8 @@ def main() -> int:
         return 1
     n = sum(len(r) for r in bindings.values())
     print(f"bindings OK：{len(bindings)} 宿主 / {n} 角色与 canonical 一致")
+    if args.check_codex_install:
+        print(f"Codex install OK：{args.codex_config.expanduser()} 直连 canonical 普通文件")
     return 0
 
 

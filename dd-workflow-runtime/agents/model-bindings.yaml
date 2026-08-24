@@ -2,7 +2,8 @@
 #
 # 本文件是六家宿主模型绑定的唯一事实源；agents/<host>/ 下的原生文件是
 # 按 here 声明生成/校验的产物，不得脱离本文件独立演化。
-# 校验：python3 agents/validate-bindings.py（任何漂移都以非零退出）
+# canonical 校验：python3 agents/validate-bindings.py（任何漂移都以非零退出）
+# 本机 Codex 安装校验：python3 agents/validate-bindings.py --check-codex-install
 
 schema: dd-model-bindings/1
 updated: 2026-08-24
@@ -27,8 +28,8 @@ hosts:
       effort_key: model_reasoning_effort
       effort: high
       sandbox: read-only
-    install: "~/.codex/agents/"
-    status: installed-schema-only   # L2+ 见 tests/routing-hosts-smoke.md
+    install: "~/.codex/config.toml direct canonical config_file; no duplicate ~/.codex/agents entry"
+    status: installed-invoked-l6-override-unsafe  # L1-L5/L7 pass；L6 normal pass、危险父 sandbox override fail
 
   zcode:
     reviewer:
