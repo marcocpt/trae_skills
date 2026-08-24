@@ -20,7 +20,7 @@
 - L1 configured: pass（2026-08-24 tomllib 解析通过且含必需键 name/description/model/model_reasoning_effort；SWMR-014 修正本行状态滞后）
 - L2 installed: pass（symlink 有效；config.toml `[agents.*]` 注册确认；CLI 0.149.0 加载 config.toml 无错误）
 - L3 discovered: **pass**（2026-08-24 `codex exec` 实测：主代理正确列出当前自定义代理 `luna-worker`、`strong-reviewer`，消耗 ~33k tokens）
-- L4-L7: **blocked-in-exec**——exec 模式派生返回 "agent type is currently not available"；本机 ChatGPT Desktop App 正在运行（Codex Framework 151.0.7922.170）而 CLI 为 0.149.0，疑似版本/运行上下文门控。待在 Codex App 会话内委派一次取证
+- L4-L7: **blocked（上游产品门控，非本仓库配置问题）**——2026-08-24 定位：exec 与 App 两种上下文派生**任何**自定义代理都返回 "agent type is currently not available"（codex_core::tools::router 日志），luna-worker（用户既有配置）同样被拒；CLI 0.149.0 已是 npm 最新、无 agents/subagents 特性开关、官方文档站当日本机不可达。判定为该构建的派生能力未开放/rollout 未覆盖。备选原生强审通道：`codex exec review [PROMPT]`（内置审查子命令，支持 `-c` 覆盖模型）——尚未冒烟，待自定义代理开放或需要时启用。App 内人工复测命令见会话记录。
 - 备注：官方文档提示 parent turn 的 sandbox override（如 `--yolo`）会在 spawn 时重新应用——L6 必须在该场景下复测，不得只凭 toml `sandbox_mode = "read-only"` 宣称只读。
 
 ## ZCode（agents/zcode/strong-reviewer.md → ~/.zcode/agents/）
