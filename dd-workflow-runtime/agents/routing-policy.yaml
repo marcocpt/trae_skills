@@ -1,0 +1,16 @@
+# Host-neutral ordered backend selection.  The registry owns invocation
+# metadata; this file owns policy and fallback order.
+
+schema: dd-routing-policy/1
+max_hops: 1
+
+roles:
+  strong-reviewer:
+    capability: strong-review
+    max_hops: 1
+    backends: [mcp-review, codex-cli, host-native]
+    fallback_on: [backend_unavailable, executable_missing, endpoint_unavailable, capability_unavailable, temporary_backend_failure]
+
+host_native:
+  codex: codex-native
+  opencode: opencode-native

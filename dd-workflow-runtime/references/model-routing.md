@@ -74,3 +74,20 @@ python3 "$RUNTIME_SKILL_ROOT/agents/check-review-route.py" \
 ## 绑定配置属主
 
 按 DD-008，模型绑定策略集中维护：canonical 源是宿主中立的 [agents/model-bindings.yaml](../agents/model-bindings.yaml)（独立路由配置域）；`agents/<host>/` 下的原生文件是它的产物，由 [agents/validate-bindings.py](../agents/validate-bindings.py) 机械校验等价性，任何漂移非零退出。宿主侧不维护可独立编辑副本，但安装引用必须遵循宿主实测约束：Codex 的 `~/.codex/config.toml [agents.*].config_file` 必须直接指向 canonical 普通文件，不能指向 `~/.codex/agents/` symlink；CLI 0.149.0 对 symlink 返回 ELOOP，外层错误会被模糊为 `agent type is currently not available`。直连注册后还必须删除 `~/.codex/agents/` 下的同名文件或 symlink，否则自动发现会产生 `duplicate agent role name`。其他宿主只有在各自验证通过时才使用 symlink。更换任一宿主的模型或推理强度：先改 model-bindings.yaml，跑校验器确认原生文件同步（当前为"手写 native + 机械校验"模式；自动生成器记 TODO）；Codex 本机安装另跑 `python3 agents/validate-bindings.py --check-codex-install`。公共 Skill 正文不因换模型而改动（FR-002、NFR-009）。
+
+## Generic Review Backend Router v1
+
+跨 App 的 review transport 由两个独立、宿主中立的 canonical 文件拥有：
+
+- [agents/review-backends.yaml](../agents/review-backends.yaml) 只描述 backend 类型、调用命令、能力和只读要求；
+- [agents/routing-policy.yaml](../agents/routing-policy.yaml) 只描述逻辑角色的 ordered backend chain、`max_hops` 和 fallback categories/policy。
+
+`model-bindings.yaml` 仍只描述 `host → logical role → native model/profile`，不得加入 backend、MCP endpoint、CLI command 或 fallback chain。由 [agents/validate-review-routing.py](../agents/validate-review-routing.py) 做职责隔离和未知 backend 引用的 fail-closed 校验。
+
+`agents/dispatch-review.py` 是一次性 dispatch boundary：校验 deterministic verification 与 frozen `base_sha/head_sha/scope`，解析一个候选，执行恰好一个 adapter，并只对明确的 `backend_unavailable`、`executable_missing`、`endpoint_unavailable`、`capability_unavailable` 或 `temporary_backend_failure` 尝试下一个候选。CLI backend 必须在 registry 中声明 availability/transient exit-code 分类；未分类的非零退出归为 `backend_execution_failed`，不得 fallback。默认 `strong-reviewer` 路径为：
+
+```text
+MCP → Codex CLI → current-host native strong reviewer → BLOCKED
+```
+
+Reviewer 的 `FINDINGS`（包括 provider 的 `FAIL` 别名）、非法 schema、baseline/evidence mismatch、authorization/readonly/recursion violation 和未完成结果均不允许静默 fallback。`readonly_evidence` 必须是按 backend 绑定的 L6 proof，且 `mode` 必须等于 registry 的 `readonly_mode`；fallback 使用同一冻结 request 时只能选择拥有匹配 proof 的候选。Generic Router 不直接选择 `codex-native`：该 backend 的 `router_selectable=false`，必须由已通过 `check-review-route.py` 且能证明 current-parent thread provenance 的 host-native dispatcher 接管；缺少该 handoff 时 Router 只记录 capability unavailable 并最终 `BLOCKED`。Router 只返回 `dd-review-result/1`，不取得写入租约、不修改工作树、不推进返工、不关闭 finding，也不把 MCP 变成工作流调度器。`max_hops=1`、`dispatch_chain` 和 `dispatch_boundary=single-backend` 防止 `A → B → A` 或 adapter 内再次路由；workflow state 与外部授权仍由主调度者按 [runtime-contract.md](runtime-contract.md) 持久化。

@@ -59,7 +59,7 @@ delivery_policy: project-rules
 
 能力缺失改变执行方式，不改变 Gate。例如没有子 Agent 时改为主线程多视角复核；没有结构化 ASK 时改用同义短文本；不能因此跳过复核或决定。
 
-Codex 的 `native-agent` 还必须通过从 Skill 实际根目录调用的 `agents/check-review-route.py` 派生前检查。守卫默认用 `CODEX_THREAD_ID` 只读查询操作系统账户目录下 `.codex/state_5.sqlite` 的真实 `sandbox_policy`，且生产 CLI 不接受 sandbox、thread 或数据库路径覆盖；缺失、不可读或未识别时按 `unknown` fail-closed。运行时把守卫 JSON 结果和 `sandbox_evidence` 持久化到 `routing` 证据；守卫非零退出或 `native_spawn_allowed=false` 时禁止派生原生 Reviewer。只有已证明的 `read-only` 父会话可直接派生；`workspace-write` 尚无 L6 证据，也必须转入单独的只读父会话重新检查，或使用已针对本次上下文授权且可用的外部只读审查，否则保持 `BLOCKED`。直接调用一个可写的 Reviewer 不构成 FR-008/DD-006 Gate 证据。
+Codex 的 `native-agent` 还必须通过从 Skill 实际根目录调用的 `agents/check-review-route.py` 派生前检查。守卫默认用 `CODEX_THREAD_ID` 只读查询操作系统账户目录下 `.codex/state_5.sqlite` 的真实 `sandbox_policy`，且生产 CLI 不接受 sandbox、thread 或数据库路径覆盖；缺失、不可读、未识别或无法证明该 ID 属于当前父 thread 时按 `unknown` fail-closed。运行时把守卫 JSON 结果和 `sandbox_evidence` 持久化到 `routing` 证据；守卫非零退出或 `native_spawn_allowed=false` 时禁止派生原生 Reviewer。Generic Review Backend Router 不直接选择 `codex-native`，而由已完成上述检查并拥有 current-parent provenance 的 host-native dispatcher 接管；缺少 handoff 时保持 `BLOCKED`。只有已证明的 `read-only` 父会话可直接派生；`workspace-write` 尚无 L6 证据，也必须转入单独的只读父会话重新检查，或使用已针对本次上下文授权且可用的外部只读审查，否则保持 `BLOCKED`。直接调用一个可写的 Reviewer 不构成 FR-008/DD-006 Gate 证据。
 
 ## 3. State Schema
 
@@ -84,6 +84,12 @@ routing:
   review_level: standard
   review_execution: native-agent
   max_rework_cycles: 2
+  backend_registry: dd-review-backends/1
+  routing_policy: dd-routing-policy/1
+  candidate_backends: []
+  selected_backend: null
+  hop_count: 0
+  dispatch_boundary: single-backend
 review:
   baseline_sha: null
   head_sha: null
@@ -97,9 +103,13 @@ review:
   rework_cycle: 0
 external_review:
   authorization: none
+  backend: null
+  result_schema: dd-review-result/1
   client_request_id: null
   provider_task_ref: null
   dispatch_status: not-started
+  reviewed: []
+  unreadable: []
 artifacts: {}
 decisions: []
 blocking_gaps: []
@@ -114,8 +124,10 @@ next_safe_action: run phase-2 local gate
 `routing` / `review` / `external_review` 子对象语义由 [model-routing.md](model-routing.md) 拥有。持久化纪律（FR-009、FR-012、NFR-005）：
 
 - 进入强审前必须原子写入 `review.baseline_sha/head_sha/scope`；基线变化即结论失效；
+- 使用 Generic Review Backend Router 时，在调用前同时记录 `routing.backend_registry`、`routing.routing_policy`、候选顺序、`routing.hop_count` 和 `routing.dispatch_boundary`；adapter 返回的 `backend`、`reviewed`、`unreadable`、`result_schema` 和 `lifecycle` 是审查证据，不替代 workflow state；
 - 外部审核防重（供应商中立）：发起请求**之前**原子写入 `external_review.client_request_id`（幂等键，由本地生成）与 `authorization`，置 `dispatch_status=prepared`；提交动作开始时置 `submitting`；拿到 provider 返回的任务标识后立即原子写入 `provider_task_ref` 并置 `running`。恢复时若停在 `submitting`，必须先用 `client_request_id` 向 provider 对账确认无在途任务，才允许重新提交——重复提交次数为零；
 - `review.rework_cycle` 每次返工后递增，达到 `routing.max_rework_cycles` 停止并 BLOCKED。
+- Router 返回 `lifecycle.completed=false` 或 `status=BLOCKED` 时，恢复流程不得把结果提升为 PASS；只有重新核对当前基线、验证和所需 Reviewer 结论后才能进入下一个 Gate。
 
 迁移合同：旧 state 缺失 `routing` 字段时视为未设置，在下一个路由决策点按当前风险重新解析；禁止把已有值降级或删除——恢复值与重新扫描结果冲突时取更严格值，否则 BLOCKED。
 

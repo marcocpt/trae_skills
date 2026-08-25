@@ -114,6 +114,7 @@ recovery_evidence: []
 - 审查按 [dd-workflow-runtime/review-gate](../dd-workflow-runtime/references/review-gate.md) 的 A/B/C 语义自检；命中高风险触发器时追加对应检查并按审查等级参数升级；检查范围和 CI 证据成本随之调整，但不删除验收条件或确定性验证；
 - 升级到独立强审时，执行路径、角色合同与宿主能力按 [dd-workflow-runtime/model-routing](references/model-routing.md) 路由。
 - Codex 解析到 `native-agent` 前，必须从本 Skill 的实际根目录运行 `agents/check-review-route.py`；守卫默认以 `CODEX_THREAD_ID` 只读查询 Codex thread 元数据，不接受调用方自报安全状态作为生产证据。只有退出 0 且 `native_spawn_allowed=true` 才能派生原生 `strong-reviewer`。除已证明的 `read-only` 外，`workspace-write`、`danger-full-access`、`--dangerously-bypass-approvals-and-sandbox` 或未知父 sandbox 均不得进入原生 Reviewer Gate：转已授权且可用的 `external`，否则 `BLOCKED`。
+- Generic Review Backend Router v1 使用 `agents/review-backends.yaml` 与 `agents/routing-policy.yaml`；调用 `agents/dispatch-review.py` 前必须有冻结 baseline、确定性验证和外部授权/只读证据。它只执行一个最终 adapter；`max_hops=1`、`dispatch_chain` 和 `dispatch_boundary=single-backend` 禁止 backend 再次路由。Generic Router 不直接选择 `codex-native`；该 handoff 只能由已证明 current-parent provenance 的 host-native dispatcher 在 route guard 后接管。MCP 是单次 review access mechanism，不是 workflow orchestrator；adapter 不得写工作树、提交、修复或关闭 finding。
 
 ## Workflow Gate 与 Delivery Gate
 

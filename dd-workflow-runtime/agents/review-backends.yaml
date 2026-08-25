@@ -1,0 +1,77 @@
+# Host-neutral review backend registry.
+#
+# This file describes how a backend can be invoked.  It deliberately does not
+# select a backend and it does not contain model/profile bindings.  Selection
+# belongs to routing-policy.yaml; native model bindings belong to
+# model-bindings.yaml.
+
+schema: dd-review-backends/1
+result_schema: dd-review-result/1
+
+backends:
+  mcp-review:
+    type: mcp
+    execution: external
+    executable: mcp-review
+    command: [review]
+    capabilities: [strong-review]
+    readonly_required: true
+    readonly_mode: single-review-request
+    availability_exit_codes: [69]
+    transient_exit_codes: [75]
+    result_schema: dd-review-result/1
+
+  codex-cli:
+    type: cli
+    execution: external
+    executable: codex
+    command: [exec, --sandbox, read-only]
+    capabilities: [strong-review]
+    readonly_required: true
+    readonly_mode: codex-read-only-transport
+    availability_exit_codes: [69]
+    transient_exit_codes: [75]
+    result_schema: dd-review-result/1
+
+  opencode-cli:
+    type: cli
+    execution: external
+    executable: opencode
+    command: [run, --agent, strong-reviewer, --format, json]
+    forbid_args: [--auto]
+    capabilities: [strong-review]
+    readonly_required: true
+    readonly_mode: agent-read-only-contract
+    availability_exit_codes: [69]
+    transient_exit_codes: [75]
+    result_schema: dd-review-result/1
+
+  codex-native:
+    # Generic Router cannot prove current-parent thread provenance.  The
+    # verified host-native dispatcher owns this handoff after route-guard.
+    type: native
+    execution: native-agent
+    host: codex
+    executable: codex
+    command: [exec, --sandbox, read-only]
+    native_guard: codex-route-guard
+    router_selectable: false
+    capabilities: [strong-review]
+    readonly_required: true
+    readonly_mode: codex-route-guard
+    availability_exit_codes: [69]
+    transient_exit_codes: [75]
+    result_schema: dd-review-result/1
+
+  opencode-native:
+    type: native
+    execution: native-agent
+    host: opencode
+    executable: opencode
+    command: [run, --agent, strong-reviewer, --format, json]
+    capabilities: [strong-review]
+    readonly_required: true
+    readonly_mode: agent-read-only-contract
+    availability_exit_codes: [69]
+    transient_exit_codes: [75]
+    result_schema: dd-review-result/1
