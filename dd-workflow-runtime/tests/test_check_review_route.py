@@ -6,6 +6,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import sqlite3
 import subprocess
 import sys
@@ -135,7 +136,7 @@ class CheckReviewRouteTests(unittest.TestCase):
         self.assertEqual(payload["decision"], "BLOCKED")
         self.assertEqual(payload["reason"], "review-parameter-conflict")
 
-    def test_auto_detects_disabled_policy_from_thread_metadata(self) -> None:
+    def test_persisted_danger_policy_is_not_current_parent_provenance(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             state_db = Path(directory) / "state.sqlite"
             with sqlite3.connect(state_db) as db:
@@ -145,10 +146,11 @@ class CheckReviewRouteTests(unittest.TestCase):
                     ("danger-thread", '{"type":"disabled"}'),
                 )
             sandbox, evidence = GUARD.detect_parent_sandbox("danger-thread", state_db)
-        self.assertEqual(sandbox, "danger-full-access")
-        self.assertEqual(evidence, "codex-thread-metadata:danger-thread")
+        self.assertEqual(GUARD.classify_sandbox_policy('{"type":"disabled"}'), "danger-full-access")
+        self.assertEqual(sandbox, "unknown")
+        self.assertEqual(evidence, "current-parent-provenance-unavailable")
 
-    def test_auto_detects_read_only_policy_from_thread_metadata(self) -> None:
+    def test_existing_foreign_read_only_metadata_cannot_authorize_standalone_guard(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             state_db = Path(directory) / "state.sqlite"
             with sqlite3.connect(state_db) as db:
@@ -162,8 +164,39 @@ class CheckReviewRouteTests(unittest.TestCase):
                     ),
                 )
             sandbox, evidence = GUARD.detect_parent_sandbox("read-thread", state_db)
-        self.assertEqual(sandbox, "read-only")
-        self.assertEqual(evidence, "codex-thread-metadata:read-thread")
+        self.assertEqual(
+            GUARD.classify_sandbox_policy(
+                '{"type":"managed","file_system":{"type":"restricted",'
+                '"entries":[{"access":"read"}]}}'
+            ),
+            "read-only",
+        )
+        self.assertEqual(sandbox, "unknown")
+        self.assertEqual(evidence, "current-parent-provenance-unavailable")
+
+    def test_environment_thread_id_cannot_enable_standalone_native_route(self) -> None:
+        environment = dict(os.environ)
+        environment["CODEX_THREAD_ID"] = "01a03ff9-1836-76d1-b9b4-bd38ace2a2d0"
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--review-level", "high",
+                "--requested-execution", "native-agent",
+                "--external-status", "unavailable",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            cwd=tempfile.gettempdir(),
+            env=environment,
+        )
+        self.assertEqual(result.returncode, 2)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["decision"], "BLOCKED")
+        self.assertEqual(payload["parent_sandbox"], "unknown")
+        self.assertEqual(payload["reason"], "parent-sandbox-unknown")
+        self.assertEqual(payload["sandbox_evidence"], "current-parent-provenance-unavailable")
 
     def test_malformed_and_mixed_policies_fail_closed(self) -> None:
         policies = (

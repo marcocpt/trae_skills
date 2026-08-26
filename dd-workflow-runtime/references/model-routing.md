@@ -42,7 +42,7 @@ python3 "$RUNTIME_SKILL_ROOT/agents/check-review-route.py" \
   --external-status <unavailable|available-unapproved|available-authorized>
 ```
 
-`RUNTIME_SKILL_ROOT` 必须由宿主解析当前实际加载的 `dd-workflow-runtime/SKILL.md` 所在目录，不能假设当前工作目录。守卫通过 `CODEX_THREAD_ID` 查询操作系统账户目录下 Codex thread 元数据中的真实 `sandbox_policy`；生产 CLI 不接受 `parent-sandbox`、`thread-id` 或 `state-db` 覆盖，确定性测试直接调用内部纯函数。只有退出 0 且 JSON 中 `native_spawn_allowed=true` 才能派生原生 `strong-reviewer`。当前只有已证明的 `read-only` 父会话满足该条件；`workspace-write` 在专门 L6 通过前同样 fail-closed。其他模式只能解析为本次上下文已授权且可用的 `external`，否则返回 `BLOCKED`；不得先派生再依靠 Reviewer 指令自律，也不得把危险模式下的直接调用结果计作强审 Gate。该检查是 FR-008/DD-006 的 fail-closed 执行边界。
+`RUNTIME_SKILL_ROOT` 必须由宿主解析当前实际加载的 `dd-workflow-runtime/SKILL.md` 所在目录，不能假设当前工作目录。standalone guard 不通过 `CODEX_THREAD_ID` 或持久化 Codex thread metadata 取得 current-parent provenance：环境变量可被调用者覆盖，metadata 行没有调用者绑定；没有可信 host-native runtime handoff 时返回 `unknown` 并 fail-closed。生产 CLI 不接受 `parent-sandbox`、`thread-id` 或 `state-db` 覆盖，确定性测试直接调用内部纯函数。只有退出 0 且 JSON 中 `native_spawn_allowed=true` 才能派生原生 `strong-reviewer`。若未来有可信 handoff，只有其中已证明的 `read-only` 父会话满足该条件；当前 standalone guard 没有 native ALLOW 路径。`workspace-write` 在专门 L6 通过前同样 fail-closed。其他模式只能解析为本次上下文已授权且可用的 `external`，否则返回 `BLOCKED`；不得先派生再依靠 Reviewer 指令自律，也不得把危险模式下的直接调用结果计作强审 Gate。该检查是 FR-008/DD-006 的 fail-closed 执行边界。
 
 升级触发器由 [review-gate.md](review-gate.md) 的高风险附加检查表拥有：常规触发器至少 `standard`，安全或权限、不可逆数据迁移、兼容性或架构争议必须 `high`。
 
