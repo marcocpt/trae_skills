@@ -30,7 +30,7 @@
 - `codex-native`: PENDING
 - `opencode-native`: PENDING
 
-聚合 L7 仍为 `PENDING`。`mcp-review` 的 L7 能力已贯通（verdict=FINDINGS，属真实 Reviewer 判定，不影响 L7 能力 PASS）；该轮发现并修复了真实 provider-contract failure（chatgpt-review MCP 在提取严格 JSON 响应时被 Turndown 注入 Markdown 转义，已通过 `work/MCP` 的 `extractReply` 严格 JSON 原样保留修复，未放宽 adapter parser / provider schema / readonly authority，未发起隐式重试或第二次 review）。Router 归因缺陷 `router_observation.OBS-L7-001`（terminal BLOCKED 的 `failure_category` 被掩盖为 `readonly_violation`）本轮按指令未修复——provider 修复后该分支不再被触发。
+聚合 L7 仍为 `PENDING`。`mcp-review` 的 L7 能力已贯通（verdict=FINDINGS，属真实 Reviewer 判定，不影响 L7 能力 PASS）；该轮发现并修复了真实 provider-contract failure（chatgpt-review MCP 在提取严格 JSON 响应时被 Turndown 注入 Markdown 转义，已通过 `work/MCP` 的 `extractReply` 严格 JSON 原样保留修复，未放宽 adapter parser / provider schema / readonly authority，未发起隐式重试或第二次 review）。Router 归因缺陷 `router_observation.OBS-L7-001`（terminal BLOCKED 的 `failure_category` 被掩盖为 `readonly_violation`）：**OBS-L7-001 = FIXED**（Phase C Option B 下 Router 在 invocation 前已完成 backend-bound L6 eligibility，合法解析的 terminal BLOCKED 不再把 adapter/provider 的 `readonly_confirmation` 当作 authority，真实 `failure_category` 如 `schema_invalid`、`evidence_mismatch`、`review_incomplete`、`backend_execution_failed`、`readonly_violation` 原样保留；pre-dispatch eligibility、PASS/FINDINGS 的 Router-owned confirmation 与 fallback policy 不变。历史 evidence 文件中的观察记录保持原样，未篡改。）
 
 运行本地静态与回归检查：
 

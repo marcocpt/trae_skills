@@ -760,11 +760,13 @@ def _normalize_result(
             "evidence": f"router-validated:{backend_id}:{validated_readonly_evidence['mode']}",
         }
     else:
+        # A BLOCKED result can never become an accepted review outcome, and
+        # eligibility (including the backend-bound L6 proof) was already
+        # enforced before invocation.  The adapter/provider confirmation is
+        # therefore only a non-authoritative observation here: it must not
+        # mint trust and must not overwrite the parsed terminal
+        # failure_category (OBS-L7-001).
         readonly = provider_readonly
-        if not readonly["confirmed"] and not (
-            status == "BLOCKED" and failure_category in FALLBACK_CATEGORIES
-        ):
-            raise TerminalReviewFailure("readonly_violation", "backend did not confirm the read-only contract")
 
     lifecycle = raw.get("lifecycle", {})
     if lifecycle is not None and not isinstance(lifecycle, dict):

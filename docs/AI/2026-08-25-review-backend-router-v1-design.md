@@ -83,7 +83,11 @@ and cannot be reused across candidates.  The Router remains the sole owner of
 the result-side read-only confirmation: after eligibility succeeds, it
 replaces the provider's PASS/FINDINGS confirmation with a local attestation
 derived from the already-validated backend-bound proof.  The adapter/provider
-cannot create or upgrade that confirmation.  The generic Router does not directly
+cannot create or upgrade that confirmation.  A `BLOCKED` result keeps the
+parsed terminal `failure_category`: because eligibility (including the
+backend-bound L6 proof) is enforced before invocation, the adapter's own
+`readonly_confirmation` is only a non-authoritative observation on that path
+and must neither mint trust nor overwrite the terminal category.  The generic Router does not directly
 select `codex-native`: a verified host-native dispatcher must run
 `check-review-route.py` from this Skill's actual root and prove current-parent
 thread provenance before taking that handoff.  Without that handoff the Router

@@ -293,6 +293,90 @@ class ReviewRouterTests(unittest.TestCase):
         self.assertEqual(result["backend"], "codex-cli")
         self.assertEqual(runner.calls, ["mcp-review", "codex-cli"])
 
+    def test_terminal_blocked_category_survives_provider_non_confirmation(self) -> None:
+        request = self.request()
+        for category in (
+            "schema_invalid",
+            "evidence_mismatch",
+            "review_incomplete",
+            "backend_execution_failed",
+        ):
+            with self.subTest(failure_category=category):
+                runner = BackendScriptRunner({
+                    "mcp-review": self.result(
+                        "mcp-review",
+                        request,
+                        "BLOCKED",
+                        failure_category=category,
+                        readonly_confirmation={"confirmed": False},
+                    ),
+                    "codex-cli": self.result("codex-cli", request),
+                    "codex-native": self.result("codex-native", request),
+                })
+                result = self.dispatch(request, runner)
+                self.assertEqual(result["status"], "BLOCKED")
+                self.assertEqual(result["failure_category"], category)
+                self.assertEqual(result["backend"], "mcp-review")
+                self.assertEqual(runner.calls, ["mcp-review"])
+                self.assertFalse(result["readonly_confirmation"]["confirmed"])
+                self.assertIsNone(result["readonly_confirmation"]["evidence"])
+
+    def test_blocked_readonly_violation_stays_readonly_violation(self) -> None:
+        request = self.request()
+        runner = BackendScriptRunner({
+            "mcp-review": self.result(
+                "mcp-review",
+                request,
+                "BLOCKED",
+                failure_category="readonly_violation",
+                readonly_confirmation={"confirmed": False},
+            ),
+        })
+        result = self.dispatch(request, runner)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["failure_category"], "readonly_violation")
+        self.assertEqual(runner.calls, ["mcp-review"])
+
+    def test_normalization_preserves_terminal_blocked_category_observation_only(self) -> None:
+        request = self.request()
+        raw = self.result(
+            "mcp-review",
+            request,
+            "BLOCKED",
+            failure_category="schema_invalid",
+            readonly_confirmation={"confirmed": False},
+        )
+        normalized = ROUTER._normalize_result(
+            raw,
+            request,
+            "mcp-review",
+            "started",
+            request["readonly_evidence"][0],
+        )
+        self.assertEqual(normalized["status"], "BLOCKED")
+        self.assertEqual(normalized["failure_category"], "schema_invalid")
+        self.assertEqual(normalized["fallback_eligible"], False)
+        self.assertEqual(normalized["readonly_confirmation"], {"confirmed": False, "evidence": None})
+
+    def test_terminal_blocked_categories_never_fallback(self) -> None:
+        request = self.request()
+        for category in ("schema_invalid", "evidence_mismatch"):
+            with self.subTest(failure_category=category):
+                runner = BackendScriptRunner({
+                    "mcp-review": self.result(
+                        "mcp-review",
+                        request,
+                        "BLOCKED",
+                        failure_category=category,
+                        readonly_confirmation={"confirmed": False},
+                    ),
+                    "codex-cli": self.result("codex-cli", request),
+                    "codex-native": self.result("codex-native", request),
+                })
+                result = self.dispatch(request, runner)
+                self.assertNotEqual(result["backend"], "codex-cli")
+                self.assertEqual(runner.calls, ["mcp-review"])
+
     def test_mcp_and_codex_unavailable_block_without_host_native_handoff(self) -> None:
         request = self.request()
         runner = BackendScriptRunner({
@@ -467,6 +551,62 @@ class ReviewRouterTests(unittest.TestCase):
         with self.assertRaises(ROUTER.TerminalReviewFailure) as raised:
             ROUTER._normalize_result(raw, request, "mcp-review", "started")
         self.assertEqual(raised.exception.category, "readonly_violation")
+
+    def test_findings_cannot_be_accepted_without_router_l6_evidence(self) -> None:
+        request = self.request(readonly_evidence=[])
+        finding = {
+            "id": "RV-001",
+            "severity": "HIGH",
+            "classification": "FINDING",
+            "change_risk": "behavioral",
+            "location": "review.md:1",
+            "evidence": "fixture finding",
+            "required_fix": "repair the target",
+        }
+        runner = BackendScriptRunner({
+            "mcp-review": self.result(
+                "mcp-review",
+                request,
+                "FINDINGS",
+                findings=[finding],
+                readonly_confirmation={"confirmed": True, "evidence": "provider-forged"},
+            ),
+        })
+        result = self.dispatch(request, runner)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["failure_category"], "readonly_violation")
+        self.assertEqual(runner.calls, [])
+
+    def test_normalization_rejects_tampered_router_l6_evidence_for_success(self) -> None:
+        request = self.request()
+        valid_proof = request["readonly_evidence"][0]
+        tampered_cases = {
+            "missing evidence": None,
+            "wrong backend binding": {**valid_proof, "backend": "codex-cli"},
+            "unconfirmed proof": {**valid_proof, "confirmed": False},
+        }
+        for label, validated in tampered_cases.items():
+            with self.subTest(case=label):
+                for status in ("PASS", "FINDINGS"):
+                    raw = self.result(
+                        "mcp-review",
+                        request,
+                        status,
+                        findings=[{
+                            "id": "RV-001",
+                            "severity": "HIGH",
+                            "classification": "FINDING",
+                            "change_risk": "behavioral",
+                            "location": "review.md:1",
+                            "evidence": "fixture finding",
+                            "required_fix": "repair the target",
+                        }] if status == "FINDINGS" else [],
+                        readonly_confirmation={"confirmed": True, "evidence": "provider-forged"},
+                    )
+                    with self.subTest(status=status):
+                        with self.assertRaises(ROUTER.TerminalReviewFailure) as raised:
+                            ROUTER._normalize_result(raw, request, "mcp-review", "started", validated)
+                        self.assertEqual(raised.exception.category, "readonly_violation")
 
     def test_unclassified_cli_exit_is_terminal_and_does_not_fallback(self) -> None:
         registry = json.loads(json.dumps(self.registry))
