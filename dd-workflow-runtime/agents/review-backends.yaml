@@ -16,7 +16,7 @@ backends:
     command: [review]
     capabilities: [strong-review]
     readonly_required: true
-    readonly_mode: single-review-request
+    readonly_mode: snapshot-send-only
     availability_exit_codes: [69]
     transient_exit_codes: [75]
     result_schema: dd-review-result/1

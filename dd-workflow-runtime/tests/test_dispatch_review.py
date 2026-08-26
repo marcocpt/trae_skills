@@ -50,7 +50,7 @@ def _backend(backend_type: str = "cli", execution: str = "external") -> Dict[str
         "command": ["-c", "pass"],
         "capabilities": ["strong-review"],
         "readonly_required": True,
-        "readonly_mode": "single-review-request" if backend_type == "mcp" else "test-readonly",
+        "readonly_mode": "snapshot-send-only" if backend_type == "mcp" else "test-readonly",
         "availability_exit_codes": [69],
         "transient_exit_codes": [75],
         "result_schema": ROUTER.RESULT_SCHEMA,
@@ -131,7 +131,7 @@ class ReviewRouterTests(unittest.TestCase):
             "readonly_evidence": [
                 {
                     "backend": "mcp-review",
-                    "mode": "single-review-request",
+                    "mode": "snapshot-send-only",
                     "level": "L6",
                     "confirmed": True,
                     "source": "test-mcp-read-only",
@@ -209,7 +209,11 @@ class ReviewRouterTests(unittest.TestCase):
     def test_mcp_available_selects_mcp_without_calling_codex(self) -> None:
         request = self.request()
         runner = BackendScriptRunner({
-            "mcp-review": self.result("mcp-review", request),
+            "mcp-review": self.result(
+                "mcp-review",
+                request,
+                readonly_confirmation={"confirmed": False, "evidence": "adapter-design-only"},
+            ),
             "codex-cli": self.result("codex-cli", request),
             "codex-native": self.result("codex-native", request),
         })
@@ -218,6 +222,41 @@ class ReviewRouterTests(unittest.TestCase):
         self.assertEqual(result["backend"], "mcp-review")
         self.assertEqual(runner.calls, ["mcp-review"])
         self.assertEqual(result["routing"]["dispatch_boundary"], "single-backend")
+        self.assertEqual(
+            result["readonly_confirmation"],
+            {"confirmed": True, "evidence": "router-validated:mcp-review:snapshot-send-only"},
+        )
+        self.assertNotIn("readonly_evidence", runner.requests[0])
+        self.assertNotIn("internal_attestation", runner.requests[0])
+
+    def test_router_attests_mcp_pass_and_findings_without_provider_confirmation(self) -> None:
+        finding = {
+            "id": "RV-001",
+            "severity": "HIGH",
+            "classification": "FINDING",
+            "change_risk": "behavioral",
+            "location": "review.md:1",
+            "evidence": "fixture finding",
+            "required_fix": "repair the target",
+        }
+        for status, overrides in (("PASS", {}), ("FINDINGS", {"findings": [finding]})):
+            with self.subTest(status=status):
+                request = self.request()
+                runner = BackendScriptRunner({
+                    "mcp-review": self.result(
+                        "mcp-review",
+                        request,
+                        status,
+                        readonly_confirmation={"confirmed": False},
+                        **overrides,
+                    ),
+                })
+                result = self.dispatch(request, runner)
+                self.assertEqual(result["status"], status)
+                self.assertEqual(
+                    result["readonly_confirmation"],
+                    {"confirmed": True, "evidence": "router-validated:mcp-review:snapshot-send-only"},
+                )
 
     def test_mcp_unavailable_falls_back_to_codex(self) -> None:
         request = self.request()
@@ -231,6 +270,10 @@ class ReviewRouterTests(unittest.TestCase):
         self.assertEqual(result["backend"], "codex-cli")
         self.assertEqual(runner.calls, ["mcp-review", "codex-cli"])
         self.assertEqual(result["routing"]["attempted"][0]["failure_category"], "endpoint_unavailable")
+        self.assertEqual(
+            result["readonly_confirmation"],
+            {"confirmed": True, "evidence": "router-validated:codex-cli:test-readonly"},
+        )
 
     def test_transport_blocked_result_without_readonly_confirmation_can_fallback(self) -> None:
         request = self.request()
@@ -388,6 +431,43 @@ class ReviewRouterTests(unittest.TestCase):
         self.assertEqual(result["failure_category"], "readonly_violation")
         self.assertEqual(runner.calls, ["mcp-review"])
 
+    def test_mcp_eligibility_rejects_invalid_backend_bound_l6_evidence(self) -> None:
+        valid = self.request()["readonly_evidence"][0]
+        invalid_cases = {
+            "wrong backend": {**valid, "backend": "codex-cli"},
+            "wrong mode": {**valid, "mode": "codex-read-only-transport"},
+            "wrong level": {**valid, "level": "L7"},
+            "not confirmed": {**valid, "confirmed": False},
+            "missing source": {key: value for key, value in valid.items() if key != "source"},
+        }
+        for label, proof in invalid_cases.items():
+            with self.subTest(label=label):
+                request = self.request(readonly_evidence=[proof])
+                runner = BackendScriptRunner({
+                    "mcp-review": self.result("mcp-review", request),
+                })
+                result = self.dispatch(request, runner)
+                self.assertEqual(result["status"], "BLOCKED")
+                self.assertEqual(result["failure_category"], "readonly_violation")
+                self.assertEqual(runner.calls, [])
+
+    def test_pass_or_findings_cannot_be_accepted_without_router_l6_evidence(self) -> None:
+        request = self.request(readonly_evidence=[])
+        runner = BackendScriptRunner({
+            "mcp-review": self.result("mcp-review", request),
+        })
+        result = self.dispatch(request, runner)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["failure_category"], "readonly_violation")
+        self.assertEqual(runner.calls, [])
+
+    def test_normalization_rejects_provider_success_without_router_l6_evidence(self) -> None:
+        request = self.request()
+        raw = self.result("mcp-review", request, readonly_confirmation={"confirmed": True, "evidence": "provider-claim"})
+        with self.assertRaises(ROUTER.TerminalReviewFailure) as raised:
+            ROUTER._normalize_result(raw, request, "mcp-review", "started")
+        self.assertEqual(raised.exception.category, "readonly_violation")
+
     def test_unclassified_cli_exit_is_terminal_and_does_not_fallback(self) -> None:
         registry = json.loads(json.dumps(self.registry))
         registry["backends"]["mcp-review"]["executable"] = sys.executable
@@ -427,8 +507,8 @@ class ReviewRouterTests(unittest.TestCase):
         self.assertEqual(result["backend"], "codex-cli")
         self.assertEqual(result["routing"]["attempted"][0]["failure_category"], "backend_unavailable")
 
-    def test_readonly_violation_is_fail_closed(self) -> None:
-        request = self.request()
+    def test_readonly_violation_is_fail_closed_without_router_attestation(self) -> None:
+        request = self.request(readonly_evidence=[])
         runner = BackendScriptRunner({
             "mcp-review": self.result("mcp-review", request, readonly_confirmation={"confirmed": False}),
             "codex-cli": self.result("codex-cli", request),
@@ -437,7 +517,7 @@ class ReviewRouterTests(unittest.TestCase):
         result = self.dispatch(request, runner)
         self.assertEqual(result["status"], "BLOCKED")
         self.assertEqual(result["failure_category"], "readonly_violation")
-        self.assertEqual(runner.calls, ["mcp-review"])
+        self.assertEqual(runner.calls, [])
 
     def test_max_hops_blocks_nested_dispatch(self) -> None:
         request = self.request(context={"hop_count": 1, "dispatch_chain": ["outer-router"]})
@@ -493,6 +573,8 @@ class ReviewRouterTests(unittest.TestCase):
         self.assertFalse(invocation["payload"]["routing_context"]["router_authority"])
         self.assertNotIn("external_review", invocation["payload"])
         self.assertNotIn("native_guard", invocation["payload"])
+        self.assertNotIn("readonly_evidence", invocation["payload"])
+        self.assertNotIn("internal_attestation", invocation["payload"])
 
 
 class RoutingConfigTests(unittest.TestCase):

@@ -27,6 +27,7 @@ RESULT_SCHEMA = "dd-review-result/1"
 REQUEST_SCHEMA = "dd-review-request/1"
 CONFIG_SCHEMA = "dd-review-backends/1"
 POLICY_SCHEMA = "dd-routing-policy/1"
+MCP_READONLY_MODE = "snapshot-send-only"
 ALLOWED_BACKEND_TYPES = {"mcp", "cli", "native"}
 ALLOWED_EXECUTIONS = {"external", "native-agent"}
 FALLBACK_CATEGORIES = {
@@ -374,8 +375,8 @@ def validate_registry_policy(registry: Dict[str, Any], policy: Dict[str, Any]) -
             errors.append(f"{path}.result_schema must be {RESULT_SCHEMA}")
         if any(key in spec for key in ("model", "profile", "reasoning_effort")):
             errors.append(f"{path}: model binding fields belong in model-bindings.yaml")
-        if backend_type == "mcp" and spec.get("readonly_mode") != "single-review-request":
-            errors.append(f"{path}: MCP readonly_mode must document a single request boundary")
+        if backend_type == "mcp" and spec.get("readonly_mode") != MCP_READONLY_MODE:
+            errors.append(f"{path}: MCP readonly_mode must be {MCP_READONLY_MODE}")
 
     roles = policy.get("roles")
     if not isinstance(roles, dict) or not roles:
@@ -665,6 +666,7 @@ def _normalize_result(
     request: Dict[str, Any],
     backend_id: str,
     started_at: str,
+    validated_readonly_evidence: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     if not isinstance(raw, dict):
         raise TerminalReviewFailure("schema_invalid", "backend result must be a mapping")
@@ -729,11 +731,40 @@ def _normalize_result(
     elif failure_category not in (None, ""):
         raise TerminalReviewFailure("schema_invalid", "PASS/FINDINGS cannot carry failure_category")
 
-    readonly = _normalize_readonly(raw.get("readonly_confirmation"))
-    if not readonly["confirmed"] and not (
-        status == "BLOCKED" and failure_category in FALLBACK_CATEGORIES
-    ):
-        raise TerminalReviewFailure("readonly_violation", "backend did not confirm the read-only contract")
+    provider_readonly = _normalize_readonly(raw.get("readonly_confirmation"))
+    if status in {"PASS", "FINDINGS"}:
+        # The adapter/provider is not a read-only authority.  Eligibility has
+        # already matched the caller's backend-bound L6 proof; only the
+        # Router may turn that verified fact into the accepted result-side
+        # confirmation.  The proof itself never crosses the adapter boundary.
+        if not isinstance(validated_readonly_evidence, dict):
+            raise TerminalReviewFailure(
+                "readonly_violation",
+                "Router-side backend-bound L6 evidence is required before accepting a review result",
+            )
+        if (
+            validated_readonly_evidence.get("backend") != backend_id
+            or validated_readonly_evidence.get("level") != "L6"
+            or validated_readonly_evidence.get("confirmed") is not True
+            or not isinstance(validated_readonly_evidence.get("mode"), str)
+            or not validated_readonly_evidence.get("mode")
+            or not isinstance(validated_readonly_evidence.get("source"), str)
+            or not validated_readonly_evidence.get("source")
+        ):
+            raise TerminalReviewFailure(
+                "readonly_violation",
+                "Router-side backend-bound L6 evidence is invalid for the selected backend",
+            )
+        readonly = {
+            "confirmed": True,
+            "evidence": f"router-validated:{backend_id}:{validated_readonly_evidence['mode']}",
+        }
+    else:
+        readonly = provider_readonly
+        if not readonly["confirmed"] and not (
+            status == "BLOCKED" and failure_category in FALLBACK_CATEGORIES
+        ):
+            raise TerminalReviewFailure("readonly_violation", "backend did not confirm the read-only contract")
 
     lifecycle = raw.get("lifecycle", {})
     if lifecycle is not None and not isinstance(lifecycle, dict):
@@ -901,7 +932,13 @@ def dispatch_review(
             }
             started_at = _utc_now()
             raw = runner(backend, adapter_request) if runner is not None else _run_cli_backend(backend, adapter_request)
-            normalized = _normalize_result(raw, request, backend_id, started_at)
+            normalized = _normalize_result(
+                raw,
+                request,
+                backend_id,
+                started_at,
+                readonly_evidence,
+            )
             if normalized["status"] == "BLOCKED" and normalized["failure_category"] in fallback_categories:
                 attempts.append({
                     "candidate": candidate,

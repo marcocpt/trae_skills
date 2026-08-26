@@ -1,0 +1,696 @@
+#!/usr/bin/env python3
+"""Thin single-request adapter for the chatgpt-review Streamable HTTP MCP.
+
+The Generic Review Router owns selection, authorization, fallback, lifecycle,
+and result acceptance.  This process only validates the already-approved
+request, creates an in-memory frozen Git snapshot, sends it through the local
+MCP daemon, and converts a strict provider payload into ``dd-review-result/1``.
+
+Phase A deliberately does not assert backend-specific L6.  Successful provider
+responses therefore carry ``readonly_confirmation.confirmed = false`` until a
+future phase supplies and records real mcp-review L6 evidence.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+
+
+BACKEND_ID = "mcp-review"
+REQUEST_SCHEMA = "dd-review-request/1"
+RESULT_SCHEMA = "dd-review-result/1"
+PROVIDER_SCHEMA = "dd-review-provider/1"
+DEFAULT_ENDPOINT = "http://127.0.0.1:8765/mcp"
+MCP_PROTOCOL_VERSION = "2025-03-26"
+MAX_TEXT_CHARS = 100_000
+MAX_SNAPSHOT_CHARS = 90_000
+DEFAULT_PROVIDER_TIMEOUT_SECONDS = 300
+DEFAULT_POLL_INTERVAL_SECONDS = 5.0
+AVAILABLE_EXIT_CODE = 69
+TRANSIENT_EXIT_CODE = 75
+
+ALLOWED_TOOLS = frozenset({"chatgpt_send", "chatgpt_send_file", "chatgpt_get_result"})
+EXPECTED_REQUEST_KEYS = frozenset(
+    {
+        "schema",
+        "role",
+        "host",
+        "repo",
+        "base_sha",
+        "head_sha",
+        "scope",
+        "verification",
+        "routing_context",
+    }
+)
+FORBIDDEN_REQUEST_KEYS = frozenset(
+    {
+        "external_review",
+        "readonly_evidence",
+        "authorization",
+        "authorization_proof",
+        "native_guard",
+        "credentials",
+        "host_metadata",
+    }
+)
+SHA_RE = re.compile(r"^[0-9a-fA-F]{7,64}$")
+TASK_ID_RE = re.compile(r"(?:^|\s|[，,])task_id=([^\s，,。]+)")
+CONVERSATION_HEADER_RE = re.compile(
+    r"\Aconversation_id:[^\n]+\nconversation_url:[^\n]+\n(?:[^\n]+\n)?\n"
+)
+FINDING_KEYS = frozenset(
+    {"id", "severity", "classification", "change_risk", "location", "evidence", "required_fix"}
+)
+PROVIDER_KEYS = frozenset(
+    {"schema", "reviewer", "status", "reviewed", "unreadable", "findings", "evidence", "failure_category"}
+)
+KNOWN_FAILURE_CATEGORIES = frozenset(
+    {
+        "backend_unavailable",
+        "executable_missing",
+        "endpoint_unavailable",
+        "capability_unavailable",
+        "temporary_backend_failure",
+        "all_backends_unavailable",
+        "authorization_violation",
+        "backend_execution_failed",
+        "baseline_mismatch",
+        "configuration_invalid",
+        "evidence_mismatch",
+        "recursion_violation",
+        "review_incomplete",
+        "schema_invalid",
+        "security_policy_violation",
+        "readonly_violation",
+        "verification_failed",
+    }
+)
+
+
+class AdapterError(Exception):
+    """A terminal, fail-closed adapter error rendered as BLOCKED JSON."""
+
+    def __init__(self, category: str, detail: str):
+        super().__init__(detail)
+        self.category = category
+        self.detail = detail
+
+
+class TransportUnavailable(AdapterError):
+    """An endpoint/process condition that the Router may classify as unavailable."""
+
+    def __init__(self, category: str, detail: str, exit_code: int = AVAILABLE_EXIT_CODE):
+        super().__init__(category, detail)
+        self.exit_code = exit_code
+
+
+class ProtocolError(AdapterError):
+    """The endpoint answered, but not with the required MCP contract."""
+
+
+def _json_text(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _target(request: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "base_sha": request.get("base_sha"),
+        "head_sha": request.get("head_sha"),
+        "scope": list(request.get("scope", [])) if isinstance(request.get("scope", []), list) else [],
+    }
+
+
+def _readonly_confirmation() -> Dict[str, Any]:
+    # This is intentionally false in Phase A.  Tool isolation and transport
+    # design are not backend-specific L6 evidence.
+    return {
+        "confirmed": False,
+        "evidence": "snapshot-send-only transport design; backend-specific L6 not verified",
+    }
+
+
+def _capability_evidence(client: Optional["StreamableHttpMcpClient"]) -> Dict[str, Any]:
+    if client is None:
+        return {
+            "readonly_mode": "snapshot-send-only",
+            "l6_confirmed": False,
+            "tools": [],
+            "called_tools": [],
+            "chatgpt_send_file_called": False,
+        }
+    return {
+        "readonly_mode": "snapshot-send-only",
+        "l6_confirmed": False,
+        "tools": sorted(client.observed_tools),
+        "called_tools": list(client.called_tools),
+        "chatgpt_send_file_called": "chatgpt_send_file" in client.called_tools,
+    }
+
+
+def _blocked_result(
+    request: Dict[str, Any],
+    category: str,
+    detail: str,
+    client: Optional["StreamableHttpMcpClient"] = None,
+) -> Dict[str, Any]:
+    if category not in KNOWN_FAILURE_CATEGORIES:
+        category = "backend_execution_failed"
+    scope = list(request.get("scope", [])) if isinstance(request.get("scope", []), list) else []
+    evidence = [
+        {"category": category, "detail": detail},
+        {"category": "phase_a_capability_observation", "detail": _capability_evidence(client)},
+    ]
+    target = _target(request)
+    return {
+        "schema": RESULT_SCHEMA,
+        "backend": BACKEND_ID,
+        "reviewer": "mcp-review-adapter",
+        "target": target,
+        "baseline": {**target, "verification": request.get("verification", [])},
+        "status": "BLOCKED",
+        "verdict": "BLOCKED",
+        "reviewed": [],
+        "unreadable": scope,
+        "findings": [],
+        "evidence": evidence,
+        "failure_category": category,
+        "fallback_eligible": False,
+        "readonly_confirmation": _readonly_confirmation(),
+        "lifecycle": {"started": False, "completed": False},
+    }
+
+
+def _read_request(stream: Any) -> Dict[str, Any]:
+    try:
+        value = json.load(stream)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise AdapterError("schema_invalid", f"invalid JSON request: {exc}") from exc
+    if not isinstance(value, dict):
+        raise AdapterError("schema_invalid", "review request must be a JSON object")
+    return value
+
+
+def _validate_scope(scope: Any) -> List[str]:
+    if not isinstance(scope, list) or not scope or not all(isinstance(item, str) and item for item in scope):
+        raise AdapterError("schema_invalid", "scope must be a non-empty string list")
+    if len(set(scope)) != len(scope):
+        raise AdapterError("schema_invalid", "scope must not contain duplicates")
+    for item in scope:
+        path = Path(item)
+        if path.is_absolute() or ".." in path.parts or item in {"", "."}:
+            raise AdapterError("security_policy_violation", f"scope escapes repository: {item!r}")
+    return list(scope)
+
+
+def _validate_request(request: Dict[str, Any]) -> Dict[str, Any]:
+    unknown = set(request) - EXPECTED_REQUEST_KEYS
+    forbidden = unknown & FORBIDDEN_REQUEST_KEYS
+    if forbidden:
+        raise AdapterError("security_policy_violation", f"control metadata is not accepted: {sorted(forbidden)}")
+    if unknown:
+        raise AdapterError("schema_invalid", f"unexpected request fields: {sorted(unknown)}")
+    if request.get("schema") != REQUEST_SCHEMA:
+        raise AdapterError("schema_invalid", f"request schema must be {REQUEST_SCHEMA}")
+    for key in ("role", "host", "repo", "base_sha", "head_sha"):
+        if not isinstance(request.get(key), str) or not request[key]:
+            raise AdapterError("schema_invalid", f"request.{key} is required")
+    for key in ("base_sha", "head_sha"):
+        if not SHA_RE.fullmatch(request[key]):
+            raise AdapterError("schema_invalid", f"request.{key} must be a commit SHA")
+    repo = Path(request["repo"]).expanduser()
+    if not repo.is_absolute():
+        raise AdapterError("security_policy_violation", "request.repo must be an absolute path for local Git access")
+    request["repo"] = str(repo.resolve())
+    request["scope"] = _validate_scope(request.get("scope"))
+    verification = request.get("verification")
+    if not isinstance(verification, list) or not verification:
+        raise AdapterError("verification_failed", "deterministic verification evidence is required")
+    for item in verification:
+        if not isinstance(item, dict) or item.get("status") not in {"passed", "PASS", "success", "SUCCESS"}:
+            raise AdapterError("verification_failed", "all verification entries must pass")
+        if not item.get("evidence"):
+            raise AdapterError("verification_failed", "verification entries require evidence")
+    routing = request.get("routing_context")
+    if not isinstance(routing, dict):
+        raise AdapterError("schema_invalid", "routing_context is required")
+    if routing.get("dispatch_boundary") != "single-backend":
+        raise AdapterError("recursion_violation", "adapter requires single-backend dispatch")
+    if routing.get("selected_backend") != BACKEND_ID:
+        raise AdapterError("recursion_violation", "routing_context selected_backend is not mcp-review")
+    if routing.get("router_authority") is not False:
+        raise AdapterError("security_policy_violation", "adapter cannot receive router authority")
+    if routing.get("hop_count") != 1:
+        raise AdapterError("recursion_violation", "adapter requires exactly one dispatch hop")
+    chain = routing.get("dispatch_chain")
+    if not isinstance(chain, list) or not chain or chain[-1] != BACKEND_ID or BACKEND_ID in chain[:-1]:
+        raise AdapterError("recursion_violation", "routing_context contains an invalid dispatch chain")
+    return request
+
+
+def _run_git(repo: Path, args: Sequence[str], *, binary: bool = False) -> bytes:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(repo), *args],
+            capture_output=True,
+            check=False,
+            env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
+        )
+    except OSError as exc:
+        raise AdapterError("evidence_mismatch", f"Git read failed: {exc}") from exc
+    if completed.returncode != 0:
+        detail = completed.stderr.decode("utf-8", errors="replace").strip()
+        raise AdapterError("evidence_mismatch", f"Git command failed: {' '.join(args)}: {detail}")
+    return completed.stdout if binary else completed.stdout
+
+
+def _git_text(repo: Path, args: Sequence[str]) -> str:
+    return _run_git(repo, args, binary=True).decode("utf-8", errors="strict")
+
+
+def _verify_frozen_baseline(request: Dict[str, Any]) -> Path:
+    repo = Path(request["repo"])
+    if not repo.is_dir():
+        raise AdapterError("evidence_mismatch", f"repository is not a directory: {repo}")
+    try:
+        current_head = _git_text(repo, ["rev-parse", "HEAD"]).strip()
+        status = _git_text(repo, ["status", "--porcelain=v1", "--untracked-files=all"]).strip()
+    except UnicodeDecodeError as exc:
+        raise AdapterError("evidence_mismatch", f"Git evidence is not UTF-8: {exc}") from exc
+    if current_head != request["head_sha"]:
+        raise AdapterError("baseline_mismatch", "repository HEAD differs from requested head_sha")
+    if status:
+        raise AdapterError("baseline_mismatch", "review worktree has unrecorded changes")
+    for sha in (request["base_sha"], request["head_sha"]):
+        _run_git(repo, ["cat-file", "-e", f"{sha}^{{commit}}"])
+    for item in request["scope"]:
+        _run_git(repo, ["ls-files", "--error-unmatch", "--", item])
+    return repo
+
+
+def _snapshot(repo: Path, request: Dict[str, Any]) -> Tuple[str, str]:
+    scope = request["scope"]
+    try:
+        diff = _git_text(
+            repo,
+            ["diff", "--no-ext-diff", "--binary", request["base_sha"], request["head_sha"], "--", *scope],
+        )
+        files: List[str] = []
+        for item in scope:
+            content = _git_text(repo, ["show", f"{request['head_sha']}:{item}"])
+            files.append(f"--- {item} ---\n{content}")
+    except UnicodeDecodeError as exc:
+        raise AdapterError("review_incomplete", f"snapshot contains non-UTF-8 material: {exc}") from exc
+
+    manifest = {
+        "schema": "dd-review-snapshot/1",
+        "role": request["role"],
+        "base_sha": request["base_sha"],
+        "head_sha": request["head_sha"],
+        "scope": scope,
+    }
+    material = (
+        "=== FROZEN REVIEW SNAPSHOT ===\n"
+        + _json_text(manifest)
+        + "\n=== FROZEN DIFF ===\n"
+        + (diff or "(no diff)\n")
+        + "=== HEAD FILES ===\n"
+        + "\n".join(files)
+        + "\n"
+    )
+    instruction = _provider_instruction(request)
+    if len(material) + len(instruction) > MAX_TEXT_CHARS or len(material) > MAX_SNAPSHOT_CHARS:
+        raise AdapterError("review_incomplete", "frozen snapshot exceeds the provider text limit")
+    digest = hashlib.sha256(material.encode("utf-8")).hexdigest()
+    return material, digest
+
+
+def _provider_instruction(request: Dict[str, Any]) -> str:
+    target = _json_text(
+        {
+            "role": request["role"],
+            "base_sha": request["base_sha"],
+            "head_sha": request["head_sha"],
+            "scope": request["scope"],
+        }
+    )
+    return (
+        "你是只读代码审核者。只能根据随附的冻结审核材料工作，不要访问、猜测或要求其他文件。\n"
+        f"审核目标：{target}\n"
+        "必须只输出一个 JSON 对象，不要 Markdown 代码围栏、解释文字或前后缀。\n"
+        "JSON schema 必须是 dd-review-provider/1，字段必须恰好为："
+        "schema, reviewer, status, reviewed, unreadable, findings, evidence, failure_category。\n"
+        "status 只能是 PASS、FINDINGS、BLOCKED。reviewed 与 unreadable 只能使用给定的相对 scope，且不能重叠。"
+        "PASS 必须完整覆盖 scope 且 findings 为空；FINDINGS 必须完整覆盖 scope 且至少包含一个 finding；"
+        "BLOCKED 必须说明 failure_category。每个 finding 必须包含：id, severity, classification, "
+        "change_risk, location, evidence, required_fix。"
+    )
+
+
+def _endpoint_from_environment() -> str:
+    endpoint = os.environ.get("MCP_REVIEW_ENDPOINT", DEFAULT_ENDPOINT)
+    parsed = urllib.parse.urlparse(endpoint)
+    if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
+        raise AdapterError("security_policy_violation", "MCP endpoint must be a loopback HTTP URL")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path != "/mcp":
+        raise AdapterError("security_policy_violation", "MCP endpoint must be a credential-free /mcp URL")
+    return endpoint
+
+
+def _json_from_response(body: bytes, content_type: str) -> Optional[Dict[str, Any]]:
+    if not body:
+        return None
+    text = body.decode("utf-8", errors="strict")
+    if content_type.lower().startswith("text/event-stream"):
+        events: List[Dict[str, Any]] = []
+        for line in text.splitlines():
+            if not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if data and data != "[DONE]":
+                parsed = json.loads(data)
+                if isinstance(parsed, dict):
+                    events.append(parsed)
+        if not events:
+            raise ProtocolError("schema_invalid", "MCP SSE response contained no JSON event")
+        return events[-1]
+    parsed = json.loads(text)
+    if not isinstance(parsed, dict):
+        raise ProtocolError("schema_invalid", "MCP response must be a JSON object")
+    return parsed
+
+
+class StreamableHttpMcpClient:
+    """Small stdlib MCP client for the existing Streamable HTTP daemon."""
+
+    def __init__(
+        self,
+        endpoint: str,
+        *,
+        http_timeout_seconds: float = 10.0,
+        provider_timeout_seconds: float = DEFAULT_PROVIDER_TIMEOUT_SECONDS,
+        poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
+    ):
+        self.endpoint = endpoint
+        self.http_timeout_seconds = http_timeout_seconds
+        self.provider_timeout_seconds = provider_timeout_seconds
+        self.poll_interval_seconds = poll_interval_seconds
+        self.session_id: Optional[str] = None
+        self.next_id = 1
+        self.observed_tools: set[str] = set()
+        self.called_tools: List[str] = []
+
+    def _post(self, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        headers = {
+            "Accept": "application/json, text/event-stream",
+            "Content-Type": "application/json",
+            "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
+        }
+        if self.session_id:
+            headers["Mcp-Session-Id"] = self.session_id
+        request = urllib.request.Request(
+            self.endpoint,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.http_timeout_seconds) as response:
+                body = response.read()
+                content_type = response.headers.get("Content-Type", "application/json")
+                session_id = response.headers.get("Mcp-Session-Id")
+                if session_id:
+                    self.session_id = session_id
+                return _json_from_response(body, content_type)
+        except urllib.error.HTTPError as exc:
+            if exc.code >= 500:
+                raise TransportUnavailable("temporary_backend_failure", f"MCP HTTP {exc.code}", TRANSIENT_EXIT_CODE) from exc
+            raise ProtocolError("capability_unavailable", f"MCP HTTP {exc.code}") from exc
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            raise TransportUnavailable("endpoint_unavailable", f"MCP endpoint unavailable: {exc}") from exc
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ProtocolError("schema_invalid", f"invalid MCP response: {exc}") from exc
+
+    def _rpc(self, method: str, params: Dict[str, Any], *, notification: bool = False) -> Optional[Dict[str, Any]]:
+        payload: Dict[str, Any] = {"jsonrpc": "2.0", "method": method, "params": params}
+        request_id: Optional[int] = None
+        if not notification:
+            request_id = self.next_id
+            self.next_id += 1
+            payload["id"] = request_id
+        response = self._post(payload)
+        if notification:
+            return None
+        if not isinstance(response, dict):
+            raise ProtocolError("schema_invalid", f"MCP {method} response is empty")
+        if response.get("id") != request_id:
+            raise ProtocolError("schema_invalid", f"MCP {method} response id mismatch")
+        if "error" in response:
+            raise ProtocolError("capability_unavailable", f"MCP {method} returned JSON-RPC error: {response['error']}")
+        result = response.get("result")
+        if not isinstance(result, dict):
+            raise ProtocolError("schema_invalid", f"MCP {method} result must be an object")
+        return result
+
+    def initialize(self) -> None:
+        result = self._rpc(
+            "initialize",
+            {
+                "protocolVersion": MCP_PROTOCOL_VERSION,
+                "capabilities": {},
+                "clientInfo": {"name": "dd-mcp-review-adapter", "version": "0.1.0"},
+            },
+        )
+        if not self.session_id or not isinstance(result, dict):
+            raise ProtocolError("schema_invalid", "MCP initialize did not establish a session")
+        self._rpc("notifications/initialized", {}, notification=True)
+
+    def list_tools(self) -> None:
+        result = self._rpc("tools/list", {})
+        tools = result.get("tools") if isinstance(result, dict) else None
+        if not isinstance(tools, list):
+            raise ProtocolError("schema_invalid", "MCP tools/list did not return tools")
+        names = set()
+        for tool in tools:
+            if not isinstance(tool, dict) or not isinstance(tool.get("name"), str):
+                raise ProtocolError("schema_invalid", "MCP tools/list contains an invalid tool")
+            names.add(tool["name"])
+        self.observed_tools = names
+        if names != ALLOWED_TOOLS:
+            raise AdapterError("capability_unavailable", f"MCP tool allowlist mismatch: {sorted(names)}")
+
+    def call_tool(self, name: str, arguments: Dict[str, Any]) -> Tuple[str, bool]:
+        if name not in ALLOWED_TOOLS:
+            raise AdapterError("capability_unavailable", f"tool is not allowlisted: {name}")
+        if name == "chatgpt_send_file":
+            raise AdapterError("security_policy_violation", "chatgpt_send_file is forbidden by the adapter")
+        self.called_tools.append(name)
+        result = self._rpc("tools/call", {"name": name, "arguments": arguments})
+        content = result.get("content") if isinstance(result, dict) else None
+        if not isinstance(content, list):
+            raise ProtocolError("schema_invalid", f"MCP {name} result has no content")
+        texts = [item.get("text") for item in content if isinstance(item, dict) and isinstance(item.get("text"), str)]
+        if not texts:
+            raise ProtocolError("schema_invalid", f"MCP {name} result has no text")
+        return "\n".join(texts), result.get("isError") is True
+
+    def review(self, snapshot: str, instruction: str) -> str:
+        self.initialize()
+        self.list_tools()
+        conversation_id = f"mcp-review-{uuid.uuid4()}"
+        submitted, is_error = self.call_tool(
+            "chatgpt_send",
+            {
+                "conversation_id": conversation_id,
+                "content": snapshot,
+                "instruction": instruction,
+                "timeout_seconds": int(self.provider_timeout_seconds),
+            },
+        )
+        if is_error:
+            raise AdapterError("backend_execution_failed", f"chatgpt_send failed: {submitted}")
+        match = TASK_ID_RE.search(submitted)
+        if not match:
+            raise ProtocolError("schema_invalid", "chatgpt_send did not return a task_id")
+        task_id = match.group(1)
+        deadline = time.monotonic() + self.provider_timeout_seconds
+        while True:
+            result_text, is_error = self.call_tool("chatgpt_get_result", {"task_id": task_id})
+            if not is_error and not result_text.startswith("[RUNNING]"):
+                return result_text
+            if result_text.startswith("[FAILED]") or result_text.startswith("[INVALID_ARGS]"):
+                raise AdapterError("backend_execution_failed", f"chatgpt_get_result failed: {result_text}")
+            if time.monotonic() >= deadline:
+                raise TransportUnavailable("temporary_backend_failure", "MCP provider result polling timed out", TRANSIENT_EXIT_CODE)
+            time.sleep(self.poll_interval_seconds)
+
+
+def _strip_conversation_header(text: str) -> str:
+    match = CONVERSATION_HEADER_RE.match(text)
+    return text[match.end() :] if match else text
+
+
+def _require_string(value: Any, field: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise AdapterError("schema_invalid", f"provider field {field} must be a non-empty string")
+    return value
+
+
+def _parse_provider_result(text: str, scope: Sequence[str]) -> Dict[str, Any]:
+    raw_text = _strip_conversation_header(text)
+    try:
+        value = json.loads(raw_text)
+    except json.JSONDecodeError as exc:
+        raise AdapterError("schema_invalid", f"provider result is not strict JSON: {exc}") from exc
+    if not isinstance(value, dict) or set(value) != PROVIDER_KEYS:
+        raise AdapterError("schema_invalid", "provider result fields must exactly match dd-review-provider/1")
+    if value.get("schema") != PROVIDER_SCHEMA:
+        raise AdapterError("schema_invalid", f"provider schema must be {PROVIDER_SCHEMA}")
+    reviewer = _require_string(value.get("reviewer"), "reviewer")
+    status = value.get("status")
+    if status not in {"PASS", "FINDINGS", "BLOCKED"}:
+        raise AdapterError("schema_invalid", "provider status is unsupported")
+    reviewed = value.get("reviewed")
+    unreadable = value.get("unreadable")
+    if not isinstance(reviewed, list) or not all(isinstance(item, str) for item in reviewed):
+        raise AdapterError("schema_invalid", "provider reviewed must be a string list")
+    if not isinstance(unreadable, list) or not all(isinstance(item, str) for item in unreadable):
+        raise AdapterError("schema_invalid", "provider unreadable must be a string list")
+    scope_set = set(scope)
+    if not set(reviewed).issubset(scope_set) or not set(unreadable).issubset(scope_set):
+        raise AdapterError("evidence_mismatch", "provider reviewed/unreadable escapes scope")
+    if set(reviewed) & set(unreadable):
+        raise AdapterError("schema_invalid", "provider reviewed and unreadable overlap")
+    findings = value.get("findings")
+    if not isinstance(findings, list):
+        raise AdapterError("schema_invalid", "provider findings must be a list")
+    normalized_findings: List[Dict[str, str]] = []
+    for finding in findings:
+        if not isinstance(finding, dict) or set(finding) != FINDING_KEYS:
+            raise AdapterError("schema_invalid", "provider finding fields are invalid")
+        normalized_findings.append({key: _require_string(finding.get(key), f"finding.{key}") for key in FINDING_KEYS})
+    evidence = value.get("evidence")
+    if not isinstance(evidence, list) or not evidence or not all(isinstance(item, str) and item for item in evidence):
+        raise AdapterError("schema_invalid", "provider evidence must be a non-empty string list")
+    failure_category = value.get("failure_category")
+    if status == "BLOCKED":
+        if not isinstance(failure_category, str) or failure_category not in KNOWN_FAILURE_CATEGORIES:
+            raise AdapterError("schema_invalid", "BLOCKED provider result requires a known failure_category")
+    elif failure_category is not None:
+        raise AdapterError("schema_invalid", "PASS/FINDINGS cannot carry failure_category")
+    if status == "PASS":
+        if set(reviewed) != scope_set or unreadable or normalized_findings:
+            raise AdapterError("evidence_mismatch", "PASS does not cover the complete scope")
+    elif status == "FINDINGS":
+        if set(reviewed) | set(unreadable) != scope_set or not normalized_findings:
+            raise AdapterError("evidence_mismatch", "FINDINGS does not account for the complete scope")
+    return {
+        "schema": PROVIDER_SCHEMA,
+        "reviewer": reviewer,
+        "status": status,
+        "reviewed": list(reviewed),
+        "unreadable": list(unreadable),
+        "findings": normalized_findings,
+        "evidence": list(evidence),
+        "failure_category": failure_category,
+    }
+
+
+def _wrap_result(
+    request: Dict[str, Any],
+    provider: Dict[str, Any],
+    snapshot_digest: str,
+    client: StreamableHttpMcpClient,
+) -> Dict[str, Any]:
+    target = _target(request)
+    evidence: List[Any] = list(provider["evidence"])
+    evidence.append(
+        {
+            "category": "phase_a_snapshot",
+            "snapshot_sha256": snapshot_digest,
+            "tools": sorted(client.observed_tools),
+            "called_tools": list(client.called_tools),
+            "chatgpt_send_file_called": False,
+            "l6_confirmed": False,
+        }
+    )
+    return {
+        "schema": RESULT_SCHEMA,
+        "backend": BACKEND_ID,
+        "reviewer": provider["reviewer"],
+        "target": target,
+        "baseline": {**target, "verification": request["verification"]},
+        "status": provider["status"],
+        "verdict": provider["status"],
+        "reviewed": provider["reviewed"],
+        "unreadable": provider["unreadable"],
+        "findings": provider["findings"],
+        "evidence": evidence,
+        "failure_category": provider["failure_category"],
+        "fallback_eligible": False,
+        "readonly_confirmation": _readonly_confirmation(),
+        "lifecycle": {"started": True, "completed": provider["status"] in {"PASS", "FINDINGS"}},
+    }
+
+
+def _float_env(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    return value if value >= 0 else default
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    if args != ["review"]:
+        print("usage: mcp-review review", file=sys.stderr)
+        return 64
+
+    request: Dict[str, Any] = {}
+    client: Optional[StreamableHttpMcpClient] = None
+    try:
+        request = _read_request(sys.stdin)
+        request = _validate_request(request)
+        repo = _verify_frozen_baseline(request)
+        snapshot, snapshot_digest = _snapshot(repo, request)
+        instruction = _provider_instruction(request)
+        endpoint = _endpoint_from_environment()
+        client = StreamableHttpMcpClient(
+            endpoint,
+            provider_timeout_seconds=_float_env("MCP_REVIEW_TIMEOUT_SECONDS", DEFAULT_PROVIDER_TIMEOUT_SECONDS),
+            poll_interval_seconds=_float_env("MCP_REVIEW_POLL_INTERVAL_SECONDS", DEFAULT_POLL_INTERVAL_SECONDS),
+        )
+        provider_text = client.review(snapshot, instruction)
+        provider = _parse_provider_result(provider_text, request["scope"])
+        result = _wrap_result(request, provider, snapshot_digest, client)
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+        return 0
+    except TransportUnavailable as exc:
+        print(f"{exc.category}: {exc.detail}", file=sys.stderr)
+        return exc.exit_code
+    except AdapterError as exc:
+        print(json.dumps(_blocked_result(request, exc.category, exc.detail, client), ensure_ascii=False, sort_keys=True))
+        return 0
+    except Exception as exc:  # pragma: no cover - last-resort process safety
+        print(json.dumps(_blocked_result(request, "backend_execution_failed", str(exc), client), ensure_ascii=False, sort_keys=True))
+        return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

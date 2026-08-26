@@ -35,7 +35,7 @@ scope: [relative/file]
 verification: [{name: tests, status: passed, evidence: ...}]
 external_review: {authorization: approved, scope: [relative/file]}
 readonly_evidence:
-  - {backend: mcp-review, mode: single-review-request, level: L6, confirmed: true, source: ...}
+  - {backend: mcp-review, mode: snapshot-send-only, level: L6, confirmed: true, source: dd-workflow-runtime/tests/evidence/mcp-review-l6-evidence.yaml}
   - {backend: codex-cli, mode: codex-read-only-transport, level: L6, confirmed: true, source: ...}
 context: {hop_count: 0, dispatch_chain: []}
 ```
@@ -79,12 +79,28 @@ calling it, and must treat an incomplete/blocked result as incomplete.  The
 adapter receives only the approved review context and routing boundary; local
 authorization proofs and host guard metadata are not forwarded.  Read-only
 evidence is a per-backend L6 proof matched to the registry's `readonly_mode`
-and cannot be reused across candidates.  The generic Router does not directly
+and cannot be reused across candidates.  The Router remains the sole owner of
+the result-side read-only confirmation: after eligibility succeeds, it
+replaces the provider's PASS/FINDINGS confirmation with a local attestation
+derived from the already-validated backend-bound proof.  The adapter/provider
+cannot create or upgrade that confirmation.  The generic Router does not directly
 select `codex-native`: a verified host-native dispatcher must run
 `check-review-route.py` from this Skill's actual root and prove current-parent
 thread provenance before taking that handoff.  Without that handoff the Router
 fails closed.  The adapter is a single request transport; it cannot write the
 worktree, commit, repair findings, or close an external finding.
+
+For `mcp-review`, `snapshot-send-only` describes the adapter capability
+boundary: it sends an in-memory frozen snapshot through `chatgpt_send` and
+retrieves the result through `chatgpt_get_result`; it does not supply a repo
+path and it never calls `chatgpt_send_file`.  This transport description is
+not by itself backend-specific L6 evidence.  The real backend-bound probe is
+recorded in
+`dd-workflow-runtime/tests/evidence/mcp-review-l6-evidence.yaml`; Router
+eligibility may use that proof only after checking its exact backend, mode,
+level, confirmation, and source.  The provider response is a strict
+`dd-review-provider/1` JSON object; Markdown or incomplete scope is rejected
+fail-closed before producing an accepted result.
 
 ## v1 boundary
 

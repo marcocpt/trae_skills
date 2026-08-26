@@ -1,0 +1,271 @@
+backend: mcp-review
+level: L7
+status: BLOCKED
+failure_category: schema_invalid
+confirmed: false
+source: dd-workflow-runtime/tests/evidence/mcp-review-l7-blocked-evidence.yaml
+
+captured_at: 2026-08-26T06:52:30Z
+probe_kind: real-provider-l7-review-result-pipeline
+l7_capability_confirmed: false
+blocked_reason: >-
+  Real provider returned a non-strict dd-review-provider/1 payload. The JSON body
+  carried Markdown escape sequences, so it is not parseable JSON. Per Phase E
+  principles 6 and 12 the adapter parser was not relaxed and no implicit retry or
+  second review was issued. This is a real provider-contract failure, not a
+  Router or adapter defect.
+other_real_backends_tested: false
+fallback_used: false
+
+l6_reference:
+  path: dd-workflow-runtime/tests/evidence/mcp-review-l6-evidence.yaml
+  backend: mcp-review
+  readonly_mode: snapshot-send-only
+  level: L6
+  confirmed: true
+  adapter_sha256_at_l6: c6e0efd2ad9aced8745ce9f2058f5eb937b9f6a81a02d5898a05b9ffcc0a2c92
+  adapter_sha256_live_at_l7: c6e0efd2ad9aced8745ce9f2058f5eb937b9f6a81a02d5898a05b9ffcc0a2c92
+  adapter_identity_drift: false
+  registry_readonly_mode_match: true
+  reused_stale_proof: false
+
+probe_repo:
+  path: /tmp/dd-mcp-l7-probe
+  isolated_throwaway_repo: true
+  production_skills_repo_used_as_probe: false
+  base_sha: ed276e17ed19c2b59b6cb2735f724b640be714a8
+  head_sha: 2f6e4a3327801e9bc621320f245b09ec5850d37a
+  base_differs_from_head: true
+  scope:
+    - review.py
+  target_sha256: 0a9b543d647e80f16d59770a2d0aefb7b13c944be4bae1f93e85c16459dde49c
+  fixture_bug_disclosed_in_prompt: false
+  fixture_bug_kind: silent-zero-divisor-fallback
+
+request:
+  schema: dd-review-request/1
+  role: strong-reviewer
+  host: workbuddy
+  hop_count: 0
+  dispatch_chain: []
+  external_review_authorization: approved
+  readonly_evidence_source: dd-workflow-runtime/tests/evidence/mcp-review-l6-evidence.yaml
+  readonly_evidence_handwritten: false
+  readonly_evidence_copied_from_other_backend: false
+
+router_path:
+  entrypoint: dd-workflow-runtime/agents/dispatch-review.py
+  production_router_used: true
+  production_routing_policy_modified: false
+  backend_selection_method: temporary-probe-invocation-with-unmodified-production-policy
+  selected_backend: mcp-review
+  candidates_attempted:
+    - mcp-review
+  fallback_to_other_backend: false
+  backend_bound_l6_eligibility_checked_before_adapter: true
+  adapter_subprocess_env_allowlist:
+    - PATH
+    - HOME
+  adapter_env_sanitized_by_router: true
+  runs:
+    - id: run-1
+      endpoint_used_by_adapter: http://127.0.0.1:8765/mcp
+      router_status: BLOCKED
+      router_failure_category: readonly_violation
+    - id: run-2
+      endpoint_used_by_adapter: http://127.0.0.1:8765/mcp
+      router_status: BLOCKED
+      router_failure_category: readonly_violation
+    - id: run-4
+      endpoint_used_by_adapter: http://127.0.0.1:8765/mcp
+      router_status: BLOCKED
+      router_failure_category: readonly_violation
+
+real_mcp:
+  endpoint_observed: http://127.0.0.1:8899/mcp
+  upstream_endpoint: http://127.0.0.1:8765/mcp
+  observation_method: loopback pass-through logging proxy, provider payload unmodified
+  work_mcp_repo_modified: false
+  protocol_version: "2025-03-26"
+  server_info:
+    name: chatgpt-review
+    version: 0.2.0
+  capabilities:
+    tools:
+      listChanged: true
+  http_status:
+    initialize: 200
+    notifications_initialized: 202
+    tools_list: 200
+    tools_call: 200
+  exact_tools:
+    - chatgpt_get_result
+    - chatgpt_send
+    - chatgpt_send_file
+  actual_called_tools:
+    - chatgpt_send
+    - chatgpt_get_result
+  call_sequence: "chatgpt_send, then chatgpt_get_result x11"
+  chatgpt_send_call_count: 1
+  chatgpt_get_result_call_count: 11
+  chatgpt_send_file_called: false
+  tools_call_methods_outside_allowlist: false
+  real_transport_confirmed: true
+  real_reviewer_reached: true
+
+provider_input_isolation:
+  observed_payload: wire capture of the chatgpt_send tools/call arguments
+  repo_path_leaked: false
+  readonly_evidence_leaked: false
+  readonly_source_leaked: false
+  authorization_leaked: false
+  native_guard_leaked: false
+  routing_context_leaked: false
+  routing_control_metadata_leaked: false
+  credentials_leaked: false
+  host_metadata_leaked: false
+  verification_evidence_leaked: false
+  allowed_material_sent:
+    frozen_snapshot: true
+    frozen_diff: true
+    head_file_content: true
+    relative_scope: true
+    base_sha: true
+    head_sha: true
+    review_instruction: true
+    provider_schema_requirement: true
+  snapshot_sha256: c701808361e24cbf023283ff80d350002bfe8069976d5403bf45fd5a54c06c3f
+  snapshot_chars: 529
+  instruction_sha256: 9989a3413fdfe2cb48c81398bbb47925200af69f583291027ebc6a9d051ee655
+  instruction_chars: 647
+
+provider_result:
+  schema_declared: dd-review-provider/1
+  strict_json: false
+  parse_error: "Expecting value: line 1 column 94 (char 93)"
+  offending_fragment: '"reviewed":\["review.py"\]'
+  contract_violation: markdown-escaped-json
+  markdown_escape_sequences_observed:
+    - '\['
+    - '\]'
+    - '\_'
+  markdown_escape_count: 11
+  markdown_code_fence_present: false
+  prose_wrapper_present: false
+  mcp_transport_preamble_present: true
+  provider_text_sha256: 9f206b6337826cf8b81eaa89714d246b5f69f5aee4b819095df79cd59fd82db2
+  provider_body_sha256: 05b8e1eb684b4f90600c14629e78364950ed31c0adc9de1f28e7eab67f537ff7
+  adapter_parser_relaxed: false
+  json_extracted_from_markdown: false
+  illegal_json_auto_repaired: false
+  implicit_retry_issued: false
+  second_review_issued: false
+
+reviewer_semantic_observation:
+  note: >-
+    Diagnostic offline analysis only. Performed outside the production adapter to
+    attribute root cause. The production path never unescaped or repaired the
+    payload.
+  after_removing_markdown_escapes_only:
+    parses_as_json: true
+    schema: dd-review-provider/1
+    status: FINDINGS
+    top_level_keys_exact: true
+    reviewed:
+      - review.py
+    unreadable: []
+    coverage_reviewed_union_unreadable_equals_scope: true
+    findings_count: 1
+    evidence_count: 2
+    finding_required_fields_complete: true
+    finding_id: RV-001
+    finding_severity: HIGH
+    finding_classification: behavioral-correctness
+    finding_location: review.py:2-3
+    bug_found_independently: true
+  conclusion: >-
+    Reviewer semantic capability is demonstrated; only the wire serialization
+    contract failed. This observation is not accepted as an L7 pass.
+
+adapter_result:
+  schema: dd-review-result/1
+  backend: mcp-review
+  status: BLOCKED
+  failure_category: schema_invalid
+  detail: "provider result is not strict JSON: Expecting value: line 1 column 94 (char 93)"
+  readonly_confirmation_self_reported: false
+  adapter_self_upgraded_l6: false
+  adapter_emitted_trusted_confirmed_true: false
+
+router_result:
+  schema: dd-review-result/1
+  status: BLOCKED
+  failure_category: readonly_violation
+  reviewed: []
+  unreadable:
+    - review.py
+  findings_count: 0
+  target_matches_frozen_request: true
+  fallback_eligible: false
+  readonly_confirmation:
+    confirmed: false
+    evidence: null
+
+readonly_authority:
+  model: phase-c-option-b
+  router_is_sole_readonly_authority: true
+  adapter_confirmation_trusted: false
+  provider_aware_of_readonly_proof: false
+  router_validated_l6_proof_before_adapter_invocation: true
+  router_owned_confirmation_generated: false
+  router_owned_confirmation_reason: >-
+    Router only mints its own confirmation for accepted PASS/FINDINGS results.
+    The terminal BLOCKED outcome never reached that branch.
+  readonly_authority_model_modified: false
+
+parent_verification:
+  head_before: 2f6e4a3327801e9bc621320f245b09ec5850d37a
+  head_after: 2f6e4a3327801e9bc621320f245b09ec5850d37a
+  target_sha256_before: 0a9b543d647e80f16d59770a2d0aefb7b13c944be4bae1f93e85c16459dde49c
+  target_sha256_after: 0a9b543d647e80f16d59770a2d0aefb7b13c944be4bae1f93e85c16459dde49c
+  files_before:
+    - .git
+    - review.py
+  files_after:
+    - .git
+    - review.py
+  created_files: []
+  unexpected_files: []
+  git_status_before: clean
+  git_status_after: clean
+  git_diff_exit_code_before: 0
+  git_diff_exit_code_after: 0
+  workspace_mutation_detected: false
+  harness_mutate_then_restore_used: false
+
+regression:
+  test_mcp_review: "10 passed"
+  test_dispatch_review: "31 passed"
+  test_check_review_route: "13 passed"
+  validate_registry_policy: "no errors"
+  check_review_route_smoke: "ALLOW / external"
+  l6_evidence_canonical_consistency: "adapter sha256 and readonly_mode match"
+
+router_observation:
+  id: OBS-L7-001
+  severity: MEDIUM
+  title: Router masks terminal adapter failure_category as readonly_violation
+  detail: >-
+    When an adapter returns BLOCKED with a non-fallback failure_category and
+    readonly_confirmation.confirmed=false, dispatch-review.py raises
+    readonly_violation instead of surfacing the adapter category. The real cause
+    here was schema_invalid, so the Router-visible category misattributes a
+    provider-contract failure to the read-only contract.
+  location: dd-workflow-runtime/agents/dispatch-review.py
+  impact: >-
+    Fail-closed behaviour is still correct and no unsafe result is accepted, but
+    L7 failure triage is misleading.
+  fixed_in_this_round: false
+  reason_not_fixed: >-
+    Phase E is a verification round. Changing production Router behaviour was out
+    of scope and would not change this BLOCKED outcome.
