@@ -57,13 +57,16 @@ backends:
 
   opencode-cli:
     type: cli
-    command: [run, --agent, {target}, --format, json]
+    executable: opencode-review
+    command: [review]
     forbid_args: [--auto]
 
   codex-native:
     type: native
     command: [exec, --sandbox, read-only]
 """
+
+ADAPTER_TEMPLATE = 'AGENT_NAME = "{target}"\n'
 
 
 def opencode_bindings() -> dict:
@@ -154,8 +157,9 @@ class CheckOpenCodeCliAgentTests(unittest.TestCase):
         (self.agents_dir / "opencode").mkdir()
         (self.agents_dir / "opencode" / "strong-reviewer.md").write_text(SUBAGENT_PROFILE)
         (self.agents_dir / "opencode" / "strong-reviewer-cli.md").write_text(PRIMARY_PROFILE)
-        (self.agents_dir / "review-backends.yaml").write_text(
-            REGISTRY_TEMPLATE.format(target="strong-reviewer-cli")
+        (self.agents_dir / "review-backends.yaml").write_text(REGISTRY_TEMPLATE)
+        (self.agents_dir / "opencode-review").write_text(
+            ADAPTER_TEMPLATE.format(target="strong-reviewer-cli")
         )
 
     def tearDown(self) -> None:
@@ -171,8 +175,8 @@ class CheckOpenCodeCliAgentTests(unittest.TestCase):
         self.assertEqual(self.run_check(), [])
 
     def test_registry_pointing_back_at_subagent_is_rejected(self) -> None:
-        (self.agents_dir / "review-backends.yaml").write_text(
-            REGISTRY_TEMPLATE.format(target="strong-reviewer")
+        (self.agents_dir / "opencode-review").write_text(
+            ADAPTER_TEMPLATE.format(target="strong-reviewer")
         )
         errors = self.run_check()
         self.assertTrue(any("mode 必须是 primary" in e for e in errors))

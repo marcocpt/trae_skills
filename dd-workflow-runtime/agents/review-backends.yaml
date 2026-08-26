@@ -36,14 +36,13 @@ backends:
   opencode-cli:
     type: cli
     execution: external
-    executable: opencode
-    # strong-reviewer-cli is the primary-mode invocation profile of
-    # strong-reviewer: `opencode run --agent` cannot pin a mode:subagent agent
-    # and would fall back to the writable default build agent
-    # (OBS-OPENCODE-L6-001).  validate-bindings.py enforces that this target
-    # stays primary-mode with the canonical reviewer model and readonly
-    # permissions.
-    command: [run, --agent, strong-reviewer-cli, --format, json]
+    executable: opencode-review
+    # Thin adapter: opencode-review handles the NDJSON event stream from
+    # `opencode run --agent strong-reviewer-cli --format json` and strict-parses
+    # the final assistant JSON into dd-review-result/1. The underlying
+    # invocation (strong-reviewer-cli primary-mode, muse-spark) and readonly
+    # contract are unchanged (L6 proof remains valid).
+    command: [review]
     forbid_args: [--auto]
     capabilities: [strong-review]
     readonly_required: true

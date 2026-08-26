@@ -168,32 +168,46 @@ def check_opencode_same_model(bindings: dict) -> list[str]:
 OPENCODE_REGISTRY = AGENTS_DIR / "review-backends.yaml"
 
 
-def _opencode_cli_command(path: Path) -> list[str] | None:
-    """从 review-backends.yaml 提取 opencode-cli 的 command 流式列表。"""
+def _opencode_cli_spec(path: Path) -> tuple[str | None, list[str] | None]:
+    """从 review-backends.yaml 提取 opencode-cli 的 executable 与 command。"""
     current: str | None = None
+    executable: str | None = None
+    command: list[str] | None = None
     for raw in path.read_text().splitlines():
         stripped = raw.strip()
         if re.fullmatch(r"[a-zA-Z][\w-]*:", stripped) and not raw.startswith(" "):
-            current = None  # 顶层段（如 backends:）
+            current = None
             continue
         match = re.match(r"^  ([\w-]+):", raw)
         if match:
             current = match.group(1)
             continue
         if current == "opencode-cli":
+            exe = re.match(r"^\s*executable:\s*(\S+)", raw)
+            if exe:
+                executable = exe.group(1).strip()
             flow = re.match(r"^\s*command:\s*\[([^\]]*)\]", raw)
             if flow:
-                return [item.strip() for item in flow.group(1).split(",") if item.strip()]
-    return None
+                command = [item.strip() for item in flow.group(1).split(",") if item.strip()]
+            if executable is not None and command is not None:
+                return executable, command
+    return executable, command
+
+
+def _opencode_cli_command(path: Path) -> list[str] | None:
+    """兼容旧调用：仅返回 command。"""
+    _, cmd = _opencode_cli_spec(path)
+    return cmd
 
 
 def check_opencode_cli_agent(bindings: dict) -> list[str]:
-    """OBS-OPENCODE-L6-001 回归守卫：registry --agent 目标必须可被 primary 执行。
+    """OBS-OPENCODE-L6-001 回归守卫：registry 指向的 agent 必须可被 primary 执行。
 
-    `opencode run --agent X` 在目标为 mode:subagent 时会静默回落到可写的默认
-    build 主代理。这里机械校验 production command 指向的 agent 文件：
-    primary 模式、与 canonical reviewer 同模型、默认拒绝 + 精确只读放行；
-    并保护原生 subagent profile 不被改成 primary（native 路径回归）。
+    支持两种 registry 形态：
+    - 旧：executable opencode + command 含 --agent X（直接 CLI）
+    - 新：executable opencode-review + command [review]（thin adapter，内部固定 AGENT_NAME）
+    两种形态均校验最终 effective agent 为 primary、与 canonical reviewer 同模型、
+    精确只读放行，并保护原生 subagent 不被改成 primary。
     """
     errors: list[str] = []
     oc = bindings.get("opencode")
@@ -202,14 +216,34 @@ def check_opencode_cli_agent(bindings: dict) -> list[str]:
         return ["opencode: 缺少 reviewer 角色绑定"]
     expected_model = reviewer.get("model")
 
-    command = _opencode_cli_command(OPENCODE_REGISTRY)
+    executable, command = _opencode_cli_spec(OPENCODE_REGISTRY)
     if command is None:
         return ["registry: review-backends.yaml 无法解析出 opencode-cli command"]
-    if "--agent" not in command:
-        return ["registry/opencode-cli: command 缺少 --agent 目标"]
-    target = command[command.index("--agent") + 1] if command.index("--agent") + 1 < len(command) else ""
-    if not target:
-        return ["registry/opencode-cli: --agent 缺少目标名称"]
+    # 解析 target：优先从 registry --agent，其次从 adapter 内部常量
+    target: str | None = None
+    if executable == "opencode-review":
+        if command != ["review"]:
+            errors.append(f"registry/opencode-cli: opencode-review 的 command 必须为 [review]，实际 {command!r}")
+        # adapter 内部 AGENT_NAME 固定为 strong-reviewer-cli
+        adapter_path = AGENTS_DIR / "opencode-review"
+        if not adapter_path.is_file():
+            errors.append("registry/opencode-cli: 缺少 adapter 产物 opencode-review")
+        else:
+            text = adapter_path.read_text()
+            m = re.search(r'AGENT_NAME\s*=\s*["\']([^"\']+)["\']', text)
+            if not m:
+                errors.append("adapter opencode-review: 无法解析 AGENT_NAME")
+            else:
+                target = m.group(1)
+        if target is None:
+            target = "strong-reviewer-cli"
+    else:
+        # 旧形态：直接 opencode run --agent X
+        if "--agent" not in command:
+            return ["registry/opencode-cli: command 缺少 --agent 目标"]
+        target = command[command.index("--agent") + 1] if command.index("--agent") + 1 < len(command) else ""
+        if not target:
+            return ["registry/opencode-cli: --agent 缺少目标名称"]
 
     declared = reviewer.get("cli_agent_file")
     if declared is not None and declared != f"opencode/{target}.md":
