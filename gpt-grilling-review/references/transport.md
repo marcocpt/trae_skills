@@ -12,7 +12,7 @@
 
 | 真实失败 | 技能对策 |
 |---|---|
-| 传 timeout_seconds=900 → 参数校验报错（上限 600） | 固定 600 |
+| 传 timeout_seconds 超过上限 → 参数校验报错 | 固定 600（参数上限 3600） |
 | 轮询连接 ECONNRESET → 脚本崩溃放弃（任务其实还在跑） | 每次轮询新建连接 + 重试 |
 | 用了已删除的 worktree 名 → 白跑一轮 | 送审前 `git worktree list` 确认 |
 | content 指令含糊 → 审核方等待粘贴代码 | 用本技能模板 + 逃逸句 |
@@ -23,12 +23,13 @@
 
 - `conversation_id`：固定 `"<app 名>-<仓库名>-<分支名>-<月日时分>"`，同一个会话中多轮复用（复审带上下文）
 - `instruction`：传 `""`（不加默认前缀）
-- `timeout_seconds`：`600`（这是上限，传更大直接报参数错误）
+- `timeout_seconds`：`600`（单轮审核等待上限；MCP 参数上限 3600，传更大直接报参数错误）
 - `content`：按下方模板。只写业务要求 + 仓库名 + 范围；**禁止粘贴代码/diff**
 
-### 2. 轮询 chatgpt_get_result
+### 2. 取结果 chatgpt_get_result（长轮询）
 
-- 开始 20 秒间隔轮询 3次，随后 40 间隔轮询；`[RUNNING]` 继续等，审核通常 5-10 分钟
+- 直接调用 `chatgpt_get_result`，不必传 `wait_seconds`：服务端默认挂起最长 55 秒等待，完成立即返回；返回 `[RUNNING]` 则循环再调，审核通常 5-10 分钟
+- 无需客户端自定节奏（旧的“隔 20/40 秒再调”已废弃）；仅当所在客户端单次工具调用超时小于 55 秒时显式传更小的 `wait_seconds`（传 0 = 立即返回不等待）
 - **禁止重复提交**；`[FAILED]` 检查原因后最多重试 1 次
 - 连接异常（ECONNRESET 等）：任务仍在 daemon，**新建连接更新 conversation_id 重试轮询**，不要放弃
 - 满 10 分钟仍未完成：报告用户等待中，不得无限阻塞
@@ -80,7 +81,7 @@ worktree 动态变化，送审前先确认仍存在：`git -C /Users/dengdeng/Wo
 - content 提及 MCP、tunnel、浏览器、插件等实现机制 → 只写业务视角
 - 粘贴代码/diff 进 content → 审核方自行读取
 - 敏感文件（密钥/凭据/.env）进入请求
-- timeout_seconds 超过 600
+- timeout_seconds 超过 3600（参数上限）
 - `[RUNNING]` 期间重复提交
 - 省略模板末尾的逃逸句
 
