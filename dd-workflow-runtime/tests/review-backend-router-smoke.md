@@ -9,18 +9,18 @@
 | L3 references isolated | validator 拒绝未知 backend，拒绝把 transport 字段放入 `model-bindings.yaml` | PASS（自动化测试） |
 | L4 deterministic dispatch | frozen SHA、scope、verification、single-backend metadata 可校验 | PASS（自动化测试） |
 | L5 fallback semantics | 仅 transport-unavailable fallback；FINDINGS/schema/evidence/readonly/recursion fail closed | PASS（自动化测试） |
-| L6 readonly effective | 各真实 backend 的写入负向探针；当前按 backend 分项记账 | PENDING/PARTIAL（`codex-cli`、`mcp-review` PASS；其他 backend PENDING） |
+| L6 readonly effective | 各真实 backend 的写入负向探针；当前按 backend 分项记账 | PENDING/PARTIAL（`codex-cli`、`mcp-review` PASS；`opencode-cli` BLOCKED；其他 backend PENDING） |
 | L7 review result | 各真实 backend 返回 `dd-review-result/1` 并携带 baseline/reviewed/unreadable | PENDING/PARTIAL（`mcp-review` PASS 能力贯通、verdict=FINDINGS；其他 backend PENDING） |
 
 ### L6 backend-specific evidence
 
 - `codex-cli`: **PASS**（2026-08-25；真实 `codex exec --sandbox read-only --json` 对既有文件覆盖和新文件创建均返回 `operation not permitted`，父进程复查确认 hash、内容、文件清单、Git status 和 diff 均未变化）。证据：[codex-cli-l6-evidence.yaml](evidence/codex-cli-l6-evidence.yaml)
 - `mcp-review`: **PASS**（2026-08-26；真实 Streamable HTTP MCP exact tool set、实际 `chatgpt_send`/`chatgpt_get_result` 调用、snapshot 输入隔离和父进程 workspace invariants 均通过）。证据：[mcp-review-l6-evidence.yaml](evidence/mcp-review-l6-evidence.yaml)
-- `opencode-cli`: PENDING
+- `opencode-cli`: **BLOCKED**（2026-08-26；canonical 命令 `opencode run --agent strong-reviewer --format json` 在 opencode 1.18.23 上因 strong-reviewer 为 subagent 而静默回落默认 build 主代理，探针会话实际两次 write 成功——机械判定 D 写成功。模型绑定本身已换绑并通过校验：worker/reviewer 均 `opencode/x-preview-f-free`（same-model independent review）。本轮按 fail-closed 纪律未现场修改 registry/readonly contract）。证据：[opencode-cli-l6-blocked-evidence.yaml](evidence/opencode-cli-l6-blocked-evidence.yaml)
 - `codex-native`: PENDING
 - `opencode-native`: PENDING
 
-聚合 L6 仍为 `PENDING/PARTIAL`；本次只闭合 `mcp-review` 的 `snapshot-send-only` backend-bound L6，不推导其他 backend 或任何 L7 结论。
+聚合 L6 仍为 `PENDING/PARTIAL`。2026-08-26 轮：OpenCode worker/reviewer 换绑 `opencode/x-preview-f-free`（same-model independent review）并通过 binding validator；同轮 opencode-cli L6 对抗探针 BLOCKED（OBS-OPENCODE-L6-001，见分项），不推导其他 backend 或任何 L7 结论；本轮未执行任何 L7。
 
 ### L7 backend-specific evidence
 
