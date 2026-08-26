@@ -121,7 +121,7 @@ def check_native(bindings: dict) -> list[str]:
     return errors
 
 
-OPENCODE_EXPECTED_MODEL = "opencode/x-preview-f-free"  # 实机 opencode models 验证的 canonical id（逻辑名 x-preview-f-free）
+OPENCODE_EXPECTED_MODEL = "opencode/muse-spark-1.2-contributor-free"  # 实机 opencode models 验证的 canonical id（逻辑名 Muse Spark 1.2 Free）
 OPENCODE_READONLY_ALLOWS = ["read", "glob", "grep", "list"]
 
 
@@ -162,6 +162,88 @@ def check_opencode_same_model(bindings: dict) -> list[str]:
     rfile = reviewer.get("file", "")
     if not str(rfile).endswith("strong-reviewer.md"):
         errors.append(f"opencode/reviewer: file 必须指向 strong-reviewer 产物，实际 {rfile!r}")
+    return errors
+
+
+OPENCODE_REGISTRY = AGENTS_DIR / "review-backends.yaml"
+
+
+def _opencode_cli_command(path: Path) -> list[str] | None:
+    """从 review-backends.yaml 提取 opencode-cli 的 command 流式列表。"""
+    current: str | None = None
+    for raw in path.read_text().splitlines():
+        stripped = raw.strip()
+        if re.fullmatch(r"[a-zA-Z][\w-]*:", stripped) and not raw.startswith(" "):
+            current = None  # 顶层段（如 backends:）
+            continue
+        match = re.match(r"^  ([\w-]+):", raw)
+        if match:
+            current = match.group(1)
+            continue
+        if current == "opencode-cli":
+            flow = re.match(r"^\s*command:\s*\[([^\]]*)\]", raw)
+            if flow:
+                return [item.strip() for item in flow.group(1).split(",") if item.strip()]
+    return None
+
+
+def check_opencode_cli_agent(bindings: dict) -> list[str]:
+    """OBS-OPENCODE-L6-001 回归守卫：registry --agent 目标必须可被 primary 执行。
+
+    `opencode run --agent X` 在目标为 mode:subagent 时会静默回落到可写的默认
+    build 主代理。这里机械校验 production command 指向的 agent 文件：
+    primary 模式、与 canonical reviewer 同模型、默认拒绝 + 精确只读放行；
+    并保护原生 subagent profile 不被改成 primary（native 路径回归）。
+    """
+    errors: list[str] = []
+    oc = bindings.get("opencode")
+    reviewer = oc.get("reviewer") if isinstance(oc, dict) else None
+    if not isinstance(reviewer, dict):
+        return ["opencode: 缺少 reviewer 角色绑定"]
+    expected_model = reviewer.get("model")
+
+    command = _opencode_cli_command(OPENCODE_REGISTRY)
+    if command is None:
+        return ["registry: review-backends.yaml 无法解析出 opencode-cli command"]
+    if "--agent" not in command:
+        return ["registry/opencode-cli: command 缺少 --agent 目标"]
+    target = command[command.index("--agent") + 1] if command.index("--agent") + 1 < len(command) else ""
+    if not target:
+        return ["registry/opencode-cli: --agent 缺少目标名称"]
+
+    declared = reviewer.get("cli_agent_file")
+    if declared is not None and declared != f"opencode/{target}.md":
+        errors.append(
+            f"opencode/reviewer: cli_agent_file {declared!r} 与 registry --agent 目标 {target!r} 不一致"
+        )
+
+    native_path = AGENTS_DIR / str(reviewer.get("file", ""))
+    if native_path.is_file() and native_path.suffix == ".md":
+        fm = native_path.read_text().split("---")[1]
+        if not re.search(r"^mode:\s*subagent\s*(#.*)?$", fm, re.M):
+            errors.append(f"opencode/reviewer: 原生 profile {native_path.name} 必须保持 mode: subagent")
+
+    agent_path = AGENTS_DIR / "opencode" / f"{target}.md"
+    if not agent_path.is_file():
+        errors.append(f"registry/opencode-cli: --agent 目标缺少产物 opencode/{target}.md")
+        return errors
+    fm = agent_path.read_text().split("---")[1]
+
+    mode = re.search(r"^mode:\s*(\S+)\s*(#.*)?$", fm, re.M)
+    if not mode or mode.group(1) != "primary":
+        errors.append(
+            f"opencode/{target}: mode 必须是 primary（subagent 会被 CLI 静默回落 build），实际 {mode.group(1) if mode else None!r}"
+        )
+    model = re.search(rf"^model:\s*{re.escape(str(expected_model))}\s*(#.*)?$", fm, re.M)
+    if not model:
+        errors.append(f"opencode/{target}: model 必须与 canonical reviewer 一致：{expected_model!r}")
+    if not re.search(r'^\s*"\*":\s*deny\s*$', fm, re.M):
+        errors.append(f'opencode/{target}: 缺默认拒绝 "*" deny')
+    allows = sorted(m.group(1) for m in re.finditer(r"^\s*([\w*-]+):\s*allow\s*$", fm, re.M))
+    if allows != sorted(OPENCODE_READONLY_ALLOWS):
+        errors.append(
+            f"opencode/{target}: 只读放行必须精确为 {sorted(OPENCODE_READONLY_ALLOWS)}，实际 {allows}"
+        )
     return errors
 
 
@@ -256,6 +338,7 @@ def main() -> int:
         return 2
     errors = check_native(bindings)
     errors.extend(check_opencode_same_model(bindings))
+    errors.extend(check_opencode_cli_agent(bindings))
     if args.check_codex_install:
         errors.extend(check_codex_install(bindings, args.codex_config))
     if errors:

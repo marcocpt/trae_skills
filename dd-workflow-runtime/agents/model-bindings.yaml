@@ -54,15 +54,18 @@ hosts:
     worker:
       # 主 session 即 implementation worker（OpenCode 无独立 worker agent 文件机制）；
       # same-model independent review：与 reviewer 同模型，隔离靠角色/只读权限/frozen baseline
-      model: opencode/x-preview-f-free
+      model: opencode/muse-spark-1.2-contributor-free
       binding: primary-session
     reviewer:
       file: opencode/strong-reviewer.md
-      model: opencode/x-preview-f-free     # same-model independent review（与 worker 同模型，非更强模型）
+      model: opencode/muse-spark-1.2-contributor-free     # same-model independent review（与 worker 同模型，非更强模型）
       permission_default_deny: true
       readonly_allows: [read, glob, grep, list]
+      # external opencode-cli backend 的 invocation profile（primary-mode，同模型同权限，
+      # 非新模型角色）；validate-bindings.py 机械校验其与 registry --agent 目标一致
+      cli_agent_file: opencode/strong-reviewer-cli.md
     install: "~/.config/opencode/agents/"
-    status: installed-discovered      # L3 已过；换绑 x-preview-f-free 后 L6 由 opencode-cli backend 重新取证
+    status: installed-discovered      # L3 已过；换绑 muse-spark-1.2-contributor-free 后 L6 由 opencode-cli backend 重新取证
 
   codebuddy:
     reviewer:

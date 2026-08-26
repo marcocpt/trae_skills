@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import importlib.util
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "agents" / "validate-bindings.py"
@@ -14,7 +16,54 @@ assert SPEC is not None and SPEC.loader is not None
 VB = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(VB)
 
-EXPECTED_MODEL = "opencode/x-preview-f-free"
+EXPECTED_MODEL = "opencode/muse-spark-1.2-contributor-free"
+
+SUBAGENT_PROFILE = """---
+description: native subagent profile
+mode: subagent
+model: opencode/muse-spark-1.2-contributor-free
+permission:
+  "*": deny
+  read: allow
+  glob: allow
+  grep: allow
+  list: allow
+---
+
+body
+"""
+
+PRIMARY_PROFILE = """---
+description: external cli invocation profile
+mode: primary
+model: opencode/muse-spark-1.2-contributor-free
+permission:
+  "*": deny
+  read: allow
+  glob: allow
+  grep: allow
+  list: allow
+---
+
+body
+"""
+
+REGISTRY_TEMPLATE = """schema: dd-review-backends/1
+
+backends:
+  mcp-review:
+    type: mcp
+    command: [review]
+
+  opencode-cli:
+    type: cli
+    command: [run, --agent, {target}, --format, json]
+    forbid_args: [--auto]
+
+  codex-native:
+    type: native
+    command: [exec, --sandbox, read-only]
+"""
 
 
 def opencode_bindings() -> dict:
@@ -29,6 +78,7 @@ def opencode_bindings() -> dict:
                 "model": EXPECTED_MODEL,
                 "permission_default_deny": True,
                 "readonly_allows": ["read", "glob", "grep", "list"],
+                "cli_agent_file": "opencode/strong-reviewer-cli.md",
             },
         }
     }
@@ -94,6 +144,81 @@ class CheckOpenCodeSameModelTests(unittest.TestCase):
         bindings = VB.load_bindings(VB.AGENTS_DIR / "model-bindings.yaml")
         self.assertEqual(VB.check_native(bindings), [])
         self.assertEqual(VB.check_opencode_same_model(bindings), [])
+        self.assertEqual(VB.check_opencode_cli_agent(bindings), [])
+
+
+class CheckOpenCodeCliAgentTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.agents_dir = Path(self.temp.name)
+        (self.agents_dir / "opencode").mkdir()
+        (self.agents_dir / "opencode" / "strong-reviewer.md").write_text(SUBAGENT_PROFILE)
+        (self.agents_dir / "opencode" / "strong-reviewer-cli.md").write_text(PRIMARY_PROFILE)
+        (self.agents_dir / "review-backends.yaml").write_text(
+            REGISTRY_TEMPLATE.format(target="strong-reviewer-cli")
+        )
+
+    def tearDown(self) -> None:
+        self.temp.cleanup()
+
+    def run_check(self, bindings: dict | None = None) -> list[str]:
+        with mock.patch.object(VB, "AGENTS_DIR", self.agents_dir), mock.patch.object(
+            VB, "OPENCODE_REGISTRY", self.agents_dir / "review-backends.yaml"
+        ):
+            return VB.check_opencode_cli_agent(bindings or opencode_bindings())
+
+    def test_valid_primary_profile_passes(self) -> None:
+        self.assertEqual(self.run_check(), [])
+
+    def test_registry_pointing_back_at_subagent_is_rejected(self) -> None:
+        (self.agents_dir / "review-backends.yaml").write_text(
+            REGISTRY_TEMPLATE.format(target="strong-reviewer")
+        )
+        errors = self.run_check()
+        self.assertTrue(any("mode 必须是 primary" in e for e in errors))
+        self.assertTrue(any("不一致" in e for e in errors))
+
+    def test_cli_agent_with_wrong_model_is_rejected(self) -> None:
+        path = self.agents_dir / "opencode" / "strong-reviewer-cli.md"
+        path.write_text(PRIMARY_PROFILE.replace(EXPECTED_MODEL, "opencode/hy3-free"))
+        errors = self.run_check()
+        self.assertTrue(any("model 必须与 canonical reviewer 一致" in e for e in errors))
+
+    def test_cli_agent_without_default_deny_is_rejected(self) -> None:
+        path = self.agents_dir / "opencode" / "strong-reviewer-cli.md"
+        path.write_text(PRIMARY_PROFILE.replace('  "*": deny\n', ""))
+        errors = self.run_check()
+        self.assertTrue(any('缺默认拒绝' in e for e in errors))
+
+    def test_cli_agent_with_extra_write_allow_is_rejected(self) -> None:
+        path = self.agents_dir / "opencode" / "strong-reviewer-cli.md"
+        path.write_text(PRIMARY_PROFILE.replace("  list: allow", "  list: allow\n  write: allow"))
+        errors = self.run_check()
+        self.assertTrue(any("只读放行必须精确为" in e for e in errors))
+
+    def test_missing_cli_agent_file_is_rejected(self) -> None:
+        (self.agents_dir / "opencode" / "strong-reviewer-cli.md").unlink()
+        errors = self.run_check()
+        self.assertTrue(any("缺少产物" in e for e in errors))
+
+    def test_native_profile_flipped_to_primary_is_rejected(self) -> None:
+        path = self.agents_dir / "opencode" / "strong-reviewer.md"
+        path.write_text(SUBAGENT_PROFILE.replace("mode: subagent", "mode: primary"))
+        errors = self.run_check()
+        self.assertTrue(any("必须保持 mode: subagent" in e for e in errors))
+
+    def test_cli_agent_file_declaration_mismatch_is_rejected(self) -> None:
+        bindings = opencode_bindings()
+        bindings["opencode"]["reviewer"]["cli_agent_file"] = "opencode/other-profile.md"
+        errors = self.run_check(bindings)
+        self.assertTrue(any("不一致" in e for e in errors))
+
+    def test_registry_without_agent_flag_is_rejected(self) -> None:
+        (self.agents_dir / "review-backends.yaml").write_text(
+            "backends:\n  opencode-cli:\n    command: [run, --format, json]\n"
+        )
+        errors = self.run_check()
+        self.assertTrue(any("缺少 --agent" in e for e in errors))
 
 
 if __name__ == "__main__":
