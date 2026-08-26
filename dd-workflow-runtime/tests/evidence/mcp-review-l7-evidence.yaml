@@ -1,0 +1,264 @@
+backend: mcp-review
+level: L7
+status: PASS
+verdict: FINDINGS
+l7_capability_confirmed: true
+confirmed: true
+source: dd-workflow-runtime/tests/evidence/mcp-review-l7-evidence.yaml
+note: >-
+  Phase E real-provider L7 re-run after the chatgpt-review MCP provider-contract
+  fix (work/MCP src/lib/markdown.ts: extractReply now preserves strict-JSON plain
+  text byte-for-byte and bypasses Turndown). The real ChatGPT Reviewer returned a
+  strict dd-review-provider/1 JSON payload with zero Markdown escapes, the adapter
+  normalized it to a valid dd-review-result/1, and the production Router accepted
+  it with a Router-owned read-only confirmation. Business verdict is FINDINGS
+  (Reviewer independently caught the silent zero-divisor bug); this does NOT
+  affect the L7 capability verdict, which is PASS.
+
+captured_at: 2026-08-26T07:35:59Z
+probe_kind: real-provider-l7-review-result-pipeline
+other_real_backends_tested: false
+fallback_used: false
+
+l6_reference:
+  path: dd-workflow-runtime/tests/evidence/mcp-review-l6-evidence.yaml
+  backend: mcp-review
+  readonly_mode: snapshot-send-only
+  level: L6
+  confirmed: true
+  adapter_sha256_at_l6: c6e0efd2ad9aced8745ce9f2058f5eb937b9f6a81a02d5898a05b9ffcc0a2c92
+  adapter_sha256_live_at_l7: c6e0efd2ad9aced8745ce9f2058f5eb937b9f6a81a02d5898a05b9ffcc0a2c92
+  adapter_identity_drift: false
+  registry_readonly_mode_match: true
+  reused_stale_proof: false
+
+probe_repo:
+  path: /tmp/dd-mcp-l7-probe
+  isolated_throwaway_repo: true
+  production_skills_repo_used_as_probe: false
+  base_sha: ed276e17ed19c2b59b6cb2735f724b640be714a8
+  head_sha: 2f6e4a3327801e9bc621320f245b09ec5850d37a
+  base_differs_from_head: true
+  scope:
+    - review.py
+  target_sha256: 0a9b543d647e80f16d59770a2d0aefb7b13c944be4bae1f93e85c16459dde49c
+  fixture_bug_disclosed_in_prompt: false
+  fixture_bug_kind: silent-zero-divisor-fallback
+
+request:
+  schema: dd-review-request/1
+  role: strong-reviewer
+  host: workbuddy
+  hop_count: 0
+  dispatch_chain: []
+  external_review_authorization: approved
+  readonly_evidence_source: dd-workflow-runtime/tests/evidence/mcp-review-l6-evidence.yaml
+  readonly_evidence_handwritten: false
+  readonly_evidence_copied_from_other_backend: false
+
+router_path:
+  entrypoint: dd-workflow-runtime/agents/dispatch-review.py
+  production_router_used: true
+  production_routing_policy_modified: false
+  backend_selection_method: temporary-probe-invocation-with-unmodified-production-policy
+  selected_backend: mcp-review
+  candidates_attempted:
+    - mcp-review
+  fallback_to_other_backend: false
+  backend_bound_l6_eligibility_checked_before_adapter: true
+  adapter_subprocess_env_allowlist:
+    - PATH
+    - HOME
+  adapter_env_sanitized_by_router: true
+  runs:
+    - id: run-fix-direct-adapter
+      endpoint_used_by_adapter: http://127.0.0.1:8765/mcp
+      path: adapter-only (Router-shaped request, via loopback capture proxy)
+      adapter_status: FINDINGS
+      router_status: n/a
+    - id: run-fix-full-router
+      endpoint_used_by_adapter: http://127.0.0.1:8765/mcp
+      path: full production Router dispatch
+      router_status: FINDINGS
+      router_failure_category: null
+
+real_mcp:
+  endpoint_observed: http://127.0.0.1:8765/mcp
+  upstream_endpoint: http://127.0.0.1:8765/mcp
+  observation_method: loopback pass-through logging proxy (for the direct-adapter run), provider payload unmodified
+  work_mcp_repo_modified: true
+  work_mcp_repo_change: src/lib/markdown.ts extractReply strict-JSON preservation + tests
+  protocol_version: "2025-03-26"
+  server_info:
+    name: chatgpt-review
+    version: 0.2.0
+  capabilities:
+    tools:
+      listChanged: true
+  http_status:
+    initialize: 200
+    notifications_initialized: 202
+    tools_list: 200
+    tools_call: 200
+  exact_tools:
+    - chatgpt_get_result
+    - chatgpt_send
+    - chatgpt_send_file
+  actual_called_tools:
+    - chatgpt_send
+    - chatgpt_get_result
+  call_sequence: "chatgpt_send, then chatgpt_get_result x8"
+  chatgpt_send_call_count: 1
+  chatgpt_get_result_call_count: 8
+  chatgpt_send_file_called: false
+  tools_call_methods_outside_allowlist: false
+  real_transport_confirmed: true
+  real_reviewer_reached: true
+
+provider_input_isolation:
+  observed_payload: wire capture of the chatgpt_send tools/call arguments (direct-adapter run, 005-request.txt)
+  repo_path_leaked: false
+  readonly_evidence_leaked: false
+  readonly_source_leaked: false
+  authorization_leaked: false
+  native_guard_leaked: false
+  routing_context_leaked: false
+  routing_control_metadata_leaked: false
+  credentials_leaked: false
+  host_metadata_leaked: false
+  verification_evidence_leaked: false
+  allowed_material_sent:
+    frozen_snapshot: true
+    frozen_diff: true
+    head_file_content: true
+    relative_scope: true
+    base_sha: true
+    head_sha: true
+    review_instruction: true
+    provider_schema_requirement: true
+  snapshot_sha256: c701808361e24cbf023283ff80d350002bfe8069976d5403bf45fd5a54c06c3f
+  snapshot_chars: 529
+  instruction_sha256: 9989a3413fdfe2cb48c81398bbb47925200af69f583291027ebc6a9d051ee655
+  instruction_chars: 647
+
+provider_result:
+  schema_declared: dd-review-provider/1
+  strict_json: true
+  parse_error: null
+  contract_violation: null
+  markdown_escape_sequences_observed: []
+  markdown_escape_count: 0
+  markdown_code_fence_present: false
+  prose_wrapper_present: false
+  mcp_transport_preamble_present: true
+  status: FINDINGS
+  reviewed:
+    - review.py
+  unreadable: []
+  findings_count: 1
+  top_level_keys_exact: true
+  evidence_count: 2
+  provider_text_sha256: 920b72c17ad67054016cec5c90298e1ba116eabcc23006c966fcf4380ceb6bd9
+  provider_body_sha256: 37cae537482bbb5b8e417e99f2051f6c9ee68cd6162a87917c9fc1f834e738da
+  provider_body_chars: 1135
+  adapter_parser_relaxed: false
+  json_extracted_from_markdown: false
+  illegal_json_auto_repaired: false
+  implicit_retry_issued: false
+  second_review_issued: false
+  root_cause_of_prior_block_resolved: >-
+    Prior L7 BLOCKED (schema_invalid) was caused by Turndown Markdown-escaping the
+    JSON body (11 escape sequences). The provider fix returns the raw plain text
+    when it is itself strictly JSON.parse-able, so no escaping occurs.
+
+adapter_result:
+  schema: dd-review-result/1
+  backend: mcp-review
+  status: FINDINGS
+  failure_category: null
+  reviewed:
+    - review.py
+  unreadable: []
+  findings_count: 1
+  finding_id: RV-001
+  finding_severity: HIGH
+  finding_classification: behavioral-correctness
+  finding_location: review.py:2-3
+  readonly_confirmation_self_reported: false
+  adapter_self_upgraded_l6: false
+  adapter_emitted_trusted_confirmed_true: false
+
+router_result:
+  schema: dd-review-result/1
+  status: FINDINGS
+  failure_category: null
+  reviewed:
+    - review.py
+  unreadable: []
+  findings_count: 1
+  target_matches_frozen_request: true
+  fallback_eligible: false
+  readonly_confirmation:
+    confirmed: true
+    evidence: router-validated:mcp-review:snapshot-send-only
+
+readonly_authority:
+  model: phase-c-option-b
+  router_is_sole_readonly_authority: true
+  adapter_confirmation_trusted: false
+  provider_aware_of_readonly_proof: false
+  router_validated_l6_proof_before_adapter_invocation: true
+  router_owned_confirmation_generated: true
+  router_owned_confirmation_reason: >-
+    Router mints its own confirmation for accepted PASS/FINDINGS results; the
+    provider fix let the provider return FINDINGS, so this branch was taken.
+  readonly_authority_model_modified: false
+
+parent_verification:
+  head_before: 2f6e4a3327801e9bc621320f245b09ec5850d37a
+  head_after: 2f6e4a3327801e9bc621320f245b09ec5850d37a
+  target_sha256_before: 0a9b543d647e80f16d59770a2d0aefb7b13c944be4bae1f93e85c16459dde49c
+  target_sha256_after: 0a9b543d647e80f16d59770a2d0aefb7b13c944be4bae1f93e85c16459dde49c
+  files_before:
+    - .git
+    - review.py
+  files_after:
+    - .git
+    - review.py
+  created_files: []
+  unexpected_files: []
+  git_status_before: clean
+  git_status_after: clean
+  git_diff_exit_code_before: 0
+  git_diff_exit_code_after: 0
+  workspace_mutation_detected: false
+  harness_mutate_then_restore_used: false
+
+regression:
+  test_mcp_review: "10 passed"
+  test_dispatch_review: "31 passed"
+  test_check_review_route: "13 passed"
+  validate_registry_policy: "no errors"
+  check_review_route_smoke: "ALLOW / external"
+  l6_evidence_canonical_consistency: "adapter sha256 and readonly_mode match"
+  mcp_repo_tests: "86 passed (vitest)"
+  mcp_repo_typecheck: "tsc --noEmit clean"
+
+router_observation:
+  id: OBS-L7-001
+  severity: MEDIUM
+  title: Router masks terminal adapter failure_category as readonly_violation
+  detail: >-
+    When an adapter returns BLOCKED with a non-fallback failure_category and
+    readonly_confirmation.confirmed=false, dispatch-review.py raises
+    readonly_violation instead of surfacing the adapter category. Not exercised
+    in this run because the provider fix removed the BLOCKED outcome (provider now
+    returns FINDINGS).
+  location: dd-workflow-runtime/agents/dispatch-review.py
+  impact: >-
+    Fail-closed behaviour remains correct; only failure triage was misleading for
+    the pre-fix BLOCKED case.
+  fixed_in_this_round: false
+  reason_not_fixed: >-
+    User instruction: do not fix OBS-L7-001 this round. Provider fix alone
+    resolves the L7 BLOCKED outcome.

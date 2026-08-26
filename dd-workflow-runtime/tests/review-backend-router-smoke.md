@@ -10,7 +10,7 @@
 | L4 deterministic dispatch | frozen SHA、scope、verification、single-backend metadata 可校验 | PASS（自动化测试） |
 | L5 fallback semantics | 仅 transport-unavailable fallback；FINDINGS/schema/evidence/readonly/recursion fail closed | PASS（自动化测试） |
 | L6 readonly effective | 各真实 backend 的写入负向探针；当前按 backend 分项记账 | PENDING/PARTIAL（`codex-cli`、`mcp-review` PASS；其他 backend PENDING） |
-| L7 review result | 各真实 backend 返回 `dd-review-result/1` 并携带 baseline/reviewed/unreadable | PENDING（`mcp-review` BLOCKED/provider-contract；其他 backend PENDING） |
+| L7 review result | 各真实 backend 返回 `dd-review-result/1` 并携带 baseline/reviewed/unreadable | PENDING/PARTIAL（`mcp-review` PASS 能力贯通、verdict=FINDINGS；其他 backend PENDING） |
 
 ### L6 backend-specific evidence
 
@@ -24,13 +24,13 @@
 
 ### L7 backend-specific evidence
 
-- `mcp-review`: **BLOCKED**（2026-08-26；真实 Router path 已贯通到真实 ChatGPT Reviewer，但 provider 返回被 Markdown 转义污染的非严格 `dd-review-provider/1` JSON，`schema_invalid` fail closed）。证据：[mcp-review-l7-blocked-evidence.yaml](evidence/mcp-review-l7-blocked-evidence.yaml)
+- `mcp-review`: **PASS（能力贯通；verdict=FINDINGS）**（2026-08-26；provider-contract 修复后，真实 Router path 贯通至真实 ChatGPT Reviewer，provider 返回严格 `dd-review-provider/1` JSON（零 Markdown 转义），adapter 归一化为合法 `dd-review-result/1`，Router 以 Router-owned readonly confirmation 接受，verdict=FINDINGS，无 fallback）。证据：[mcp-review-l7-evidence.yaml](evidence/mcp-review-l7-evidence.yaml)
 - `codex-cli`: PENDING
 - `opencode-cli`: PENDING
 - `codex-native`: PENDING
 - `opencode-native`: PENDING
 
-聚合 L7 仍为 `PENDING`。`mcp-review` 的 BLOCKED 属于真实 provider-contract failure：adapter parser、provider/result schema 校验和 readonly authority 模型均未放宽，也未发起隐式重试或第二次 review。已记录的 Router 归因缺陷见证据文件 `router_observation.OBS-L7-001`（terminal BLOCKED 的 `failure_category` 被掩盖为 `readonly_violation`），fail-closed 行为本身仍然正确。
+聚合 L7 仍为 `PENDING`。`mcp-review` 的 L7 能力已贯通（verdict=FINDINGS，属真实 Reviewer 判定，不影响 L7 能力 PASS）；该轮发现并修复了真实 provider-contract failure（chatgpt-review MCP 在提取严格 JSON 响应时被 Turndown 注入 Markdown 转义，已通过 `work/MCP` 的 `extractReply` 严格 JSON 原样保留修复，未放宽 adapter parser / provider schema / readonly authority，未发起隐式重试或第二次 review）。Router 归因缺陷 `router_observation.OBS-L7-001`（terminal BLOCKED 的 `failure_category` 被掩盖为 `readonly_violation`）本轮按指令未修复——provider 修复后该分支不再被触发。
 
 运行本地静态与回归检查：
 
