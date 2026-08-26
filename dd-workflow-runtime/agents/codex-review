@@ -1,0 +1,271 @@
+#!/usr/bin/env python3
+"""Thin adapter for codex-cli backend: Codex JSONL -> dd-review-result/1.
+
+Router owns selection/authorization/fallback. This process only:
+- validates dd-review-request/1
+- invokes `codex exec --sandbox read-only --json` with request as stdin
+- extracts final agent_message.text from JSONL event stream
+- strict-parses that text as dd-review-result/1 and validates
+- outputs single JSON object for Router normalization
+
+No retry, no second dispatch, no readonly authority.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any, Dict, List
+
+BACKEND_ID = "codex-cli"
+REQUEST_SCHEMA = "dd-review-request/1"
+RESULT_SCHEMA = "dd-review-result/1"
+SHA_RE = re.compile(r"^[0-9a-fA-F]{7,64}$")
+FINDING_KEYS = ("id", "severity", "classification", "change_risk", "location", "evidence", "required_fix")
+
+
+def _blocked(request: Dict[str, Any], category: str, detail: str) -> Dict[str, Any]:
+    target = {
+        "base_sha": request.get("base_sha"),
+        "head_sha": request.get("head_sha"),
+        "scope": list(request.get("scope", [])),
+    }
+    return {
+        "schema": RESULT_SCHEMA,
+        "backend": BACKEND_ID,
+        "reviewer": "strong-reviewer/codex-cli",
+        "target": target,
+        "status": "BLOCKED",
+        "reviewed": [],
+        "unreadable": list(request.get("scope", [])),
+        "findings": [],
+        "evidence": [detail],
+        "failure_category": category,
+        "readonly_confirmation": {"confirmed": False, "evidence": None},
+        "lifecycle": {"started": True, "completed": False},
+    }
+
+
+def _validate_request(req: Dict[str, Any]) -> str | None:
+    if req.get("schema") != REQUEST_SCHEMA:
+        return f"request schema must be {REQUEST_SCHEMA}"
+    for k in ("role", "host", "repo", "base_sha", "head_sha"):
+        if not isinstance(req.get(k), str) or not req[k]:
+            return f"request.{k} is required"
+    for k in ("base_sha", "head_sha"):
+        if not SHA_RE.fullmatch(req[k]):
+            return f"request.{k} must be SHA"
+    scope = req.get("scope")
+    if not isinstance(scope, list) or not scope or not all(isinstance(x, str) and x for x in scope):
+        return "request.scope must be non-empty string list"
+    for forbidden in ("native_guard",):
+        if forbidden in req:
+            return f"request.{forbidden} must not be forwarded"
+    if "verification" not in req:
+        return "request.verification is required"
+    return None
+
+
+def _extract_final_text(stdout: str) -> tuple[str | None, str | None]:
+    lines = [l for l in stdout.splitlines() if l.strip()]
+    if not lines:
+        return None, "empty stdout"
+    events: List[Dict[str, Any]] = []
+    for line in lines:
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError as exc:
+            return None, f"malformed event JSON: {exc}"
+    # Codex JSONL: final result is last item.completed with type agent_message
+    candidates: List[str] = []
+    for e in events:
+        if e.get("type") == "item.completed":
+            item = e.get("item", {})
+            if item.get("type") == "agent_message":
+                text = item.get("text", "")
+                if isinstance(text, str) and text.strip():
+                    candidates.append(text)
+    if not candidates:
+        return None, "missing final agent_message"
+    # If multiple, take last that looks like JSON (strict), but fail-closed if ambiguous JSONs
+    # We choose last candidate; adapter will strict-parse it, so non-JSON earlier ones are irrelevant
+    final = candidates[-1]
+    # Check for ambiguity: if more than one candidate is JSON object with schema, it's ambiguous
+    json_candidates = []
+    for c in candidates:
+        s = c.strip()
+        if s.startswith("{") and s.endswith("}"):
+            try:
+                j = json.loads(s)
+                if isinstance(j, dict) and j.get("schema") == RESULT_SCHEMA:
+                    json_candidates.append(c)
+            except:
+                pass
+    if len(json_candidates) > 1:
+        # Multiple JSON results -> ambiguous, fail-closed
+        return None, "multiple final JSON results"
+    return final, None
+
+
+def _strict_json_parse(text: str) -> tuple[Any, str | None]:
+    stripped = text.strip()
+    if "```" in stripped:
+        return None, "code fence present"
+    if not stripped.startswith("{") or not stripped.endswith("}"):
+        return None, "not strict JSON object"
+    if re.search(r"\\[_\[\]]", stripped):
+        return None, "markdown escapes present"
+    try:
+        obj = json.loads(stripped)
+    except json.JSONDecodeError as exc:
+        return None, f"invalid JSON: {exc}"
+    if not isinstance(obj, dict):
+        return None, "top level must be object"
+    return obj, None
+
+
+def _validate_result(obj: Dict[str, Any], request: Dict[str, Any]) -> str | None:
+    if obj.get("schema") != RESULT_SCHEMA:
+        return f"result schema must be {RESULT_SCHEMA}"
+    if obj.get("backend") != BACKEND_ID:
+        return "backend must be codex-cli"
+    target = obj.get("target")
+    if not isinstance(target, dict):
+        return "target is required"
+    if target.get("base_sha") != request.get("base_sha") or target.get("head_sha") != request.get("head_sha"):
+        return "target mismatch"
+    if target.get("scope") != request.get("scope"):
+        return "scope mismatch"
+    status = obj.get("status")
+    if not isinstance(status, str) or status.upper() not in ("PASS", "FINDINGS", "BLOCKED"):
+        return f"unsupported status {status!r}"
+    # Validate reviewed/unreadable etc. via Router's normalize will also check, but do minimal here
+    reviewed = obj.get("reviewed")
+    unreadable = obj.get("unreadable")
+    if not isinstance(reviewed, list) or not isinstance(unreadable, list):
+        return "reviewed/unreadable must be lists"
+    scope_set = set(request.get("scope", []))
+    if not set(reviewed).issubset(scope_set) or not set(unreadable).issubset(scope_set):
+        return "reviewed/unreadable escapes scope"
+    findings = obj.get("findings")
+    if not isinstance(findings, list):
+        return "findings must be list"
+    for f in findings:
+        if not isinstance(f, dict):
+            return "finding must be mapping"
+        for k in FINDING_KEYS:
+            if not isinstance(f.get(k), str) or not f[k]:
+                return f"finding missing {k}"
+    evidence = obj.get("evidence")
+    if not isinstance(evidence, list) or not evidence:
+        return "evidence must be non-empty list"
+    return None
+
+
+def main() -> int:
+    if len(sys.argv) != 2 or sys.argv[1] != "review":
+        print("usage: codex-review review", file=sys.stderr)
+        return 64
+    try:
+        raw = sys.stdin.read()
+        request = json.loads(raw) if raw.strip() else {}
+    except json.JSONDecodeError as exc:
+        result = {
+            "schema": RESULT_SCHEMA,
+            "backend": BACKEND_ID,
+            "reviewer": "strong-reviewer/codex-cli",
+            "target": {"base_sha": None, "head_sha": None, "scope": []},
+            "status": "BLOCKED",
+            "reviewed": [],
+            "unreadable": [],
+            "findings": [],
+            "evidence": [f"invalid request JSON: {exc}"],
+            "failure_category": "schema_invalid",
+            "readonly_confirmation": {"confirmed": False, "evidence": None},
+            "lifecycle": {"started": False, "completed": False},
+        }
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
+    if not isinstance(request, dict):
+        result = _blocked(request if isinstance(request, dict) else {}, "schema_invalid", "request must be object")
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
+
+    err = _validate_request(request)
+    if err:
+        result = _blocked(request, "schema_invalid", err)
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
+
+    repo = Path(request["repo"])
+    try:
+        head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=10).stdout.strip()
+        if head != request["head_sha"]:
+            result = _blocked(request, "baseline_mismatch", "HEAD differs from head_sha")
+            print(json.dumps(result, ensure_ascii=False))
+            return 0
+        dirty = subprocess.run(["git", "-C", str(repo), "status", "--porcelain=v1", "--untracked-files=all"], capture_output=True, text=True, timeout=10).stdout.strip()
+        if dirty:
+            result = _blocked(request, "baseline_mismatch", "worktree dirty")
+            print(json.dumps(result, ensure_ascii=False))
+            return 0
+    except Exception as exc:
+        result = _blocked(request, "evidence_mismatch", f"git check failed: {exc}")
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
+
+    cmd = ["codex", "exec", "--sandbox", "read-only", "--json"]
+    env = {"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", str(Path.home()))}
+    try:
+        completed = subprocess.run(
+            cmd,
+            input=json.dumps(request, ensure_ascii=False),
+            capture_output=True,
+            text=True,
+            timeout=600,
+            cwd=request["repo"],
+            env=env,
+        )
+    except FileNotFoundError:
+        return 69
+    except subprocess.TimeoutExpired:
+        return 75
+
+    if completed.returncode != 0:
+        if completed.returncode == 69:
+            return 69
+        if completed.returncode == 75:
+            return 75
+        result = _blocked(request, "backend_execution_failed", f"codex exit {completed.returncode}: {completed.stderr[:500]}")
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
+
+    final_text, err = _extract_final_text(completed.stdout)
+    if err:
+        result = _blocked(request, "review_incomplete" if "missing" in err else "schema_invalid", err)
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
+
+    obj, err = _strict_json_parse(final_text)
+    if err:
+        result = _blocked(request, "schema_invalid", err)
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
+
+    err = _validate_result(obj, request)
+    if err:
+        result = _blocked(request, "schema_invalid", err)
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
+
+    # Re-output the validated object (ensure single JSON line)
+    print(json.dumps(obj, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
