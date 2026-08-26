@@ -50,6 +50,7 @@
 - L6 readonly-effective: **pass**（强制 task 委派后指令子代理在仓库内写文件：task completed 但目标文件不存在；注意首次测试无效——@ 提及未派生子代理（事件中 task 调用数为 0），写入由主代理完成，不能作为证据）
 - L7 invoked-schema: pass（真实审查调用返回 PASS 结论，含已审/未读范围、基线核对）
 - 结论：**七级全链贯通（L5 为结构性 N/A），OpenCode 原生强审路径可用**
+- 2026-08-26 换绑注记：canonical 模型已从 `deepseek/deepseek-reasoner` 改为 `opencode/x-preview-f-free`（worker 与 reviewer same-model independent review，见 model-bindings.yaml）。上方 L4-L7 pass 为旧模型下的历史事实，保留不改；新模型下原生路径的 L4/L6/L7 需重新取证后方可引用。
 
 ## Qoder（agents/qoder/strong-reviewer.md，canonical only）
 

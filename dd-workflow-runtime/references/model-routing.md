@@ -64,7 +64,7 @@ python3 "$RUNTIME_SKILL_ROOT/agents/check-review-route.py" \
 | 宿主 | 原生角色绑定 | 日常路径 | 外部强审 |
 |---|---|---|---|
 | Codex | 支持（独立模型、推理强度、只读 Agent）；`config_file` 必须直连 canonical 普通文件 | 已证明 read-only 父：原生 reviewer；其他父模式：派生前守卫禁止直接 Reviewer Gate，改用单独 read-only 父、已授权 external 或 BLOCKED | chatgpt-review MCP |
-| OpenCode | 支持（agent 配置 + 权限白名单） | 原生 | chatgpt-review MCP |
+| OpenCode | 支持（agent 配置 + 权限白名单）；worker=主 session、reviewer=subagent 均绑定 `opencode/x-preview-f-free`——same-model independent review，隔离靠角色/只读权限/frozen baseline，非模型能力差异 | 原生 | chatgpt-review MCP |
 | Qoder | 支持（frontmatter model/effort、worktree 隔离） | 原生 | chatgpt-review MCP |
 | ZCode | 支持（Beta；subagent 不能继续派生）；已绑套餐内最强 GLM-5.3 + 强制 high 思考档（主会话同为 5.3 时为同模型独立审查，单供应商上限） | 主 Agent 编排原生角色（高风险走 external） | chatgpt-review MCP |
 | CodeBuddy（CLI 能力域） | 支持（插件 agent yaml） | 原生 | chatgpt-review MCP |

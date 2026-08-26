@@ -7,7 +7,9 @@ description: >-
   state consistency, error handling, missing tests, requirement compliance.
   Returns PASS / FINDINGS / BLOCKED. Read-only, never modifies files.
 mode: subagent
-model: deepseek/deepseek-reasoner
+# same-model independent review：与 implementation worker 同模型；隔离来自角色、
+# 独立 subagent 调用、冻结基线与下方机械只读权限，而非模型能力差异。
+model: opencode/x-preview-f-free
 permission:
   "*": deny
   read: allow

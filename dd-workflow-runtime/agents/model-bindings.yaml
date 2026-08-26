@@ -51,13 +51,18 @@ hosts:
     status: canonical-only
 
   opencode:
+    worker:
+      # 主 session 即 implementation worker（OpenCode 无独立 worker agent 文件机制）；
+      # same-model independent review：与 reviewer 同模型，隔离靠角色/只读权限/frozen baseline
+      model: opencode/x-preview-f-free
+      binding: primary-session
     reviewer:
       file: opencode/strong-reviewer.md
-      model: deepseek/deepseek-reasoner
+      model: opencode/x-preview-f-free     # same-model independent review（与 worker 同模型，非更强模型）
       permission_default_deny: true
       readonly_allows: [read, glob, grep, list]
     install: "~/.config/opencode/agents/"
-    status: installed-discovered      # L3 已过，L4-L7 pending
+    status: installed-discovered      # L3 已过；换绑 x-preview-f-free 后 L6 由 opencode-cli backend 重新取证
 
   codebuddy:
     reviewer:

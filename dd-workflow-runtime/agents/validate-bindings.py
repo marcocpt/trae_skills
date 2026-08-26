@@ -63,6 +63,16 @@ def check_native(bindings: dict) -> list[str]:
         errors.append(f"canonical 出现未知宿主: {sorted(extra)}")
     for host, roles in bindings.items():
         for role, spec in roles.items():
+            if "file" not in spec:
+                # 无产物角色（如 OpenCode 主 session worker）必须显式声明绑定形态，
+                # 防止漏写 file 的笔误被静默放过。
+                if spec.get("binding") != "primary-session":
+                    errors.append(
+                        f"{host}/{role}: 无 file 的角色必须声明 binding: primary-session"
+                    )
+                if not str(spec.get("model", "")).strip():
+                    errors.append(f"{host}/{role}: 缺 model")
+                continue
             fpath = AGENTS_DIR / spec["file"]
             if not fpath.exists():
                 errors.append(f"{host}/{role}: 缺少产物 {spec['file']}")
@@ -108,6 +118,50 @@ def check_native(bindings: dict) -> list[str]:
                     for t in tools:
                         if f"- {t}" not in fm:
                             errors.append(f"{host}/{role}: 只读白名单缺 {t}")
+    return errors
+
+
+OPENCODE_EXPECTED_MODEL = "opencode/x-preview-f-free"  # 实机 opencode models 验证的 canonical id（逻辑名 x-preview-f-free）
+OPENCODE_READONLY_ALLOWS = ["read", "glob", "grep", "list"]
+
+
+def check_opencode_same_model(bindings: dict) -> list[str]:
+    """OpenCode worker/reviewer 机械校验：同模型绑定 + 角色隔离不互换。
+
+    same-model independent review：两角色同模型；隔离来自角色、独立 reviewer
+    invocation、frozen baseline 与 reviewer 只读权限，而非模型能力差异。
+    """
+    errors: list[str] = []
+    oc = bindings.get("opencode")
+    if not isinstance(oc, dict):
+        return ["opencode: canonical 缺少该宿主"]
+    worker = oc.get("worker")
+    reviewer = oc.get("reviewer")
+    if not isinstance(worker, dict) or not isinstance(reviewer, dict):
+        return ["opencode: 缺少 worker 或 reviewer 角色绑定"]
+    for role, spec in (("worker", worker), ("reviewer", reviewer)):
+        if spec.get("model") != OPENCODE_EXPECTED_MODEL:
+            errors.append(
+                f"opencode/{role}: model 必须是 {OPENCODE_EXPECTED_MODEL}，实际 {spec.get('model')!r}"
+            )
+    if str(worker.get("binding", "")) != "primary-session":
+        errors.append('opencode/worker: binding 必须是 primary-session')
+    if "file" in worker:
+        errors.append("opencode/worker: 主 session 绑定不得声明 file（无独立 worker agent 文件）")
+    # 角色不互换：reviewer 独占只读合同，worker 不得携带 reviewer 只读标记
+    if str(reviewer.get("permission_default_deny", "")).lower() != "true":
+        errors.append("opencode/reviewer: permission_default_deny 必须为 true")
+    allows = reviewer.get("readonly_allows")
+    if sorted(allows if isinstance(allows, list) else []) != sorted(OPENCODE_READONLY_ALLOWS):
+        errors.append(
+            f"opencode/reviewer: readonly_allows 必须精确为 {OPENCODE_READONLY_ALLOWS}，实际 {allows!r}"
+        )
+    for leaked in ("permission_default_deny", "readonly_allows", "readonly_tools"):
+        if leaked in worker:
+            errors.append(f"opencode/worker: 不得继承 reviewer 只读字段 {leaked}（角色隔离）")
+    rfile = reviewer.get("file", "")
+    if not str(rfile).endswith("strong-reviewer.md"):
+        errors.append(f"opencode/reviewer: file 必须指向 strong-reviewer 产物，实际 {rfile!r}")
     return errors
 
 
@@ -201,6 +255,7 @@ def main() -> int:
         print("解析失败：未从 model-bindings.yaml 读到任何宿主")
         return 2
     errors = check_native(bindings)
+    errors.extend(check_opencode_same_model(bindings))
     if args.check_codex_install:
         errors.extend(check_codex_install(bindings, args.codex_config))
     if errors:
