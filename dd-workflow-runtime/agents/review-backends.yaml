@@ -24,8 +24,11 @@ backends:
   codex-cli:
     type: cli
     execution: external
-    executable: codex
-    command: [exec, --sandbox, read-only]
+    executable: codex-review
+    # Thin adapter: codex-review handles Codex JSONL event stream and strict JSON
+    # validation. Underlying invocation is `codex exec --sandbox read-only --json`
+    # with the same read-only transport (L6 proof remains valid as pure wrapper).
+    command: [review]
     capabilities: [strong-review]
     readonly_required: true
     readonly_mode: codex-read-only-transport

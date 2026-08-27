@@ -9,9 +9,6 @@ spawned and emits a machine-readable decision.
 
 import argparse
 import json
-import os
-import pwd
-import sqlite3
 import sys
 from pathlib import Path
 from typing import Optional, Tuple
@@ -59,21 +56,20 @@ def classify_sandbox_policy(raw_policy: str) -> str:
     return "unknown"
 
 
-def detect_parent_sandbox(thread_id: Optional[str], state_db: Path) -> Tuple[str, str]:
-    """Read the current parent policy from Codex's persisted thread metadata."""
-    if not thread_id:
-        return "unknown", "missing-CODEX_THREAD_ID"
-    try:
-        with sqlite3.connect(f"file:{state_db}?mode=ro", uri=True) as db:
-            row = db.execute(
-                "SELECT sandbox_policy FROM threads WHERE id = ?",
-                (thread_id,),
-            ).fetchone()
-    except (OSError, sqlite3.Error):
-        return "unknown", f"unreadable-thread-metadata:{state_db}"
-    if not row:
-        return "unknown", f"thread-not-found:{thread_id}"
-    return classify_sandbox_policy(row[0]), f"codex-thread-metadata:{thread_id}"
+def detect_parent_sandbox(
+    _thread_id: Optional[str] = None,
+    _state_db: Optional[Path] = None,
+) -> Tuple[str, str]:
+    """Fail closed when a standalone process cannot authenticate its parent.
+
+    A caller can replace ``CODEX_THREAD_ID`` before starting this process, and
+    a persisted SQLite row has no binding to the process that queried it.  The
+    parameters remain accepted for deterministic compatibility tests, but are
+    deliberately ignored.  A future host-native dispatcher must keep the
+    host-owned Thread object in its own trusted runtime and call the pure route
+    resolver there; no environment or SQLite value is a native ALLOW proof.
+    """
+    return "unknown", "current-parent-provenance-unavailable"
 
 
 def emit(
@@ -205,14 +201,9 @@ def main() -> int:
         help="Availability and per-context authorization state of external review.",
     )
     args = parser.parse_args()
-    # Production evidence is deliberately not CLI-injectable. The current
-    # thread id comes from Codex, and the metadata database is anchored to the
-    # account home recorded by the operating system rather than $HOME.
-    state_db = Path(pwd.getpwuid(os.getuid()).pw_dir) / ".codex" / "state_5.sqlite"
-    args.parent_sandbox, args.sandbox_evidence = detect_parent_sandbox(
-        os.environ.get("CODEX_THREAD_ID"),
-        state_db,
-    )
+    # A standalone subprocess has no host-owned current-parent identity.  Do
+    # not accept caller-controlled environment or persisted metadata as one.
+    args.parent_sandbox, args.sandbox_evidence = detect_parent_sandbox()
     return resolve(args)
 
 

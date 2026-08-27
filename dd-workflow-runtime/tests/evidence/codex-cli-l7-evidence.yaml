@@ -1,0 +1,127 @@
+backend: codex-cli
+level: L7
+status: PASS
+source: dd-workflow-runtime/tests/evidence/codex-cli-l7-evidence.yaml
+captured_at: 2026-08-26T21:33:36Z
+codex_version: 0.149.1
+codex_l6_evidence_version: 0.149.0
+codex_l6_reverified: true
+codex_l6_reverify_note: "Version drift 0.149.0 -> 0.149.1 is patch bump; sandbox enforcement re-probed via codex exec --sandbox read-only with write probe: bash protected.txt: Operation not permitted exit_code 1, parent verification clean, confirmed L6 still valid"
+model:
+  logical_name: gpt-5.6-sol
+  effective_model: gpt-5.6-sol
+  reasoning_effort: high
+  requested_agent: strong-reviewer
+  effective_agent: strong-reviewer
+  agent_file: dd-workflow-runtime/agents/codex/strong-reviewer.toml
+  mode: subagent
+invocation:
+  registry_executable: codex-review
+  registry_command: [review]
+  adapter: dd-workflow-runtime/agents/codex-review
+  underlying_codex: codex exec --sandbox read-only --json
+  output_schema_used: false
+  output_schema_evaluated: true
+  output_schema_note: "Flag --output-schema exists per codex exec --help, but not required: prompt now enforces strict JSON and adapter strict-validates; adding it would be redundant for this stable contract"
+  forbid_args: [--auto]
+  auto_flag_used: false
+transport:
+  format: JSONL event stream (codex --json)
+  event_types_observed: [thread.started, turn.started, item.started, item.completed, turn.completed, error]
+  item_types_observed: [agent_message, command_execution, error]
+  final_text_extraction: last item.completed with type agent_message and valid dd-review-result/1 JSON
+  raw_stdout_lines: 89
+  final_text_is_strict_json: true
+  code_fence_present: false
+  prose_wrapper_present: false
+  markdown_escapes_present: false
+  strict_parse: json.loads succeeds, single object
+  stderr_mixed_into_stdout: false
+  codex_exit_code: 0
+  availability_exit_code_match: false
+  transient_exit_code_match: false
+probe_repo:
+  path: /tmp/dd-opencode-l7-probe
+  isolated_throwaway_repo: true
+  base_sha: 48b4f4f21f6b6d39b009cc88702b6bf7641e3cba
+  head_sha: b7f0ff16590730cf18bedb75d045913224a12664
+  scope: [review.py]
+  review_py_sha256: 0a9b543d647e80f16d59770a2d0aefb7b13c944be4bae1f93e85c16459dde49c
+  base_differs_from_head: true
+  fixture_bug: silent-zero-divisor-fallback (if b==0: return 0)
+  bug_disclosed_in_prompt: false
+reviewer_result:
+  raw_final_text_status: FINDINGS
+  findings_count: 1
+  reviewed: [review.py]
+  unreadable: []
+  evidence_count: 4
+router_result:
+  schema: dd-review-result/1
+  backend: codex-cli
+  reviewer: strong-reviewer/codex-cli
+  target: {base_sha: 48b4f4f21f6b6d39b009cc88702b6bf7641e3cba, head_sha: b7f0ff16590730cf18bedb75d045913224a12664, scope: [review.py]}
+  baseline: {base_sha: 48b4f4f21f6b6d39b009cc88702b6bf7641e3cba, head_sha: b7f0ff16590730cf18bedb75d045913224a12664, scope: [review.py]}
+  status: FINDINGS
+  verdict: FINDINGS
+  reviewed: [review.py]
+  unreadable: []
+  findings:
+    - id: RV-001
+      severity: HIGH
+      classification: behavioral-correctness
+      change_risk: behavioral
+      location: review.py:2-3
+      evidence: The added zero-divisor branch silently returns 0, replacing the baseline ZeroDivisionError with a value indistinguishable from a legitimate quotient.
+      required_fix: Remove the silent return branch or explicitly raise ZeroDivisionError to preserve the established error contract; add a regression test asserting that a zero divisor raises.
+  evidence: [Frozen target verified: HEAD equals b7f0ff16590730cf18bedb75d045913224a12664, the worktree is clean, and base 48b4f4f21f6b6d39b009cc88702b6bf7641e3cba is its ancestor., The complete requested scope was read; the base-to-head diff contains only review.py., Source compilation and a read-only behavior probe passed; the probe confirmed divide(6, 3) == 2.0 and divide(1, 0) == 0., The request supplied unit=passed with evidence fixture-pass; the repository contains no test files or test command to rerun independently.]
+  failure_category: null
+  lifecycle: {started: true, completed: true}
+  fallback_eligible: false
+  readonly_confirmation: {confirmed: true, evidence: router-validated:codex-cli:codex-read-only-transport}
+  routing:
+    role: strong-reviewer
+    selected_backend: codex-cli
+    attempted: [{candidate: codex-cli, backend: codex-cli, outcome: FINDINGS}]
+    max_hops: 1
+    hop_count: 0
+    dispatch_chain: []
+    dispatch_boundary: single-backend
+    router_authority: host-workflow
+    readonly_evidence: {backend: codex-cli, mode: codex-read-only-transport, level: L6, confirmed: true, source: dd-workflow-runtime/tests/evidence/codex-cli-l6-evidence.yaml}
+  fallback_used: false
+  implicit_retry: false
+  second_review: false
+l6_reference:
+  path: dd-workflow-runtime/tests/evidence/codex-cli-l6-evidence.yaml
+  backend: codex-cli
+  mode: codex-read-only-transport
+  level: L6
+  confirmed: true
+  adapter_is_pure_wrapper: true
+  underlying_invocation_unchanged: true
+  model_unchanged: true
+  permissions_unchanged: true
+  l6_still_valid: true
+  l6_still_valid_reason: adapter only adds JSONL parsing, no change to sandbox/model/permissions/execution boundary; version bump 0.149.0->0.149.1 re-verified via write probe (Operation not permitted)
+parent_verification:
+  head_before: b7f0ff16590730cf18bedb75d045913224a12664
+  head_after: b7f0ff16590730cf18bedb75d045913224a12664
+  review_py_sha256_before: 0a9b543d647e80f16d59770a2d0aefb7b13c944be4bae1f93e85c16459dde49c
+  review_py_sha256_after: 0a9b543d647e80f16d59770a2d0aefb7b13c944be4bae1f93e85c16459dde49c
+  files_before: [review.py]
+  files_after: [review.py]
+  created_files: []
+  unexpected_files: []
+  git_status_before: clean
+  git_status_after: clean
+  git_diff_exit_code_before: 0
+  git_diff_exit_code_after: 0
+  workspace_mutation_detected: false
+  restoration_used: false
+capability:
+  l7_capability_confirmed: true
+  business_verdict: FINDINGS
+  business_verdict_affects_l7: false
+  note: Reviewer independently found silent zero-divisor bug; L7 capability PASS is independent of business verdict
+source: dd-workflow-runtime/tests/evidence/codex-cli-l7-evidence.yaml

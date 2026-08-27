@@ -59,7 +59,7 @@ delivery_policy: project-rules
 
 能力缺失改变执行方式，不改变 Gate。例如没有子 Agent 时改为主线程多视角复核；没有结构化 ASK 时改用同义短文本；不能因此跳过复核或决定。
 
-Codex 的 `native-agent` 还必须通过从 Skill 实际根目录调用的 `agents/check-review-route.py` 派生前检查。守卫默认用 `CODEX_THREAD_ID` 只读查询操作系统账户目录下 `.codex/state_5.sqlite` 的真实 `sandbox_policy`，且生产 CLI 不接受 sandbox、thread 或数据库路径覆盖；缺失、不可读、未识别或无法证明该 ID 属于当前父 thread 时按 `unknown` fail-closed。运行时把守卫 JSON 结果和 `sandbox_evidence` 持久化到 `routing` 证据；守卫非零退出或 `native_spawn_allowed=false` 时禁止派生原生 Reviewer。Generic Review Backend Router 不直接选择 `codex-native`，而由已完成上述检查并拥有 current-parent provenance 的 host-native dispatcher 接管；缺少 handoff 时保持 `BLOCKED`。只有已证明的 `read-only` 父会话可直接派生；`workspace-write` 尚无 L6 证据，也必须转入单独的只读父会话重新检查，或使用已针对本次上下文授权且可用的外部只读审查，否则保持 `BLOCKED`。直接调用一个可写的 Reviewer 不构成 FR-008/DD-006 Gate 证据。
+Codex 的 `native-agent` 还必须通过从 Skill 实际根目录调用的 `agents/check-review-route.py` 派生前检查。standalone guard 不把 `CODEX_THREAD_ID` 或 `.codex/state_5.sqlite` 中的持久化 thread metadata 当作 current-parent provenance：环境变量可被调用者覆盖，metadata 行没有调用者绑定。只有可信 host-native runtime handoff 提供的父 Thread object 才能作为 native ALLOW 的输入；当前没有该 handoff 时按 `unknown` fail-closed。运行时把守卫 JSON 结果和 `sandbox_evidence` 持久化到 `routing` 证据；守卫非零退出或 `native_spawn_allowed=false` 时禁止派生原生 Reviewer。Generic Review Backend Router 不直接选择 `codex-native`，而由已完成上述检查并拥有 current-parent provenance 的 host-native dispatcher 接管；缺少 handoff 时保持 `BLOCKED`。在未来存在可信 handoff 的路径中，只有其中已证明为 `read-only` 的父会话可直接派生；当前 standalone guard 没有 native ALLOW 路径。`workspace-write` 尚无 L6 证据，也必须转入单独的只读父会话重新检查，或使用已针对本次上下文授权且可用的外部只读审查，否则保持 `BLOCKED`。直接调用一个可写的 Reviewer 不构成 FR-008/DD-006 Gate 证据。
 
 ## 3. State Schema
 
