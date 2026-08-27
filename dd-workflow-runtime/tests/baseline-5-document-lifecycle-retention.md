@@ -68,7 +68,9 @@ D) 将 P2 标记回 `phase_activity=active`，重新打开 Phase 进行全量文
 
 变体验证（closed Phase 有开放 evidence 边界）：
 - 场景变体：P0 为 `CONDITIONAL_PASS`（AC-18 开放），仍有开放 evidence 依赖，但 Phase 已 complete；此时 P0 bug 修复仍保持 Requirements no-update，仅 evidence updated，P0 closure README 不回写
-- worker: vega-variant / model: glm-4.7 / version: 2026-08-27
+- worker: vega-variant / model: glm-4.7 / version: 2026-08-27 / 供应商: 智谱（全新独立实例，未复用红测上下文）
+- 提示词指纹: sha256:e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7 (synthetic placeholder，非密码学取证)
+- 读取规则: `artifact-contract.md` §3 + P0 Closure README（phase_activity=complete, Gate CONDITIONAL_PASS）
 - 选项: B（变体正确）
 - 原话: “P0 虽有开放 evidence，但 Phase 状态为 complete，开放项不意味着可回写已关闭文档；仍按 no-update 处理。”
 - 结果: **PASS**

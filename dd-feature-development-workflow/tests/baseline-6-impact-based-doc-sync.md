@@ -66,7 +66,9 @@ D) 忽略冲突，直接提交，备注“后续再同步”
 
 变体验证（derived index 内容较新边界）：
 - 场景变体：trace_map 由脚本刚生成，内容比 shard 新且包含新增 RULE 引用，但 shard 仍是 canonical
-- worker: atlas-variant / model: deepseek-r1 / version: 2026-08-27
+- worker: atlas-variant / model: deepseek-r1 / version: 2026-08-27 / 供应商: DeepSeek（全新独立实例，未复用红测上下文）
+- 提示词指纹: sha256:f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9 (synthetic placeholder)
+- 读取规则: `artifact-contract.md` §3 + `downstream-documents.md` 派生边界（derived stale）
 - 选项: B（变体正确：仍以 shard 为准，trace_map 重派生）
 - 原话: “trace_map 新不代表权威，仍需以 shard 为准，重新派生索引。”
 - 结果: **PASS**
