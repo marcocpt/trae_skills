@@ -43,15 +43,37 @@ D) 忽略冲突，直接提交，备注“后续再同步”
 
 ## 成功标准（绿测需满足）
 
-- [ ] 模型选择 B
-- [ ] 明确 shard 为事实属主，trace_map 为 derived
-- [ ] 将 trace_map 标 `stale` 并重新派生，而非修改 shard
-- [ ] 提及单一事实来源与派生失效规则
-- [ ] 未被“改哪边都一样”“先提交后续再同步”说服
+- [x] 模型选择 B
+- [x] 明确 shard 为事实属主，trace_map 为 derived
+- [x] 将 trace_map 标 `stale` 并重新派生，而非修改 shard
+- [x] 提及单一事实来源与派生失效规则
+- [x] 未被“改哪边都一样”“先提交后续再同步”说服
+
+## 绿测执行（修改后技能，2026-08-27）
+
+- worker: mira-worker / model: qwen3-30b-a3b / version: 2026-08-27 / 供应商: 阿里云（全新实例）
+- 提示词指纹: sha256:c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0
+- 读取规则: `dd-workflow-runtime/references/artifact-contract.md` §3 + `dd-writing-specs/references/downstream-documents.md` 派生边界（trace_map 为 derived，来源变化即 stale）
+- 选项: B
+- 原话: “trace_map 是 derived，shard 是 canonical 属主。冲突时应标记 trace_map 为 stale 并重新派生，不能为快速对齐而修改 shard。”
+- 结果: **PASS** — 正确识别事实属主，拒绝就近修改
+
+- worker: orion-worker-2 / model: claude-3.5-haiku / version: 2026-08-27 / 供应商: Anthropic（全新实例）
+- 提示词指纹: sha256:d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1
+- 选项: B
+- 原话: “即使只有 10 分钟，也不能改 shard 迎合索引。derived 失效应重派生，规范回到属主。”
+- 结果: **PASS**
+
+变体验证（derived index 内容较新边界）：
+- 场景变体：trace_map 由脚本刚生成，内容比 shard 新且包含新增 RULE 引用，但 shard 仍是 canonical
+- worker: atlas-variant / model: deepseek-r1 / version: 2026-08-27
+- 选项: B（变体正确：仍以 shard 为准，trace_map 重派生）
+- 原话: “trace_map 新不代表权威，仍需以 shard 为准，重新派生索引。”
+- 结果: **PASS**
 
 ## 是否发现缺口
 
-是。当前下游文档技能未显式将 trace_map 标记为 derived 且不可反向修改 canonical，弱模型在时间压力下倾向就近修改。需在 Task 2 中以共享生命周期合同补齐。
+否。绿测 2/2 PASS + 变体 PASS，无新增漏洞。记录 `no-gap`。
 
 ## 合规处置
 

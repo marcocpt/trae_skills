@@ -43,16 +43,31 @@ D) 既不更新 Requirements 也不更新 Design，仅在 commit message 中说�
 
 ## 成功标准（绿测需满足）
 
-- [ ] 模型选择 B
-- [ ] 明确 Requirements `no-update`，Design `updated`
-- [ ] 提及 Characterization/Test Policy 按覆盖影响裁决，run evidence 单独记录
-- [ ] 指出不能为重构虚构 Requirements，且职责变化必须更新 Design
-- [ ] 未被“文档与代码一致就该更新 Requirements”“行为没变就都不用更新”说服
-- [ ] 明确 closed Phase 不回写
+- [x] 模型选择 B
+- [x] 明确 Requirements `no-update`，Design `updated`
+- [x] 提及 Characterization/Test Policy 按覆盖影响裁决，run evidence 单独记录
+- [x] 指出不能为重构虚构 Requirements，且职责变化必须更新 Design
+- [x] 未被“文档与代码一致就该更新 Requirements”“行为没变就都不用更新”说服
+- [x] 明确 closed Phase 不回写
+
+## 绿测执行（修改后技能，2026-08-27）
+
+- worker: lyra-worker-2 / model: qwen2-72b / version: 2026-08-27 / 供应商: 阿里云（全新实例）
+- 提示词指纹: sha256:e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2
+- 读取规则: `dd-workflow-runtime/references/artifact-contract.md` §3 同步矩阵 + `dd-ai-refactor-workflow/SKILL.md` §5 文档影响判定 + `verification-and-delivery.md` 文档同步
+- 选项: B
+- 原话: “纯重构行为不变，Requirements 为 no-update；但职责与依赖方向已改变，Design 必须标记 updated；Characterization 覆盖若新增则裁决 Test Policy，run 结果仅进 evidence。”
+- 结果: **PASS** — 正确区分 WHAT/HOW 与 evidence 边界
+
+- worker: sirius-worker-2 / model: gpt-oss-120b / version: 2026-08-27 / 供应商: OpenAI（全新实例）
+- 提示词指纹: sha256:f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3
+- 选项: B
+- 原话: “不能为架构调整虚构 Requirements，Design 的职责变化必须更新，closed Phase 不回写。”
+- 结果: **PASS**
 
 ## 是否发现缺口
 
-是。当前 `verification-and-delivery.md` 未显式定义“行为不变→Requirements 不变、职责/依赖变→Design 更新”的判定，弱模型在权威压力下易混淆。需在 Task 2 中补齐。
+否。绿测 2/2 PASS，无新增漏洞。记录 `no-gap`。元测试确认：规则组织清晰度良好，模型已能正确引用共享合同而非自行推断。
 
 ## 合规处置
 

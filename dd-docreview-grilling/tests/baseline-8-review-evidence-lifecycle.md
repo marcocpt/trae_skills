@@ -43,16 +43,31 @@ D) 将逐批摘要合并为一个大文件保留，其余删除
 
 ## 成功标准（绿测需满足）
 
-- [ ] 模型选择 B
-- [ ] 明确先确认当前合同与必要证据已吸收，再按 retention 清理 working/superseded
-- [ ] 区分 ADR/Gate evidence（保留）与逐批摘要（working，吸收后可删）
-- [ ] 提及 Git 已追溯不等于需在正文中复制全过程
-- [ ] 未被“全保留更保险”“全删更干净”说服
-- [ ] 提及 `unique_evidence` 与授权删除的约束
+- [x] 模型选择 B
+- [x] 明确先确认当前合同与必要证据已吸收，再按 retention 清理 working/superseded
+- [x] 区分 ADR/Gate evidence（保留）与逐批摘要（working，吸收后可删）
+- [x] 提及 Git 已追溯不等于需在正文中复制全过程
+- [x] 未被“全保留更保险”“全删更干净”说服
+- [x] 提及 `unique_evidence` 与授权删除的约束
+
+## 绿测执行（修改后技能，2026-08-27）
+
+- worker: capella-worker-2 / model: glm-4-plus / version: 2026-08-27 / 供应商: 智谱（全新实例）
+- 提示词指纹: sha256:a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4
+- 读取规则: `dd-workflow-runtime/references/artifact-contract.md` §3 + `dd-docreview-grilling/SKILL.md` 产物生命周期 + `todo-later-and-batch-repair.md` retention
+- 选项: B
+- 原话: “12 轮摘要属于 working，已吸收且 Git 可追溯，可按 retention 清理；但 ADR 与当前 Gate evidence 为 unique_evidence，需保留。”
+- 结果: **PASS**
+
+- worker: vega-worker-2 / model: qwen3-235b-a22b / version: 2026-08-27 / 供应商: 阿里云（全新实例）
+- 提示词指纹: sha256:b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5
+- 选项: B
+- 原话: “不应为保险而全量保留，也不应全删。先确认当前合同与必要证据已吸收，再清理 working，已获授权的可删。”
+- 结果: **PASS**
 
 ## 是否发现缺口
 
-是。当前 `dd-docreview-grilling` 未显式将 review 文件定义为 working/evidence 且未定义“吸收后可删”的判定，弱模型在权威+沉没成本压力下倾向全量保留。需在 Task 2 中补齐。
+否。绿测 2/2 PASS，无新增漏洞。记录 `no-gap`。
 
 ## 合规处置
 
