@@ -19,7 +19,14 @@
 - Test Cases 的状态、证据、AC 映射和统计；
 - 代码测试名称、断言和替身。
 
-行为未改变时不要为了“同步”篡改需求。修改文档时遵循版本和 history 规则。输出每份文档的“已更新/无需更新/不适用”及原因。
+文档同步使用 [artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) §3 的 `updated | no-update | stale | not-applicable | retired`，按真实影响判定，不以“所有下游必须同步”为由全量更新。四类路由：
+
+- 修复实现偏差且合同未变：Requirements / Design = `no-update`，回归测试和新证据 = `updated`；
+- 修复暴露合同歧义或行为变化：先更新 Requirements，再重审 Design / Test Policy；
+- 纯重构（职责/依赖/数据流改变但行为不变）：Requirements = `no-update`，Design = `updated`，Characterization/Test Policy 按覆盖影响裁决；
+- 增加等价测试样本：Test Policy / Verification Population = `updated`，Requirements = `no-update`。
+
+行为未改变时不要为了“同步”篡改需求。修改文档时遵循版本和 history 规则。输出每份文档的 `updated | no-update | stale | not-applicable | retired` 及原因；状态和证据不回填合同，`closed-change` 不回写。
 
 Gate：文档与已验证行为一致，`current_stage=delivery`。
 

@@ -64,6 +64,10 @@ TODO 的消费者是后续执行修复的会话（可能没有当前会话的任
 
 `修复SHA` 是代码修复工作流最后一个真实 Commit 的短 SHA，不是 TODO 状态提交自身 SHA。
 
+## 产物生命周期（引用共享合同）
+
+TODO 状态与验证摘要、逐批验证摘要属于 `working`/`evidence`，LATER 条目为 `working` 转 `evidence` 待处理项。详见 [dd-workflow-runtime/artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) §3。已关闭 finding 的逐批摘要只有在当前合同与必要证据已吸收后才可按 `retention` 清理；`unique_evidence` 需明确授权。
+
 ## LATER
 
 **强制规则：** 审核中发现、但后续才实现/延后/暂缓的事项，一律必须记入 LATER 持久化，避免遗忘。不得只在会话里口头延后或停留在记忆里；不得因为"不主动建文档"而跳过写入。
@@ -74,7 +78,7 @@ TODO 的消费者是后续执行修复的会话（可能没有当前会话的任
 2. 语义复核（必要时子代理精判）；
 3. 重复则合并更新已有条目文件，不新建；相关但独立则新增并在双方 frontmatter `related` 互链；
 4. 新增：有 `docs/AI/later/_TEMPLATE.md` 则复制模板；文件名为权威 ID `LATER-<YYYYMMDD>-<slug>.md`（无全局顺序号）；开放条目 frontmatter 必填 `id`、`title`、`status`、`created`、`source`、`target_phase`、`trigger`；
-5. 项目存在 INDEX 生成脚本（如 `Tools/gen_later_index.py`）时，改动条目后必须立即重新生成 INDEX.md，并与条目改动放在同一 commit。
+5. 项目存在 INDEX 生成脚本（如 `Tools/gen_later_index.py`）时，刷新 INDEX 与条目属于同一 change set，仅当已获得 Delivery 授权时才要求同一 commit；未获授权时完成文件系统侧的同一 change set 即可。
 
 正文分节、分条、硬换行；title 保持一句话。LATER 条目记录现状、延后理由、触发条件与关闭所需证据，但不扩写成方案文档。
 

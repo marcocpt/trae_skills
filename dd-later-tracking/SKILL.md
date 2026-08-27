@@ -155,9 +155,13 @@ trigger: 什么事件发生时必须处理本条
 
 **修改方式：** 更新该文件的 frontmatter（如 `trigger`、`target_phase` 变化）与正文对应分节，保持分条结构。不新建文件、不在正文堆叠重复描述。
 
+## 产物生命周期与 INDEX（引用共享合同）
+
+- LATER 条目与 INDEX 分别为 `working`/`derived`，详见 [dd-workflow-runtime/artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) §3。刷新 INDEX 与条目属于同一 change set 是不变量；只有当已获得 Delivery 授权要求 commit 时才要求同一 commit。
+
 ## INDEX 刷新
 
-- 项目存在 INDEX 生成脚本（如 `Tools/gen_later_index.py`）时：**新增/修改/关闭任何条目后必须立即运行脚本重新生成 INDEX.md**，并与条目改动放在**同一 commit**；
+- 项目存在 INDEX 生成脚本（如 `Tools/gen_later_index.py`）时：新增/修改/关闭任何条目后必须立即运行脚本重新生成 INDEX.md，刷新与条目属于同一 change set，仅当已获得 Delivery 授权时才要求同一 commit；
 - 项目无 INDEX 脚本时：只维护条目文件，不手写 INDEX。
 
 ## 完成标记
@@ -175,7 +179,7 @@ trigger: 什么事件发生时必须处理本条
 - 开放条目缺 `target_phase` 或 `trigger`（追溯执行无从谈起）
 - 把数百字现状写成不换行的单段长文
 - 关闭条目时删除或移动文件（追溯历史断裂）
-- 有 INDEX 脚本的项目改了条目却不刷新 INDEX，或把 INDEX 放在另一个 commit
+- 有 INDEX 脚本的项目改了条目却不刷新 INDEX（同一 change set 不变量），或在已获 Delivery 授权时把 INDEX 放在另一个 commit
 - 因为"不主动建文档"的原则而不创建 `docs/AI/later/`
 - 把 LATER 项记到全局位置或其他目录而非项目根目录的 `docs/AI/`
 - 标签用类型（bug/优化）而非模块/功能
@@ -201,7 +205,7 @@ trigger: 什么事件发生时必须处理本条
 
 | 操作 | 步骤 |
 |------|------|
-| 记录延后事项 | 检测体系 → Grep `docs/AI/later/` 关键词 → 有候选则子代理精判 → 修改已有文件或新增 `LATER-<YYYYMMDD>-<slug>.md` → 有 INDEX 脚本则刷新并同 commit |
+| 记录延后事项 | 检测体系 → Grep `docs/AI/later/` 关键词 → 有候选则子代理精判 → 修改已有文件或新增 `LATER-<YYYYMMDD>-<slug>.md` → 有 INDEX 脚本则刷新（同一 change set，获 Delivery 授权时同 commit） |
 | 首次创建 | 创建 `docs/AI/later/`，有 `_TEMPLATE.md` 则复制，写入第一条 |
 | 标记完成 | 用户确认后改 frontmatter `status: closed` + `closed_at` + `closed_by_commits` + `evidence`，文件原地不动，刷新 INDEX |
 | 发现已解决 | 主动建议用户确认，不直接标记 |

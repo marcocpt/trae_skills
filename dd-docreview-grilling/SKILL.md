@@ -74,6 +74,10 @@ state_file: $(git rev-parse --git-dir)/docreview-state.json
 每轮不能省略满意度与 disposition 两阶段 ASK；用户沉默不代表结束或继续。不能用省 token、赶时间或“结论很明显”跳过证据、可视化、选择或即时落盘。
 </HARD-GATE>
 
+## 产物生命周期（引用共享合同）
+
+review 文件（TODO 状态、验证摘要、逐批验证摘要、临时清单）为 `working`/`evidence`，详见 [dd-workflow-runtime/artifact-contract](../dd-workflow-runtime/references/artifact-contract.md) §3。已关闭 finding 的逐批摘要只有在当前合同和必要证据已吸收后才可按 `retention` 清理；ADR 与当前 Gate evidence 按依赖保留。使用 `updated|no-update|stale|not-applicable|retired` 判定影响，不在正文中复制审查过程。
+
 ## TODO / LATER
 
 TODO 使用 Logseq 兼容的 Markdown task：
@@ -96,7 +100,7 @@ TODO 使用 Logseq 兼容的 Markdown task：
 - 模式 B 验证过代码时必须有推荐修复文件与理由；
 - 代码位置、HTML 预览只在真实存在时写；
 - 待办不写 `修复SHA`；标记 `[x]` 时最后追加 `修复SHA:: <短SHA>`；
-- LATER 通过 [dd-later-tracking](../dd-later-tracking/SKILL.md) 去重后写入 `docs/AI/later/`（一项一文件，frontmatter + 分节正文）；项目有 INDEX 生成脚本时，改动条目的同一 commit 必须刷新 INDEX。
+  - LATER 通过 [dd-later-tracking](../dd-later-tracking/SKILL.md) 去重后写入 `docs/AI/later/`（一项一文件，frontmatter + 分节正文）；项目有 INDEX 生成脚本时，刷新 INDEX 与条目属于同一 change set，仅当获得 Delivery 授权要求 commit 时才要求同一 commit。
 
 完整 schema、去重、并行分组见 [todo-later-and-batch-repair.md](references/todo-later-and-batch-repair.md)。
 
@@ -107,11 +111,11 @@ TODO 使用 Logseq 兼容的 Markdown task：
 1. 停止临时 HTML server，保留 HTML；
 2. 汇总问题、优先级和 TODO/LATER/不记录分布；
 3. 有 TODO 时按文件冲突生成并行/串行组，插入头部后、首条 TODO 前；
-4. 提交 TODO/LATER 审核成果，不夹带修复；
+4. 当且仅当已获得 Delivery 授权时提交 TODO/LATER 审核成果（同一 change set），不夹带修复；未获授权时仅完成文件系统 change set，不执行 commit、不重复询问；
 5. 无落盘内容时不创建空文件、不做空提交；
 6. ASK 是否进入批量修复。
 
-审核成果与代码修复必须是不同提交。
+审核成果与代码修复必须是不同提交（当需提交时）。
 
 ## Batch Repair
 

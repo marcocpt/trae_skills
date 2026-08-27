@@ -9,6 +9,10 @@
 - [恢复与补救](#恢复与补救)
 - [Cleanup](#cleanup)
 
+## 生命周期与派生（引用共享合同）
+
+review 文件（逐批验证摘要、临时审查清单、已失效执行包）属于 `working`/`evidence`，详见 [dd-workflow-runtime/artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) §3。已关闭 finding 的逐批摘要只有在当前合同和必要证据已吸收后才可按 `retention` 清理；ADR 与当前 Gate evidence 保留（`unique_evidence=true` 需明确授权）。不在 writer 重定义生命周期表。
+
 ## 自检方向
 
 通用 A/B/C 名称、语义和处理方式只取自 [dd-workflow-runtime/review-gate](../../dd-workflow-runtime/references/review-gate.md)。本文件只维护下列文档特有检查；三个方向都要执行并分别记录，不能把特有检查改成第二份通用定义。

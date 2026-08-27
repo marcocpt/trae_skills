@@ -114,6 +114,8 @@ Gate：
 - commit 遵循 [dd-git-workflow/merge](../dd-git-workflow/references/merge.md)，禁止 rebase、`--no-verify`、force push；
 - 不暂存无关脏文件。
 
+**文档影响判定（引用 [artifact-contract](../dd-workflow-runtime/references/artifact-contract.md) §3）：** 行为不变默认不改 Requirements；职责、依赖或数据流改变时 Design = `updated`；Characterization 覆盖改变时裁决 Test Policy；运行结果只进入 `evidence`，不回填合同；`closed-change` 不回写。
+
 ### 6. CI 验证
 
 每个 Commit 后按 [dd-workflow-runtime/ci](../dd-workflow-runtime/references/ci.md) push 并等待 CI。行为保持由测试证明，不再做 commit 后 LLM 审查：
