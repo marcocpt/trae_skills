@@ -35,7 +35,7 @@ Phase Contract
 
 ## 2. State
 
-状态遵循 [dd-shared-state](../../dd-shared-state/SKILL.md)，使用：
+状态遵循 [dd-workflow-runtime/state](../../dd-workflow-runtime/references/state.md)，使用：
 
 ```text
 WORKFLOW_TYPE=project-bootstrap
@@ -208,7 +208,7 @@ delivery_policy: project-rules
 
 ## 7. 审查规则
 
-审查遵循 [dd-shared-subagent](../../dd-shared-subagent/SKILL.md)：主 Agent 按 A/B/C 三方向自检；命中高风险附加检查触发器时追加对应检查。检查语义不因执行方式简化而减少。
+审查遵循 [dd-workflow-runtime/review-gate](../../dd-workflow-runtime/references/review-gate.md)：主 Agent 按 A/B/C 三方向自检；命中高风险附加检查触发器时追加对应检查。检查语义不因执行方式简化而减少。
 
 ## 8. Delivery Gate
 
@@ -269,7 +269,7 @@ phase_contract_path: null
 
 ## 10. Host Close
 
-询问遵循 [dd-shared-ask](../../dd-shared-ask/SKILL.md)。
+询问遵循 [dd-workflow-runtime/ask](../../dd-workflow-runtime/references/ask.md)。
 
 Trae：
 

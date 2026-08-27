@@ -1,0 +1,93 @@
+> 依据：[跨 App 强弱模型协作与路由 Requirements v1.1](../../docs/AI/2026-08-23-strong-weak-model-routing-requirements.md) 与 [Design v1.2](../../docs/AI/2026-08-23-strong-weak-model-routing-design.md)。本文件拥有强弱路由的执行方式与角色绑定规则；A/B/C 审查语义属主是 [review-gate.md](review-gate.md)，外部 finding 生命周期属主是 [gpt-grilling-review](../../gpt-grilling-review/SKILL.md)。本文只引用，不复制。
+
+# 强弱模型路由与角色合同
+
+## 角色
+
+| 角色 | 职责 | 禁止 |
+|---|---|---|
+| 实现执行者（implementation-worker） | 实现、运行确定性验证、按 finding 返工 | 不得自宣 Gate PASS；不得自行关闭外部强审的生产代码或测试语义 finding |
+| 强审者（strong-reviewer） | 只读审查冻结基线，返回结构化结论 | 不得写入；不得在审查同时修改被审内容 |
+| 主调度者 | 选择路径、推进状态、限制循环、判断整体完成 | 不得代替 Reviewer 宣告 finding 已关闭 |
+
+## 执行路径（review_execution）
+
+| 路径 | 语义 |
+|---|---|
+| `inline` | 主 Agent 按 review-gate A/B/C 自检，对应 `review_level=low` |
+| `native-agent` | 当前宿主的 subagent 强审者只读审查；`standard`/`high` 的默认路径 |
+| `external` | 授权后走外部强审通道（[gpt-grilling-review](../../gpt-grilling-review/SKILL.md) 协议）。发起前必须向用户展示拟发送上下文与访问范围并获批（FR-013）；未批准时记录"外部审核未执行"，不得记为通过（FR-014）。"等待授权"是主调度者的编排状态（持久化于 `external_review.authorization`），不是 Reviewer 的返回值——四类 Reviewer 只返回 PASS / FINDINGS / BLOCKED |
+| `auto` | 宿主支持原生绑定时走 `native-agent`；不支持时走 `external`（需授权）；两者都不可用则 ASK 或 BLOCKED，不得降级审查语义（FR-015） |
+
+### 参数兼容矩阵（fail-closed）
+
+| review_level | review_execution | 判定 |
+|---|---|---|
+| low | inline | 合法默认 |
+| low | native-agent / external | 允许但浪费；按 low 语义执行（零强审消耗优先回 inline） |
+| standard / high | inline | **非法组合**：拒绝执行并报告参数冲突，不得静默降为自检（AC-13） |
+| standard / high | native-agent | 宿主能力检查通过才执行；检查失败不得转 inline，转 `external` 或 BLOCKED |
+| standard / high | external | 需授权 Gate；未批准且外审强制 → BLOCKED，非强制 → 本地收尾并记录未执行 |
+| 任意 | auto | 按 level 对应风险 + 宿主能力解析；解析结果持久化到 `routing.review_execution` |
+
+### Codex 原生强审派生前守卫
+
+Codex 父会话 sandbox 会重新应用到子代理；`danger-full-access`（包括 `--dangerously-bypass-approvals-and-sandbox`）会覆盖 `strong-reviewer.toml` 的 `read-only`。因此任何 DD 工作流在把 `standard`/`high` 解析为 Codex `native-agent` 后、派生 Reviewer 前，必须运行：
+
+```bash
+RUNTIME_SKILL_ROOT=/absolute/path/to/dd-workflow-runtime
+python3 "$RUNTIME_SKILL_ROOT/agents/check-review-route.py" \
+  --review-level <low|standard|high> \
+  --requested-execution <inline|native-agent|external|auto> \
+  --external-status <unavailable|available-unapproved|available-authorized>
+```
+
+`RUNTIME_SKILL_ROOT` 必须由宿主解析当前实际加载的 `dd-workflow-runtime/SKILL.md` 所在目录，不能假设当前工作目录。standalone guard 不通过 `CODEX_THREAD_ID` 或持久化 Codex thread metadata 取得 current-parent provenance：环境变量可被调用者覆盖，metadata 行没有调用者绑定；没有可信 host-native runtime handoff 时返回 `unknown` 并 fail-closed。生产 CLI 不接受 `parent-sandbox`、`thread-id` 或 `state-db` 覆盖，确定性测试直接调用内部纯函数。只有退出 0 且 JSON 中 `native_spawn_allowed=true` 才能派生原生 `strong-reviewer`。若未来有可信 handoff，只有其中已证明的 `read-only` 父会话满足该条件；当前 standalone guard 没有 native ALLOW 路径。`workspace-write` 在专门 L6 通过前同样 fail-closed。其他模式只能解析为本次上下文已授权且可用的 `external`，否则返回 `BLOCKED`；不得先派生再依靠 Reviewer 指令自律，也不得把危险模式下的直接调用结果计作强审 Gate。该检查是 FR-008/DD-006 的 fail-closed 执行边界。
+
+升级触发器由 [review-gate.md](review-gate.md) 的高风险附加检查表拥有：常规触发器至少 `standard`，安全或权限、不可逆数据迁移、兼容性或架构争议必须 `high`。
+
+## 硬约束
+
+- 确定性验证通过后才可发起独立强审（FR-007）；
+- 实现执行者是唯一写入者；强审者只读（FR-008）；
+- Reviewer 的只读边界无法被当前执行环境强制时，该 `native-agent` 能力检查视为失败；禁止派生后以提示词自律代替隔离，必须转已授权的强审路径或 `BLOCKED`；
+- 强审绑定冻结基线，基线变化即结论失效，须重验重审（FR-009）；
+- Reviewer 只返回三态 PASS / FINDINGS / BLOCKED，并说明已审与未读范围（FR-010）；"等待授权"由主调度者的编排状态承载，不是 Reviewer 返回值；
+- 返工上限默认 2 轮（`max_rework_cycles`），超限停止并报告阻塞（FR-012）；
+- 外部 finding 字段沿用 gpt-grilling-review 的 SEVERITY / CLASSIFICATION / CHANGE_RISK，不另造 schema（CON-002）；
+- 低风险任务独立强模型调用次数为零（NFR-002）；不得为省 Token 删除确定性验证（NFR-001）。
+
+## 宿主能力矩阵
+
+2026-08-23 基线，仅作路由参考；实施前必须重新核对官方文档与本机配置（CON-001）。
+
+| 宿主 | 原生角色绑定 | 日常路径 | 外部强审 |
+|---|---|---|---|
+| Codex | 支持（独立模型、推理强度、只读 Agent）；`config_file` 必须直连 canonical 普通文件 | 已证明 read-only 父：原生 reviewer；其他父模式：派生前守卫禁止直接 Reviewer Gate，改用单独 read-only 父、已授权 external 或 BLOCKED | chatgpt-review MCP |
+| OpenCode | 支持（agent 配置 + 权限白名单）；worker=主 session、reviewer=subagent 均绑定 `opencode/muse-spark-1.2-contributor-free`——same-model independent review，隔离靠角色/只读权限/frozen baseline，非模型能力差异 | 原生 | chatgpt-review MCP |
+| Qoder | 支持（frontmatter model/effort、worktree 隔离） | 原生 | chatgpt-review MCP |
+| ZCode | 支持（Beta；subagent 不能继续派生）；已绑套餐内最强 GLM-5.3 + 强制 high 思考档（主会话同为 5.3 时为同模型独立审查，单供应商上限） | 主 Agent 编排原生角色（高风险走 external） | chatgpt-review MCP |
+| CodeBuddy（CLI 能力域） | 支持（插件 agent yaml） | 原生 | chatgpt-review MCP |
+| WorkBuddy App | 待逐项核实，不继承 CodeBuddy 结论 | 按实际能力原生或降级 | chatgpt-review MCP |
+| Trae | 不支持固定子代理模型 | 主会话实现 + external 强审 | chatgpt-review MCP（已确认 CN 与 SOLO 均有配置） |
+
+## 绑定配置属主
+
+按 DD-008，模型绑定策略集中维护：canonical 源是宿主中立的 [agents/model-bindings.yaml](../agents/model-bindings.yaml)（独立路由配置域）；`agents/<host>/` 下的原生文件是它的产物，由 [agents/validate-bindings.py](../agents/validate-bindings.py) 机械校验等价性，任何漂移非零退出。宿主侧不维护可独立编辑副本，但安装引用必须遵循宿主实测约束：Codex 的 `~/.codex/config.toml [agents.*].config_file` 必须直接指向 canonical 普通文件，不能指向 `~/.codex/agents/` symlink；CLI 0.149.0 对 symlink 返回 ELOOP，外层错误会被模糊为 `agent type is currently not available`。直连注册后还必须删除 `~/.codex/agents/` 下的同名文件或 symlink，否则自动发现会产生 `duplicate agent role name`。其他宿主只有在各自验证通过时才使用 symlink。更换任一宿主的模型或推理强度：先改 model-bindings.yaml，跑校验器确认原生文件同步（当前为"手写 native + 机械校验"模式；自动生成器记 TODO）；Codex 本机安装另跑 `python3 agents/validate-bindings.py --check-codex-install`。公共 Skill 正文不因换模型而改动（FR-002、NFR-009）。
+
+## Generic Review Backend Router v1
+
+跨 App 的 review transport 由两个独立、宿主中立的 canonical 文件拥有：
+
+- [agents/review-backends.yaml](../agents/review-backends.yaml) 只描述 backend 类型、调用命令、能力和只读要求；
+- [agents/routing-policy.yaml](../agents/routing-policy.yaml) 只描述逻辑角色的 ordered backend chain、`max_hops` 和 fallback categories/policy。
+
+`model-bindings.yaml` 仍只描述 `host → logical role → native model/profile`，不得加入 backend、MCP endpoint、CLI command 或 fallback chain。由 [agents/validate-review-routing.py](../agents/validate-review-routing.py) 做职责隔离和未知 backend 引用的 fail-closed 校验。
+
+`agents/dispatch-review.py` 是一次性 dispatch boundary：校验 deterministic verification 与 frozen `base_sha/head_sha/scope`，解析一个候选，执行恰好一个 adapter，并只对明确的 `backend_unavailable`、`executable_missing`、`endpoint_unavailable`、`capability_unavailable` 或 `temporary_backend_failure` 尝试下一个候选。CLI backend 必须在 registry 中声明 availability/transient exit-code 分类；未分类的非零退出归为 `backend_execution_failed`，不得 fallback。默认 `strong-reviewer` 路径为：
+
+```text
+MCP → Codex CLI → current-host native strong reviewer → BLOCKED
+```
+
+Reviewer 的 `FINDINGS`（包括 provider 的 `FAIL` 别名）、非法 schema、baseline/evidence mismatch、authorization/readonly/recursion violation 和未完成结果均不允许静默 fallback。`readonly_evidence` 必须是按 backend 绑定的 L6 proof，且 `mode` 必须等于 registry 的 `readonly_mode`；fallback 使用同一冻结 request 时只能选择拥有匹配 proof 的候选。Generic Router 不直接选择 `codex-native`：该 backend 的 `router_selectable=false`，必须由已通过 `check-review-route.py` 且能证明 current-parent thread provenance 的 host-native dispatcher 接管；缺少该 handoff 时 Router 只记录 capability unavailable 并最终 `BLOCKED`。Router 只返回 `dd-review-result/1`，不取得写入租约、不修改工作树、不推进返工、不关闭 finding，也不把 MCP 变成工作流调度器。`max_hops=1`、`dispatch_chain` 和 `dispatch_boundary=single-backend` 防止 `A → B → A` 或 adapter 内再次路由；workflow state 与外部授权仍由主调度者按 [runtime-contract.md](runtime-contract.md) 持久化。

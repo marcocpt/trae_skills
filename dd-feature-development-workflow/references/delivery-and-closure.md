@@ -79,7 +79,7 @@ next_safe_action: resume closure decision
 
 ## 4. Host Close
 
-真正完成后遵循 `dd-shared-workflow-runtime`：
+真正完成后遵循 `dd-workflow-runtime`：
 
 - 先确认活动状态或 Receipt 为 `completed`；
 - Trae 使用 ASK，且只提供 `结束本次任务` / `还有其他任务`；

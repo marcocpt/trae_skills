@@ -13,7 +13,7 @@ description: 用户延后工作时使用（"稍后/以后/回头/晚点/先跳�
 
 **为什么一项一文件（2026-08-07 起取代单文件 LATER.md）：** 单文件 + 全局顺序号在多分支并行时必然撞号、乱序、合并冲突；一项一文件 + 日期 slug ID 让任何分支在任何时刻新增条目都零协调、零冲突，单项演化历史可直接 `git log` 追溯。
 
-本技能默认 `invocation_mode=helper`，持久化结果后返回调用方，不自行 Host Close。若直接承接用户目标，顶层 `standalone` 会话按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 收尾。
+本技能默认 `invocation_mode=helper`，持久化结果后返回调用方，不自行 Host Close。若直接承接用户目标，顶层 `standalone` 会话按 [dd-workflow-runtime/ask](../dd-workflow-runtime/references/ask.md) 收尾。
 
 ## 何时使用
 
@@ -42,16 +42,16 @@ description: 用户延后工作时使用（"稍后/以后/回头/晚点/先跳�
 
 ## 工作环境询问（强制，先于核心流程）
 
-**首次即将写入或修改 `docs/AI/later/` 前，必须按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 的「工作环境询问」模板询问用户**：
+**首次即将写入或修改 `docs/AI/later/` 前，必须按 [dd-workflow-runtime/ask](../dd-workflow-runtime/references/ask.md) 的「工作环境询问」模板询问用户**：
 
-- 选项 1（推荐）：新建隔离工作树（基于 `origin/develop`、本地 `develop` 最新提交，分支命名 `docs/later-tracking`，遵循 [dd-git-branch](../dd-git-branch/SKILL.md) 与 [dd-git-worktree](../dd-git-worktree/SKILL.md)）
+- 选项 1（推荐）：新建隔离工作树（基于 `origin/develop`、本地 `develop` 最新提交，分支命名 `docs/later-tracking`，遵循 [dd-git-workflow/branch](../dd-git-workflow/references/branch.md) 与 [dd-git-workflow/worktree](../dd-git-workflow/references/worktree.md)）
 - 选项 2：在当前 worktree 工作（仅做验证：`git rev-parse --is-inside-work-tree` + 并发检查）
 
 **处理规则**：
 
-- **选「新建」** → 走 [dd-git-worktree](../dd-git-worktree/SKILL.md) 创建流程，调用 `../dd-ai-git-workflow/scripts/create-worktree.sh docs later-tracking` 创建隔离工作树，cd 进入后开始核心流程
+- **选「新建」** → 走 [dd-git-workflow/worktree](../dd-git-workflow/references/worktree.md) 创建流程，调用 `scripts/create-worktree.sh docs later-tracking` 创建隔离工作树，cd 进入后开始核心流程
 - **选「当前 worktree」** → 仅做验证（确认当前目录在 worktree 中且无同类工作流并发），通过后开始核心流程
-- **null 输入** → 按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 的「null 输入重问」规则重新询问，不得默认新建
+- **null 输入** → 按 [dd-workflow-runtime/ask](../dd-workflow-runtime/references/ask.md) 的「null 输入重问」规则重新询问，不得默认新建
 - **特例（无需询问）**：
   - 纯查询 LATER 条目（用户只要求回顾，不新增/不修改）→ 不询问
   - 仅标记 `status: closed`（单文件 frontmatter 修改，且用户明确表态这是收尾）→ 不询问，但需提交

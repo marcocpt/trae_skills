@@ -1,0 +1,121 @@
+backend: opencode-cli
+level: L7
+status: PASS
+source: dd-workflow-runtime/tests/evidence/opencode-cli-l7-evidence.yaml
+captured_at: 2026-08-26T20:59:01Z
+opencode_version: 1.18.23
+model:
+  logical_name: Muse Spark 1.2 Free
+  cli_verified_canonical_identifier: opencode/muse-spark-1.2-contributor-free
+  effective_model_providerID: opencode
+  effective_model_modelID: muse-spark-1.2-contributor-free
+  requested_agent: strong-reviewer-cli
+  effective_agent: strong-reviewer-cli
+  mode: primary
+  cli_agent_file: dd-workflow-runtime/agents/opencode/strong-reviewer-cli.md
+invocation:
+  registry_executable: opencode-review
+  registry_command: [review]
+  adapter: dd-workflow-runtime/agents/opencode-review
+  underlying_opencode: opencode run --agent strong-reviewer-cli --format json
+  forbid_args: [--auto]
+  auto_flag_used: false
+transport:
+  format: NDJSON event stream (opencode --format json)
+  event_types_observed: [step_start, text, tool_use, step_finish]
+  final_text_extraction: last text event with time.end (strict)
+  raw_stdout_lines: 7
+  final_text_is_strict_json: true
+  code_fence_present: false
+  prose_wrapper_present: false
+  markdown_escapes_present: false
+  strict_parse: json.loads succeeds, single object
+  stderr_mixed_into_stdout: false
+  opencode_exit_code: 0
+  availability_exit_code_match: false
+  transient_exit_code_match: false
+probe_repo:
+  path: /tmp/dd-opencode-l7-probe
+  isolated_throwaway_repo: true
+  base_sha: 48b4f4f21f6b6d39b009cc88702b6bf7641e3cba
+  head_sha: b7f0ff16590730cf18bedb75d045913224a12664
+  scope: [review.py]
+  review_py_sha256: 0a9b543d647e80f16d59770a2d0aefb7b13c944be4bae1f93e85c16459dde49c
+  base_differs_from_head: true
+  fixture_bug: silent-zero-divisor-fallback (if b==0: return 0)
+  bug_disclosed_in_prompt: false
+reviewer_result:
+  raw_final_text_status: FINDINGS
+  findings_count: 1
+  reviewed: [review.py]
+  unreadable: []
+  evidence_count: 3
+router_result:
+  schema: dd-review-result/1
+  backend: opencode-cli
+  reviewer: strong-reviewer-cli/muse-spark-1.2-contributor-free
+  target: {base_sha: 48b4f4f21f6b6d39b009cc88702b6bf7641e3cba, head_sha: b7f0ff16590730cf18bedb75d045913224a12664, scope: [review.py]}
+  baseline: {base_sha: 48b4f4f21f6b6d39b009cc88702b6bf7641e3cba, head_sha: b7f0ff16590730cf18bedb75d045913224a12664, scope: [review.py]}
+  status: FINDINGS
+  verdict: FINDINGS
+  reviewed: [review.py]
+  unreadable: []
+  findings:
+    - id: RV-001
+      severity: HIGH
+      classification: behavioral-correctness
+      change_risk: behavioral
+      location: review.py:2-3
+      evidence: divide 在 b==0 时静默 return 0，与合法值 a==0 时的正确结果 0 碰撞，掩盖 ZeroDivisionError
+      required_fix: 删除 if b==0: return 0 静默分支，改为直接执行 a/b 或显式 raise ZeroDivisionError
+  evidence: [冻结基线已核验 base_sha 48b4f4f21f6b6d39b009cc88702b6bf7641e3cba 与 head_sha b7f0ff16590730cf18bedb75d045913224a12664 均存在于 .git/objects 且 refs/heads/master 指向 head_sha, 未发生基线漂移, review.py @ b7f0ff 读取成功共 4 行, scope 完整覆盖已审, verification 仅 fixture-pass (unit passed), 未覆盖除零边界, 无法证明静默返回 0 的正确性]
+  failure_category: null
+  lifecycle: {started: true, completed: true}
+  fallback_eligible: false
+  readonly_confirmation: {confirmed: true, evidence: router-validated:opencode-cli:agent-read-only-contract}
+  routing:
+    role: strong-reviewer
+    selected_backend: opencode-cli
+    attempted: [{candidate: opencode-cli, backend: opencode-cli, outcome: FINDINGS}]
+    max_hops: 1
+    hop_count: 0
+    dispatch_chain: []
+    dispatch_boundary: single-backend
+    router_authority: host-workflow
+    readonly_evidence: {backend: opencode-cli, mode: agent-read-only-contract, level: L6, confirmed: true, source: dd-workflow-runtime/tests/evidence/opencode-cli-l6-evidence.yaml}
+  fallback_used: false
+  implicit_retry: false
+  second_review: false
+l6_reference:
+  path: dd-workflow-runtime/tests/evidence/opencode-cli-l6-evidence.yaml
+  backend: opencode-cli
+  mode: agent-read-only-contract
+  level: L6
+  confirmed: true
+  adapter_is_pure_wrapper: true
+  underlying_invocation_unchanged: true
+  model_unchanged: true
+  permissions_unchanged: true
+  l6_still_valid: true
+  l6_still_valid_reason: adapter only adds NDJSON parsing, no change to agent/model/permissions/execution boundary
+parent_verification:
+  head_before: b7f0ff16590730cf18bedb75d045913224a12664
+  head_after: b7f0ff16590730cf18bedb75d045913224a12664
+  review_py_sha256_before: 0a9b543d647e80f16d59770a2d0aefb7b13c944be4bae1f93e85c16459dde49c
+  review_py_sha256_after: 0a9b543d647e80f16d59770a2d0aefb7b13c944be4bae1f93e85c16459dde49c
+  files_before: [review.py]
+  files_after: [review.py]
+  created_files: []
+  unexpected_files: []
+  git_status_before: clean
+  git_status_after: clean
+  git_diff_exit_code_before: 0
+  git_diff_exit_code_after: 0
+  workspace_mutation_detected: false
+  restoration_used: false
+capability:
+  l7_capability_confirmed: true
+  business_verdict: FINDINGS
+  business_verdict_affects_l7: false
+  note: Reviewer independently found silent zero-divisor bug; L7 capability PASS is independent of business verdict
+source: dd-workflow-runtime/tests/evidence/opencode-cli-l7-evidence.yaml

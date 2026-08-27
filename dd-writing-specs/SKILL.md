@@ -1,6 +1,6 @@
 ---
 name: dd-writing-specs
-description: 编写新功能、重大重构或 API 迁移的整套规格文档（需求文档、设计文档、视觉原型、测试用例表）时使用，在写实现代码或计划之前。触发词：设计规范、规格套件、design spec、写规格、规格文档、需求文档+设计文档。
+description: 当需要编写新功能/重大重构/API 迁移的完整规格套件，或单独编写/修订 Requirements、Design、Visual Prototype、Test Matrix 时使用；在实现代码或实现计划之前触发。
 ---
 
 # 编写规格文档套件
@@ -9,7 +9,7 @@ description: 编写新功能、重大重构或 API 迁移的整套规格文档�
 
 先读规则和 grill，再按"需求 → 设计 → 视觉原型（UI）→ 测试用例表"逐篇完成。每篇都经过用户确认和原子提交，不能批量生成后一次确认。
 
-长流程遵循 [dd-shared-workflow-runtime](../dd-shared-workflow-runtime/SKILL.md)；默认只加载本文件，进入具体 Stage 时再读 reference，以减少 token 而不降低 Gate。
+长流程遵循 [dd-workflow-runtime](../dd-workflow-runtime/SKILL.md)；默认只加载本文件，进入具体 Stage 时再读 reference，以减少 token 而不降低 Gate。
 
 ## 适用边界
 
@@ -18,7 +18,7 @@ description: 编写新功能、重大重构或 API 迁移的整套规格文档�
 不适用：
 
 - Bug 修复：用 [dd-bug-fix-workflow](../dd-bug-fix-workflow/SKILL.md)；
-- 单篇 Requirements/Design：用对应 writer；
+- 已批准文档的纯机械格式修改：可直接编辑，不必启动完整套件；
 - 已批准套件的机械微调；
 - 纯只读审查。
 
@@ -30,7 +30,7 @@ description: 编写新功能、重大重构或 API 迁移的整套规格文档�
 workflow_type: writing-specs
 invocation_mode: standalone
 host: auto
-requested_entry: rules
+requested_entry: rules | requirements | design | visual | test-matrix
 state_file: $(git rev-parse --git-dir)/writing-specs-state.json
 ```
 
@@ -44,6 +44,11 @@ resolved_decisions: []
 ```
 
 `child` 复用上游 worktree 和需求事实，完成后返回规格路径、Commit 和 Gate 证据，不执行最终 Host Close。原子 writer 和 Git/CI 能力使用 `helper`。
+
+
+### 单文档模式
+
+用户明确只要求 Requirements、Design、Visual 或 Test Matrix 时，设置 `requested_entry` 到对应 Stage。仍必须做该文档所需的上游 Gap Scan：上游事实已批准则直接复用；缺失且会影响正确性时只补 blocker，不强制生成用户未要求的整套文档。完成目标文档的自检/确认/交付后即可退出，不自动继续下游。
 
 ## Preflight 与恢复
 
@@ -108,7 +113,7 @@ Cleanup → Return to parent / Host Close
 
 ## Stage 2：Requirements
 
-以 `invocation_mode=helper` 调 [dd-write-requirements](../dd-write-requirements/SKILL.md)。Requirements 是 WHAT 的产品合同：
+读取 [requirements-writer.md](references/requirements-writer.md)。Requirements 是 WHAT 的产品合同：
 
 - 使用项目章节规则，否则默认 12 章节；
 - FR、NFR、AC、Scope、Out of Scope、Terminology、Decision Freedom 完整；
@@ -119,7 +124,7 @@ Cleanup → Return to parent / Host Close
 
 ## Stage 3：Design
 
-以 `invocation_mode=helper` 调 [dd-write-design](../dd-write-design/SKILL.md)。Design 是 WHO/结构的架构合同：
+读取 [design-writer.md](references/design-writer.md)。Design 是 WHO/结构的架构合同：
 
 - 引用 FR，不复制 Requirements；
 - 模块负责/不负责、数据流、状态、协作、决策、NFR、FR 映射、风险完整；
@@ -204,5 +209,7 @@ Codex：正常交付最终摘要，除非用户或项目规则要求额外确认
 ## 按需读取
 
 - 规则、grill、Requirements：[references/intake-and-requirements.md](references/intake-and-requirements.md)
-- Design、Visual、Test Matrix：[references/downstream-documents.md](references/downstream-documents.md)
+- Requirements writer：[references/requirements-writer.md](references/requirements-writer.md)
+- Design writer：[references/design-writer.md](references/design-writer.md)
+- Design、Visual、Test Matrix 汇总：[references/downstream-documents.md](references/downstream-documents.md)
 - 自检、确认、提交、恢复与补救：[references/review-and-delivery.md](references/review-and-delivery.md)

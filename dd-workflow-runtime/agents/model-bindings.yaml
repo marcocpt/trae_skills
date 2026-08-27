@@ -1,0 +1,81 @@
+# DD 跨宿主强弱角色绑定 —— 独立路由配置域（DD-008 的 canonical 源）
+#
+# 本文件是六家宿主模型绑定的唯一事实源；agents/<host>/ 下的原生文件是
+# 按 here 声明生成/校验的产物，不得脱离本文件独立演化。
+# canonical 校验：python3 agents/validate-bindings.py（任何漂移都以非零退出）
+# 本机 Codex 安装校验：python3 agents/validate-bindings.py --check-codex-install
+
+schema: dd-model-bindings/1
+updated: 2026-08-24
+
+roles:
+  worker: implementation-worker
+  reviewer: strong-reviewer
+
+defaults:
+  rework_cycles: 2
+
+hosts:
+  codex:
+    worker:
+      file: codex/luna-worker.toml
+      model: gpt-5.6-luna
+      effort_key: model_reasoning_effort
+      effort: max
+    reviewer:
+      file: codex/strong-reviewer.toml
+      model: gpt-5.6-sol
+      effort_key: model_reasoning_effort
+      effort: high
+      sandbox: read-only
+    install: "~/.codex/config.toml direct canonical config_file; no duplicate ~/.codex/agents entry"
+    status: installed-invoked-parent-override-guarded  # 正常父 L1-L7 pass；危险/未知父禁止 native Reviewer Gate
+
+  zcode:
+    reviewer:
+      file: zcode/strong-reviewer.md
+      model: GLM-5.3                  # 套餐内最强模型；主会话同为 GLM-5.3 时属同模型独立审查（强制 high 思考档）
+      thought_level: high
+      readonly_tools: [Read, Grep, Glob]
+    install: "~/.zcode/agents/"
+    status: installed-schema-only     # L1/L2 pass；L3+ 待新会话取证
+
+  qoder:
+    reviewer:
+      file: qoder/strong-reviewer.md
+      model: performance
+      effort_key: effort
+      effort: high
+      readonly_tools: [Read, Glob, Grep]
+    install: null                     # R-003：Qoder CN 权威配置根待实机确认
+    status: canonical-only
+
+  opencode:
+    worker:
+      # 主 session 即 implementation worker（OpenCode 无独立 worker agent 文件机制）；
+      # same-model independent review：与 reviewer 同模型，隔离靠角色/只读权限/frozen baseline
+      model: opencode/muse-spark-1.2-contributor-free
+      binding: primary-session
+    reviewer:
+      file: opencode/strong-reviewer.md
+      model: opencode/muse-spark-1.2-contributor-free     # same-model independent review（与 worker 同模型，非更强模型）
+      permission_default_deny: true
+      readonly_allows: [read, glob, grep, list]
+      # external opencode-cli backend 的 invocation profile（primary-mode，同模型同权限，
+      # 非新模型角色）；validate-bindings.py 机械校验其与 registry --agent 目标一致
+      cli_agent_file: opencode/strong-reviewer-cli.md
+    install: "~/.config/opencode/agents/"
+    status: installed-discovered      # L3 已过；换绑 muse-spark-1.2-contributor-free 后 L6 由 opencode-cli backend 重新取证
+
+  codebuddy:
+    reviewer:
+      file: codebuddy/strong-reviewer.md
+      model: inherit                  # 待绑定：用户确认套餐内强模型 id 后替换
+      effort: high
+      readonly_tools: [Read, Grep, Glob]
+    install: null                     # 插件 agents/ 目录，待实装验证
+    status: canonical-only
+
+  trae:
+    reviewer: null                    # 无原生绑定，走 external（chatgpt-review MCP）
+    status: external-only

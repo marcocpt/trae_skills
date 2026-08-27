@@ -7,7 +7,7 @@ description: Use when 用户要求 ChatGPT 审核指定文件/指定仓库、让
 
 ## 目标
 
-角色反转的审核闭环：**ChatGPT（强模型）是主审与最终关闭人**，**本地 agent（弱模型）是执行者与核对者**，**用户是最终裁决人**。依据 `/Users/dengdeng/.trae-cn/skills/gpt-code-review.md` 的人工判断升级规则，对核对属实的风险点做三类分流，**仅 HUMAN_DECISION_REQUIRED 逐条裁决**。修复采用三个独立字段（SEVERITY / CLASSIFICATION / CHANGE_RISK）：**凡 ChatGPT 提出的 finding 修改了生产代码或测试语义，弱模型不得自行 CLOSED，必须由 ChatGPT 针对性复查（原 finding + 真实 diff + 授权范围 + 验证结果）返回 CLOSED 才闭环**；纯拼写/格式可本地验证关闭。
+角色反转的审核闭环：**ChatGPT（强模型）是主审与最终关闭人**，**本地 agent（弱模型）是执行者与核对者**，**用户是最终裁决人**。依据 [classification-policy.md](references/classification-policy.md) 的人工判断升级规则，对核对属实的风险点做三类分流，**仅 HUMAN_DECISION_REQUIRED 逐条裁决**。修复采用三个独立字段（SEVERITY / CLASSIFICATION / CHANGE_RISK）：**凡 ChatGPT 提出的 finding 修改了生产代码或测试语义，弱模型不得自行 CLOSED，必须由 ChatGPT 针对性复查（原 finding + 真实 diff + 授权范围 + 验证结果）返回 CLOSED 才闭环**；纯拼写/格式可本地验证关闭。
 
 ## 角色分工
 
@@ -67,9 +67,12 @@ disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING 
 
 ## 输入
 
+收到外部 review 后，先按 [receiving-feedback.md](references/receiving-feedback.md) 验证事实再采纳，禁止因措辞权威而盲目修改。
+
+
 开始前必须确认（缺失则向用户提问，不得猜测）：
 
-1. **仓库名**：按技能 gpt-review-loop 的命名规则；送审前 `git worktree list` 确认存在
+1. **仓库名**：按 [transport.md](references/transport.md) 的仓库命名规则；送审前 `git worktree list` 确认存在
 2. **文件清单**：用户指定的待审文件（仓库内相对路径）；用户只给了目录或分支时，先送审"列范围"请求，拿到 ChatGPT 发现的文件清单后与用户确认
 3. **可选权威依据**：需求/设计/规范文档路径
 4. **修改前 baseline**（修复阶段必记）：当前 HEAD、`git status --short`、已有 dirty diff、相关测试命令及既有失败。**禁止修改/覆盖用户已有变更**
@@ -98,7 +101,7 @@ disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING 
 
 ## 风险分流规则
 
-分流权威依据：`/Users/dengdeng/.trae-cn/skills/gpt-code-review.md`。**不得把可客观判定的问题升级为人工决策。**
+分流权威依据：[classification-policy.md](references/classification-policy.md)。**不得把可客观判定的问题升级为人工决策。**
 
 ### FINDING（可以客观判定，应修复）
 能根据代码、测试或明确规格证明的问题：明确逻辑错误、崩溃、越界、竞态、资源泄漏、与明确规格直接冲突、明确缺少错误处理、明确违反架构规则、测试能稳定证明的问题。
@@ -140,7 +143,7 @@ disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING 
 
 ## 首次送审模板
 
-调用契约遵循技能 gpt-review-loop。content：
+调用契约遵循 [transport.md](references/transport.md)。content：
 
 ```
 请使用你可用的工具，自行读取仓库 "<repo>" 中的以下文件（不要依赖我提供内容）：
@@ -239,7 +242,7 @@ STATUS: HUMAN_DECISION_REQUIRED
 ## 逐条裁决提问要求（仅 HUMAN_DECISION_REQUIRED）
 
 - 只含当前一个 HUMAN_DECISION_REQUIRED 风险点；2-4 个互斥选项编号；标推荐项；每项一句影响说明
-- 提问前必须先给技术分析 + 可选方案（A/B，必要时 C）及优缺点，对齐 gpt-code-review.md 的 HUMAN_DECISION_REQUIRED 格式
+- 提问前必须先给技术分析 + 可选方案（A/B，必要时 C）及优缺点，对齐 [classification-policy.md](references/classification-policy.md) 的 HUMAN_DECISION_REQUIRED 格式
 - 推荐项不固定：修复导致错误结论且任务允许改 → 推荐立即修复；只读审核任务 → 推荐 TODO；低优先级 → 推荐 LATER
 - 用户回答含糊 → 重新提问，不得猜测裁决
 - 选项：`加入 TODO` / `加入 LATER` / `立即修复` / `不采纳`（不采纳=ACCEPTED_RISK，记录理由）

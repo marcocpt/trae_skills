@@ -7,7 +7,7 @@ description: 当重构遗留代码、用户提到 AI 重构/refactoring、或工
 
 ## 目标
 
-先理解，再用 Characterization Test 锁定行为，最后以小 Commit 重构。运行时使用 [dd-shared-workflow-runtime](../dd-shared-workflow-runtime/SKILL.md)，保证长流程可恢复；细节按需加载，不能用省 token 为由降低质量。
+先理解，再用 Characterization Test 锁定行为，最后以小 Commit 重构。运行时使用 [dd-workflow-runtime](../dd-workflow-runtime/SKILL.md)，保证长流程可恢复；细节按需加载，不能用省 token 为由降低质量。
 
 ## 适用边界
 
@@ -47,7 +47,7 @@ required_exit_stages:
 1. 读取适用规则、仓库、分支、工作树、已有文档、测试与 CI 事实；
 2. 恢复状态；状态缺失时从提交、产物和 CI 证据重建；
 3. Gap Scan 找出第一个未满足 Gate；
-4. 首次修改文件前按 [dd-shared-ask](../dd-shared-ask/SKILL.md) 确定 worktree；
+4. 首次修改文件前按 [dd-workflow-runtime/ask](../dd-workflow-runtime/references/ask.md) 确定 worktree；
 5. 已解决事实不重问，阶段间 happy path 自动推进。
 
 状态至少记录 `current_stage`、`completed_stages`、行为基线、改动批次、提交、CI run、blocker 与 `next_safe_action`。每个 Gate 后原子持久化。
@@ -110,13 +110,13 @@ Gate：
 
 - 一个 Commit 只解决一种问题；
 - 功能行为修正与纯重构分开提交；
-- 公共文件按 [dd-git-conflict](../dd-git-conflict/SKILL.md) 隔离并标记 `PublicFile`；
-- commit 遵循 [dd-git-merge](../dd-git-merge/SKILL.md)，禁止 rebase、`--no-verify`、force push；
+- 公共文件按 [dd-git-workflow/conflict](../dd-git-workflow/references/conflict.md) 隔离并标记 `PublicFile`；
+- commit 遵循 [dd-git-workflow/merge](../dd-git-workflow/references/merge.md)，禁止 rebase、`--no-verify`、force push；
 - 不暂存无关脏文件。
 
 ### 6. CI 验证
 
-每个 Commit 后按 [dd-shared-ci](../dd-shared-ci/SKILL.md) push 并等待 CI。行为保持由测试证明，不再做 commit 后 LLM 审查：
+每个 Commit 后按 [dd-workflow-runtime/ci](../dd-workflow-runtime/references/ci.md) push 并等待 CI。行为保持由测试证明，不再做 commit 后 LLM 审查：
 
 1. Characterization Test 在 CI 全绿；
 2. 远端 CI 全绿。
@@ -138,7 +138,7 @@ Gate：
 | CI 连续三轮修复仍失败 | 继续、仅定位或暂停 |
 | 权威事实已明确但是否调整仍属产品判断 | 是否纳入当前范围 |
 
-ASK 前先核验文件路径和行号，并附查证摘要；null 必须重问。询问遵循 [dd-shared-ask](../dd-shared-ask/SKILL.md)。
+ASK 前先核验文件路径和行号，并附查证摘要；null 必须重问。询问遵循 [dd-workflow-runtime/ask](../dd-workflow-runtime/references/ask.md)。
 
 ## Exit Gate
 

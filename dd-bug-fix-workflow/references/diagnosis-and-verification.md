@@ -45,7 +45,7 @@ Gate：
 - 新建隔离 fix worktree；
 - 使用当前 worktree。
 
-创建或验证遵循 `dd-git-worktree`、`dd-git-branch`、`dd-shared-ci` 和项目规则。记录：
+创建或验证遵循 `dd-git-workflow/worktree`、`dd-git-workflow/branch`、`dd-workflow-runtime/ci` 和项目规则。记录：
 
 ```yaml
 main_root: /absolute/path
@@ -141,7 +141,7 @@ Gate：Bug state 原子写入，`current_stage=diagnosis-and-repair`。
 
 1. fetch 明确的 base；
 2. 比较本地/远端 base；
-3. 需要同步时按 `dd-git-merge` 使用 merge-only；
+3. 需要同步时按 `dd-git-workflow/merge` 使用 merge-only；
 4. 冲突在 fix 分支解决并验证；
 5. 精确检查 diff 和状态；
 6. 按逻辑暂存，生成 Conventional Commit；
@@ -169,7 +169,7 @@ current_stage: user-verification
 
 必须先构建并启动真实应用/服务或提供可操作产物，再询问用户。
 
-- Swift/Xcode：遵循 `dd-shared-ci` 的 workspace/project、scheme、签名和产物探测；
+- Swift/Xcode：遵循 `dd-workflow-runtime/ci` 的 workspace/project、scheme、签名和产物探测；
 - Web：启动项目定义的 dev/test server；
 - 其他项目：使用项目文档的真实入口；
 - 启动失败时提供准确错误，ASK 重试、用户自行验证或停止。
