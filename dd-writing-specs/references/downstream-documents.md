@@ -61,7 +61,7 @@ UI Feature 才需要：
 - Population：冻结分母、item registry、角色（calibration / holdout 等）；
 - oracle 定义与层级（规范 / 独立合成 / Golden / Legacy characterization）；
 - 数值 policy：tolerance、性能采样与聚合规则、安全预算等；
-- Evidence schema（最低字段）与覆盖状态；
+- Evidence schema（最低字段）与已有覆盖状态；
 - Reference / 外部工具授权边界（如有）。
 
 反冗余规则（项目级不变量：**上游拥有事实，下游引用事实；下游只拥有新增信息。弱模型需要完全展开的执行材料时，生成 derived artifact，不复制进 canonical SSOT。**）：
@@ -69,7 +69,7 @@ UI Feature 才需要：
 - Given/When/Then 的唯一属主是 Requirements 的 AC；矩阵行引用 AC 编号，不复写。一个 AC 需要多个可区分用例时，只写差异化断言（该用例相对 AC 场景的不同点），不重述完整 G/W/T。
 - item registry 用紧凑记法（ID 范围 + 逐行语义说明）；禁止把语义相同的成员逐个机械展开成重复行。面向弱模型执行消费的全量展开表在实现计划 / 执行版阶段产出（强模型展开或脚本生成 + SHA 校验），测试用例表本体不承载机械展开。
 - 追溯矩阵（FR/NFR/AC → Test ID）不在正文手写；由 trace_map 或生成产物承载，避免与 Requirements 正文、实现计划三处维护。
-- 动态覆盖快照、Gate 状态文案移出冻结正文，落 artifacts 或状态文件。
+- 动态覆盖快照、运行结果和 Gate 状态文案移出冻结正文，落 artifacts 或状态文件；四层证据语义引用 [artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md)，不在 Matrix 重定义。
 
 每行至少包含：
 
@@ -82,12 +82,7 @@ UI Feature 才需要：
 - 现有覆盖；
 - 风险或依赖。
 
-覆盖状态：
-
-- `COVERED`：真实测试完整覆盖；
-- `PARTIAL`：只覆盖部分路径/断言；
-- `MISSING`：缺测试；
-- `DEFERRED`：明确批准延后，含负责人/触发条件。
+已有覆盖只描述指定来源版本下的测试映射，状态及约束取 [artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md)，不得混入本次运行结果。
 
 UI AC 需要截图、可访问性断言、E2E/XCUITest/Playwright 或明确人工步骤。内部状态断言不能替代用户可见证据。
 
@@ -96,6 +91,6 @@ UI AC 需要截图、可访问性断言、E2E/XCUITest/Playwright 或明确人�
 - Goals/Scope/FR/AC 变化 → Design、Visual、Test Matrix 重审；
 - 模块/数据流/状态变化 → Visual、Test Matrix 重审；
 - UI 状态变化 → Visual、UI cases 重审；
-- 只有格式/错别字且不改变语义时可缩小 review，但仍记录版本和 Commit。
+- 只有格式／错别字且不改变语义时可缩小 review，但仍记录版本、内容指纹和适用的 Delivery 证据。
 
 下游产物若基于未确认上游，标记 `stale`；不得直接确认或提交为最终。

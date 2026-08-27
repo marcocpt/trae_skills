@@ -79,7 +79,7 @@
 - 补充细节；
 - 方向错误，重新描述。
 
-确认后持久化并提交 `.step1-requirements-summary.md`。
+确认后持久化 `.step1-requirements-summary.md` 及确认依据；Git 动作按已明确 `delivery_policy` 单独处理。
 
 ## 上游 Seed
 
@@ -121,4 +121,4 @@ P0 全文检查：
 - 无 TODO/TBD/待定/占位符；
 - 版本头和记录符合项目规则。
 
-写完先提交 draft；review 修复和确认再独立提交，保证基线可追溯。
+写完先落盘 draft；review 修复后记录确认版本、内容指纹和批准依据。只有已明确交付策略要求时，才按对应边界提交。
