@@ -1,11 +1,19 @@
 # Downstream Documents
 
+> 派生与生命周期唯一定义见 [dd-workflow-runtime/artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) §3；本文件仅保留领域增量，不重定义 `canonical`/`derived`/`closed-change` 或 `updated|no-update|stale`。
+
 ## 目录
 
 - [Design](#design)
 - [Visual Prototype](#visual-prototype)
 - [Test Matrix](#test-matrix)
 - [同步规则](#同步规则)
+
+## 派生与规范边界（引用共享合同）
+
+- `trace_map.md` 与弱模型执行包是 `derived`，不独立维护；来源变化即 `stale` 并重新派生，规范修改必须回到 canonical 属主。分片头只保留上游、被引用 ID 和 package index，不列全部同级文件。
+- 同一规范事实只能存在一个权威定义；下游只引用 ID，不复制后稍作改写形成第二份规范。
+- 本文件不重定义生命周期表或同步矩阵。
 
 ## Design
 

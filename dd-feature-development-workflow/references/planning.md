@@ -7,7 +7,7 @@
 
 为零历史上下文的执行者生成自足、可验证的任务包。只展开当前任务需要的冻结事实，不复制无关背景或整段实现；保持 DRY、YAGNI 和 TDD。
 
-通用来源、失效、证据和授权字段由 [artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) 唯一维护；本文件只定义 Feature 计划如何实例化这些字段。
+通用来源、失效、证据和授权字段由 [artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) 唯一维护；本文件只定义 Feature 计划如何实例化这些字段。生命周期、同步影响与保留的唯一定义见该合同 §3，本文件不重定义 `updated|no-update|stale|not-applicable|retired` 或生命周期枚举。
 
 **上下文：** 使用 Feature workflow 已固定的 worktree；不要自行创建第二套工作环境。
 

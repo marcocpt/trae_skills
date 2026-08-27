@@ -22,7 +22,9 @@
 - Code tests：断言、名称、fixture、Stub/Mock/Spy；
 - History/版本：按项目规则更新。
 
-不得为了让测试通过改写旧预期。若行为没有改变，只修复实现偏差，明确记录“无需更新需求/设计”的原因。
+文档同步按 [artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) §3.3 裁决，输出每份文档的 `updated | no-update | stale | not-applicable | retired` 及原因；状态和证据不回填合同，`closed-change` 不回写。Bug 修复必须覆盖 bug 恢复、行为变化、纯重构、test-only 四类适用变更，具体 disposition 取共享合同。
+
+不得为了让测试通过改写旧预期。若行为没有改变，只修复实现偏差，明确记录 `no-update` 原因。
 
 输出：
 
