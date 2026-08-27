@@ -21,7 +21,7 @@
 
 行为保持由 Characterization Test 与远端 CI 证明；远端 CI 通过才满足行为保持 Gate。前提：受影响可观察行为已全部映射到 Characterization Test，未覆盖路径先补测试再重构，重构 Commit 不得弱化 characterization oracle。
 
-**文档同步（引用 [artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) §3）：** 行为不变默认 `Requirements=no-update`；职责、依赖或数据流改变时 `Design=updated`；Characterization 覆盖改变时裁决 `Test Policy`；运行结果只进入 `evidence`；`closed-change` 不回写。按 `updated|no-update|stale|not-applicable|retired` 逐份输出原因。
+**文档同步：** 按 [artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) §3.3 裁决，本 workflow 属 pure-refactor 路由，具体 disposition 取共享合同（不复制路由表）。
 
 ## CI 失败
 

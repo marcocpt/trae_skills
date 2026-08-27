@@ -66,7 +66,7 @@ TODO 的消费者是后续执行修复的会话（可能没有当前会话的任
 
 ## 产物生命周期（引用共享合同）
 
-TODO 状态与验证摘要、逐批验证摘要属于 `working`/`evidence`，LATER 条目为 `working` 转 `evidence` 待处理项。详见 [dd-workflow-runtime/artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) §3。已关闭 finding 的逐批摘要只有在当前合同与必要证据已吸收后才可按 `retention` 清理；`unique_evidence` 需明确授权。
+TODO 状态与验证摘要、逐批验证摘要属于 `working`/`evidence`，LATER 条目属于 `working`。详见 [dd-workflow-runtime/artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) §3。已关闭 finding 的逐批摘要只有在当前合同与必要证据已吸收后才可按 `retention` 清理；`unique_evidence` 需明确授权。LATER 的 evidence 仅指关闭后产生的独立验证附件，不指条目文件本身转 evidence。
 
 ## LATER
 

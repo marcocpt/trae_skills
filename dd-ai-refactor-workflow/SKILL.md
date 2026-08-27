@@ -114,7 +114,7 @@ Gate：
 - commit 遵循 [dd-git-workflow/merge](../dd-git-workflow/references/merge.md)，禁止 rebase、`--no-verify`、force push；
 - 不暂存无关脏文件。
 
-**文档影响判定（引用 [artifact-contract](../dd-workflow-runtime/references/artifact-contract.md) §3）：** 行为不变默认不改 Requirements；职责、依赖或数据流改变时 Design = `updated`；Characterization 覆盖改变时裁决 Test Policy；运行结果只进入 `evidence`，不回填合同；`closed-change` 不回写。
+**文档影响判定：** 按 [artifact-contract](../dd-workflow-runtime/references/artifact-contract.md) §3.3 裁决，本 workflow 属 pure-refactor 路由，具体 Requirements/Design/Test Policy disposition 取共享合同（不复制路由表）。
 
 ### 6. CI 验证
 

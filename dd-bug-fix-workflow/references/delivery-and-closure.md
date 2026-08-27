@@ -22,14 +22,9 @@
 - Code tests：断言、名称、fixture、Stub/Mock/Spy；
 - History/版本：按项目规则更新。
 
-文档同步使用 [artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) §3 的 `updated | no-update | stale | not-applicable | retired`，按真实影响判定：
+文档同步按 [artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) §3.3 裁决，输出每份文档的 `updated | no-update | stale | not-applicable | retired` 及原因；状态和证据不回填合同，`closed-change` 不回写。Bug 修复必须覆盖 bug 恢复、行为变化、纯重构、test-only 四类适用变更，具体 disposition 取共享合同。
 
-- 修复实现偏差且合同未变：Requirements / Design = `no-update`，回归测试和新证据 = `updated`；
-- 修复暴露合同歧义或行为变化：先更新 Requirements，再重审 Design / Test Policy；
-- 纯重构：Requirements = `no-update`；职责、依赖或数据流改变时 Design = `updated`；
-- 增加等价测试样本/test-only：Test Policy / Verification Population = `updated`，Requirements = `no-update`。
-
-不得为了让测试通过改写旧预期。若行为没有改变，只修复实现偏差，明确记录 `no-update` 原因；状态和证据不回填合同，`closed-change` 不回写。
+不得为了让测试通过改写旧预期。若行为没有改变，只修复实现偏差，明确记录 `no-update` 原因。
 
 输出：
 
