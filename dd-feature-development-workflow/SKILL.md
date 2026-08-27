@@ -42,6 +42,8 @@ delivery_policy: project-rules
 
 遵循运行时的 Preflight、原子状态、Gap Scan、Stage Contract、Completion Receipt 和 Host Close。现有 `current_step`/`current_phase` 作为兼容字段保留，但必须与 `current_stage` 一致。
 
+Specification、Planning、Implementation 创建或消费规范事实、执行包和验证证据时遵循 [artifact-contract](../dd-workflow-runtime/references/artifact-contract.md)；各 Stage 只补 Feature 特有 Gate。
+
 ## 核心原则
 
 1. No approved specification, no production code；
@@ -51,7 +53,8 @@ delivery_policy: project-rules
 5. The exact merge candidate entering develop gets full CI；
 6. User-visible behavior requires user-visible evidence；
 7. Persist before every Stage transition；
-8. Trae completion requires a final ASK。
+8. Trae completion requires a final ASK；
+9. Re-read approved originals; summaries only locate sources。
 
 ## Stage Graph
 
@@ -90,9 +93,9 @@ Closure
 |---|---|---|---|---|
 | Intake | 用户请求或有效 Handoff | 已确认需求摘要 | Environment | 摘要、decisions |
 | Environment | Intake Gate | 固定 worktree、初始 state | Specification | Git 路径、基线结果 |
-| Specification | Intake、Environment | 规格套件与 review | Planning | 文档路径、提交 |
-| Planning | Approved specification | 总计划与 Phase 计划 | Implementation | 计划文件、提交 |
-| Implementation | Approved plan | Phase commits、测试与 UI 证据 | Final Candidate | commits、Phase Gate、Smoke runs |
+| Specification | Intake、Environment | 规格套件与 review | Planning | 文档路径、批准版本／指纹、适用 Delivery 证据 |
+| Planning | Approved specification | 总计划与 Phase 执行包 | Implementation | 计划路径、来源清单／指纹、适用 Delivery 证据 |
+| Implementation | Approved plan | 实现、四层验证证据、适用 Delivery 证据 | Final Candidate | diff／commits、Phase Gate、Smoke runs |
 | Final Candidate | 全部 Phase Gate、最新 develop | 候选 SHA、完整 CI、同 SHA 推进 | Confirmation | candidate branch、run、目标分支 |
 | Confirmation | 最终实现和验证证据 | 用户继续或回退决策 | Documentation / rollback | decision、rollback state |
 | Documentation | 已验证交付行为 | 同步文档和影响结论 | Delivery | diff、文档版本、提交 |
@@ -138,6 +141,9 @@ review_paths: []
 plan_dir: ""
 phase_plan_paths: []
 integration_plan_path: null
+specification_approvals: []
+execution_packet_paths: []
+verification_evidence: []
 current_phase: null
 total_phases: 0
 completed_phases: []
@@ -187,19 +193,19 @@ phase_contract_path: null
 
 读取 [specification-and-planning.md](references/specification-and-planning.md) 的 Specification。
 
-调用 `dd-writing-specs` 完成 Requirements、Design、Visual（如适用）和 Test Cases。Gate：产物与自检有效、用户确认、路径写入状态、规格提交策略满足。
+调用 `dd-writing-specs` 完成 Requirements、Design、Visual（如适用）和 Test Cases。Gate：产物与自检有效、用户确认，路径、版本、内容指纹和批准依据写入状态；适用的 Delivery 策略满足。Commit 只有在该策略明确要求时才是 Gate。
 
 ### Planning
 
 读取 [specification-and-planning.md](references/specification-and-planning.md) 的 Planning。
 
-按 Phase 数量强制拆分档位（`<HARD-GATE>`），使用 [planning.md](references/planning.md) 时显式传 `split_mode` 与 `phase_list`，禁止让 `planning reference` 自行决定拆分。Gate：无占位符、AC 映射完整、验证与提交边界明确、`phase_plan_paths` 数组与 `split_mode` 一致、计划已按项目规则交付。
+按 Phase 数量强制拆分档位（`<HARD-GATE>`），使用 [planning.md](references/planning.md) 时显式传 `split_mode` 与 `phase_list`，禁止让 `planning reference` 自行决定拆分。Gate：每个执行包的来源／批准／指纹有效、必需字段和 AC 映射完整、验证与授权边界明确，`phase_plan_paths` 数组与 `split_mode` 一致，适用 Delivery 策略满足。
 
 ### Implementation
 
 读取 [implementation-and-verification.md](references/implementation-and-verification.md) 的 Phase Loop、TDD、Local Gate 和 UI Smoke。
 
-按 Phase 顺序执行；每个 Phase 必须完成 TDD、用户可见证据、本地 Gate 和风险判断。Gate：`completed_phases` 覆盖全部 Phase，状态和提交证据一致。
+按 Phase 顺序执行；每个 Phase 开始前验证执行包新鲜度，并从批准原文反查适用约束。必须完成 TDD、四层验证证据、用户可见证据、本地 Gate 和风险判断。Gate：`completed_phases` 覆盖全部 Phase，状态与当前 diff／提交及证据一致。
 
 ### Final Candidate
 
@@ -243,6 +249,9 @@ phase_contract_path: null
 ## 红线
 
 - 没有已批准规格或有效 Bootstrap 输入就修改生产代码；
+- 用摘要替代批准原文，或在来源指纹／批准依据失效后继续执行旧包；
+- 把验证计划、测试存在／覆盖、本次运行和证据有效性合并成一个“已通过”；
+- 把内容批准解释成 Commit／Push／外部动作授权；
 - 重问 Handoff 或状态中已解决事实；
 - 跨 worktree 引用未提交状态；
 - 未通过 Phase Local Gate 就进入下一 Phase；

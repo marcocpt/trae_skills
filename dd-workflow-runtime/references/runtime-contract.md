@@ -219,6 +219,8 @@ Stage Gate 与 Delivery Gate 分离：
 - Stage Gate：领域产物和质量证据；
 - Delivery Gate：commit、push、merge、PR、cleanup；
 - 调用方可要求 commit 作为 Stage 产物，但必须明确声明，不能默认等同。
+- 内容批准不构成 Git／外部动作授权；授权来自用户当前明确要求或工作流开始时已明确采用的项目交付策略。禁止时记 `not-authorized`，未要求时记 `not-required`，不得重复询问已明确的决定。
+- Delivery 未授权不撤销已通过的 Stage Gate；只有下游确实依赖该动作时才在该 Delivery 边界停止。
 
 ## 8. 审查规则
 

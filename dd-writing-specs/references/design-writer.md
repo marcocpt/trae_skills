@@ -348,7 +348,7 @@ digraph doc_layers {
 - **Implementation Plan**：允许接口签名、类定义、目录结构、迁移方案
 - **Code**：完整实现
 
-**与 dd-writing-specs 的关系：** dd-writing-specs 是编写整套规格文档套件（需求文档+设计文档+视觉原型+测试用例表）的完整工作流（含 grill/3 子代理审查/git），本 skill 是其中"如何写设计文档内容"的聚焦规则。两者协作：dd-writing-specs 步骤 5a 调用本 skill 写设计文档内容，dd-writing-specs 负责跑完整流程（grill/审查/确认/提交）。独立写设计文档时可直接用本 skill；写完整规格文档套件时用 dd-writing-specs。
+**与 dd-writing-specs 的关系：** dd-writing-specs 是编写整套规格文档套件（需求文档+设计文档+视觉原型+测试用例表）的完整工作流，本 reference 只负责“如何写 Design 内容”。dd-writing-specs 负责输入检查、审查、确认与按授权执行 Delivery；独立写 Design 时可直接进入对应单文档模式。
 
 ## 输出要求（P2）
 

@@ -5,47 +5,39 @@
 - [自检方向](#自检方向)
 - [文档特定检查](#文档特定检查)
 - [确认](#确认)
-- [提交边界](#提交边界)
+- [Delivery 边界](#delivery-边界)
 - [恢复与补救](#恢复与补救)
 - [Cleanup](#cleanup)
 
 ## 自检方向
 
-写作时同步覆盖 A/B/C 三个方向：
-
-| 方向 | 通用问题 |
-|---|---|
-| A | 章节/占位符/内部一致性/项目规则/P0 分层 |
-| B | Scope/YAGNI/职责/耦合/可扩展与可测试 |
-| C | FR/AC/证据映射/UI 可观测性/遗漏测试 |
-
-三个方向都必须检查，禁止压成一个模糊的"整体看起来没问题"。发现问题立即修复，只把会阻塞下游设计、实现或验证的问题列为必须修复；措辞偏好列建议。
+通用 A/B/C 名称、语义和处理方式只取自 [dd-workflow-runtime/review-gate](../../dd-workflow-runtime/references/review-gate.md)。本文件只维护下列文档特有检查；三个方向都要执行并分别记录，不能把特有检查改成第二份通用定义。
 
 ## 文档特定检查
 
 Requirements：
 
-- A：12 章/项目规则、P0 代码符号搜索；
-- B：可设计性、范围、YAGNI；
+- A：项目章节、Scope／Out of Scope、P0 代码符号和 FR／NFR／AC 覆盖；
+- B：术语、项目规则、目标与约束一致，可设计且无冲突；
 - C：每个 FR 有 AC，AC 可观察。
 
 Design：
 
-- A：与 Requirements、docs.md、Design P0；
-- B：模块职责、耦合、扩展、测试；
-- C：状态/数据流、每个 FR 有模块映射。
+- A：每个 FR 有模块映射，Scope 完整且 Design P0 无越界；
+- B：与 Requirements／项目规则一致，模块职责、数据流、状态、耦合和扩展正确；
+- C：关键状态与接口可计划、可测试，风险有可核对处置。
 
 Visual：
 
-- A：与 Design 一致、状态完整；
-- B：交互、错误和边界可操作；
-- C：UI AC 与可见证据映射。
+- A：主流程、错误、空态、权限和边界状态覆盖完整且不展示 Out of Scope；
+- B：状态名、交互和 Design 一致；
+- C：UI AC 与真实可见证据映射，交互可操作。
 
 Test Matrix：
 
-- A：AC 覆盖和编号；
-- B：测试层级、策略和证据；
-- C：UI 矩阵、已有测试对照、缺口诚实。
+- A：AC／失败路径覆盖、编号、Population 和 Scope 完整；
+- B：测试层级、oracle、数值 policy 与上游版本一致；
+- C：证据 schema、UI 可观测性、已有覆盖及缺口状态可核对。
 
 ## 确认
 
@@ -64,26 +56,25 @@ Test Matrix：
 
 即使用户口头说"直接提交"也应在已展示自检结论后获取明确选择，因为该选择是文档 Gate，而不是形式性会话结束 ASK。
 
-## 提交边界
+确认后立即持久化文档路径、版本、内容指纹、blocker，以及 artifact-contract 定义的 `approval`。该记录允许同一 worktree 的下一篇消费；它不是 Git 或外部动作授权。
 
-每个可保存 Stage 独立提交：
+## Delivery 边界
 
-- rules summary；
-- grill/seed check；
-- Requirements（自检后确认提交）；
-- Design + confirm；
-- Visual + confirm；
-- Test Matrix + confirm；
-- 临时笔记 cleanup。
+内容 Gate 和 Delivery Gate 分开判定：
 
-提交前检查：
+- 用户当前明确授权或工作流开始时已明确采用的项目策略要求 Git：按策略调用 `dd-git-workflow`；
+- 用户明确禁止 Git：记录 `not-authorized`，不再询问，继续同一 worktree 的文档依赖；
+- 未要求 Git：记录 `not-required`；
+- 下游必须跨 worktree 或远程消费而 Delivery 尚未满足：只在该边界 `BLOCKED`，不撤销内容批准。
+
+执行获准 Git 动作前检查：
 
 - 只 stage 本 Stage；
 - `git diff --cached --check`；
 - 不含秘密/无关脏文件；
 - 不使用 `--no-verify`；
 - 公共文件遵循 `PublicFile`；
-- Commit 可从 `git log` 找到。
+- 所需 Commit 可从 `git log` 找到。
 
 默认不 squash。若用户另行要求整理历史，交给 Git Delivery 流程重新确定安全边界，不能包含父工作流或他人提交。
 
@@ -93,7 +84,8 @@ Test Matrix：
 |---|---|
 | 文档已写入，自检未完成 | 补做 A/B/C 自检 |
 | 自检结论已保存，用户未确认 | 展示现有结论后重新 ASK |
-| 用户确认已持久化，Commit 缺失 | 只补当前 Stage Commit |
+| 用户确认已持久化，Git 未要求或被禁止 | 保留内容批准；记 `not-required`／`not-authorized`，继续同一 worktree 下游 |
+| 已明确要求 Commit，但证据缺失 | 停在 Delivery 边界，只补获准的当前 Stage 动作 |
 | 下游基于未确认上游 | 标记 stale，回到上游 Gate |
 | 单个方向缺失 | 只补该方向；若基线变化则三个都重跑 |
 | 多个 Stage 被错误合并提交 | 记录违规，不用破坏性 reset；从当前可追溯基线继续并保持后续边界 |
@@ -107,4 +99,4 @@ Test Matrix：
 - `.step0-rules-summary.md`
 - `.step1-requirements-summary.md` 或 `.step1-requirements-confirmed.md`
 
-不删除父 Feature workflow 的 seed/state。cleanup 作为独立 Commit，随后写最终状态/Receipt。
+不删除父 Feature workflow 的 seed/state。cleanup 后更新内容指纹和状态；仅当已明确交付策略要求时提交 cleanup。

@@ -84,6 +84,7 @@ requirements_summary_path: null
 bootstrap_requirements_seed: []
 phase_contract_path: null
 resolved_decisions: []
+delivery_policy: <inherited>
 ```
 
 子 Skill 必须消费上游事实，不重复 grill。
@@ -103,13 +104,13 @@ resolved_decisions: []
 - Visual 与 UI AC 对齐；
 - Test Cases 覆盖 AC、失败路径、兼容性和证据；
 - 用户确认整套规格；
-- 所有路径存在且交付策略满足。
+- 所有路径、版本、内容指纹和批准依据存在，交付策略满足。
 
-Gate 通过后写路径、review 结论、规格提交 SHA，并更新 `current_stage=planning`。
+Gate 通过后写路径、review 结论、每份规格的批准版本／内容指纹，以及适用的 Delivery 证据；只有策略明确要求时才要求规格 Commit SHA。随后更新 `current_stage=planning`。
 
 ## 4. Planning
 
-读取已批准的全部规格与 review，先识别 Phase 数量与依赖，再使用 planning reference。
+从磁盘完整重读已批准的全部原始规格与 review，核对每份来源的版本、内容指纹和批准依据；摘要只用于定位，不能代替原文。然后识别 Phase 数量与依赖，再使用 planning reference。
 
 ### 拆分档位（按 Phase 数量强制）
 
@@ -137,6 +138,7 @@ plan_dir: /absolute/or/repo-relative/path
 requirements_path: /absolute/path
 design_path: /absolute/path
 test_case_path: /absolute/path
+delivery_policy: <inherited>
 split_mode: simple | per-phase | per-phase-with-integration
 phase_list:
   - phase_id: 1
@@ -170,10 +172,12 @@ phase_list:
 - 提交边界和回滚；
 - AC → Task → Test/Evidence 映射。
 
+每个可执行 Task 必须按 [artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) 实例化弱模型执行包。缺任一来源指纹、批准依据、输入／输出、写入范围、精确验证、停止条件或 Delivery 授权时保持 `BLOCKED`，不得进入 Implementation。
+
 规格已冻结的事实引用不复制：
 
 - 计划引用 Test ID / population ID / policy 版本，不手工复制完整 item registry、seed manifest 或追溯矩阵；
-- 弱模型执行版是唯一允许内联冻结事实的位置（弱模型不跨文档导航）；内联内容必须标注来源并可与源文档核对——核对口径：来源 ID 清单 + 来源文档版本号，脚本生成的展开表附带脚本输出的 SHA；中间层总计划不得再复制一份。
+- 弱模型执行包可内联当前任务需要的冻结事实一次，但必须由 `sources` 逐项追溯；中间层总计划不得再复制一份。
 
 禁止 `TODO`、`待定`、笼统错误处理、未定义符号和“类似任务 N”。
 
@@ -193,10 +197,11 @@ total_phases: <N>
 phase_plan_paths:
   - phase_id: 1
     path: plan-phase-01-<slug>.md
+    source_manifest_digest: <sha256>
   - phase_id: 2
     path: plan-phase-02-<slug>.md
 integration_plan_path: plan-integration-cross-phase.md   # 仅复杂档
-plan_commit_sha: <sha>
+plan_delivery_evidence: <commit-sha-or-not-required-or-not-authorized>
 current_stage: implementation
 current_phase: 0
 ```
@@ -207,4 +212,6 @@ current_phase: 0
 - 使用 planning reference 不传 `phase_list` 与 `split_mode`，让它自行决定拆分；
 - 用同一文件内 `## Phase N` 二级标题代替独立文件；
 - 复杂档缺失跨 Phase 集成计划；
+- 执行包缺来源内容指纹／批准依据、写入 allowlist、验证预期、停止条件或 Delivery 授权；
+- 来源变化后直接手改执行包并继续，而非标记 stale、重新派生和复核；
 - 状态文件未写 `phase_plan_paths` 数组就推进到 implementation。

@@ -18,7 +18,8 @@ description: 当 dd 系列长流程需要状态恢复、Gap Scan、Stage Gate、
 5. Review semantics stay fixed; execution cost follows risk；
 6. Persist before transition；
 7. Trae completion always ends with an explicit ASK；
-8. No fresh evidence, no PASS/fixed/completed claim。
+8. No fresh evidence, no PASS/fixed/completed claim；
+9. Canonical facts have one owner; derived views expire with their sources。
 
 ## 调用合同
 
@@ -49,6 +50,8 @@ delivery_policy: project-rules
 未显式传入时，只有直接响应用户目标的顶层编排器可推断为 `standalone`；被其他 Skill 调用时必须是 `child` 或 `helper`。禁止嵌套工作流重复 ASK “是否结束”。
 
 首次进入或恢复时读取 [runtime-contract.md](references/runtime-contract.md) 的 Preflight、State、Recovery 和 Stage Contract。进入最终完成 Gate 时再读取其中的 Completion Receipt 与 Host Close；不要为普通阶段预加载整份 reference。
+
+Stage 创建或消费规范文档、人审视图、弱模型执行包或验证证据时，读取 [artifact-contract.md](references/artifact-contract.md)；调用方只补领域检查，不复制通用字段和语义。
 
 ## Preflight
 
@@ -126,6 +129,8 @@ Workflow Gate 判断领域工作是否完成。Delivery Gate 处理 lint、test�
 4. 安全默认。
 
 Delivery 失败必须记录和处理，但不得倒推为已经验证的领域产物不存在。
+
+内容批准只通过 Workflow Gate，不授权 Git 或外部动作。只有用户当前明确授权，或工作流开始时已明确采用的项目交付策略，才能执行相应动作；禁止时记录 `not-authorized`，未要求时记录 `not-required`。后续 Stage 确实依赖该动作时才在该边界阻塞，不能反向撤销已验证的内容批准。
 
 ## 中断与暂停
 

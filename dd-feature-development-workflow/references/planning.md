@@ -5,9 +5,9 @@
 
 ## 概述
 
-编写全面的实现计划，假设工程师对我们的代码库零上下文，且品味存疑。记录他们需要知道的一切：每个任务要修改哪些文件、代码、测试、可能需要查阅的文档、如何测试。将整个计划拆成小步骤任务。DRY。YAGNI。TDD。频繁 commit。
+为零历史上下文的执行者生成自足、可验证的任务包。只展开当前任务需要的冻结事实，不复制无关背景或整段实现；保持 DRY、YAGNI 和 TDD。
 
-假设他们是有经验的开发者，但对我们的工具链和问题领域几乎一无所知。假设他们不太擅长测试设计。
+通用来源、失效、证据和授权字段由 [artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) 唯一维护；本文件只定义 Feature 计划如何实例化这些字段。
 
 **上下文：** 使用 Feature workflow 已固定的 worktree；不要自行创建第二套工作环境。
 
@@ -29,14 +29,9 @@
 
 此结构决定了任务分解。每个任务应产出独立的、有意义的变更。
 
-## 小步骤任务粒度
+## 任务粒度
 
-**每步是一个操作（2-5 分钟）：**
-- "编写失败的测试" - 一步
-- "运行它确认失败" - 一步
-- "实现最少代码让测试通过" - 一步
-- "运行测试确认通过" - 一步
-- "Commit" - 一步
+每个 Task 必须是有意义、可独立验证的行为切片，并在一个执行上下文中保留质量余量。不要把共享接口的设计分散给多个 Task，也不要为固定分钟数把脚手架、实现和唯一验收证据拆开。步骤仍按 Red → 验证失败 → Green → 验证通过 → 必要 Refactor 排序；Git 动作只在 `delivery_authorization` 允许时出现。
 
 ## 计划文档头部
 
@@ -58,46 +53,42 @@
 
 ## 任务结构
 
-````markdown
+```markdown
 ### 任务 N：[组件名称]
 
-**文件：**
-- 创建：`exact/path/to/file.py`
-- 修改：`exact/path/to/existing.py:123-145`
-- 测试：`tests/exact/path/to/test.py`
+**Sources：** [逐项填写路径、ID、版本、内容指纹、`approval={status, authority, decided_at, evidence_ref}`]
+
+**Consumes：** [精确输入／接口]
+
+**Produces：** [精确输出／供下游使用的接口]
+
+**Write scope：**
+- 创建：`exact/path`
+- 修改：`exact/path`
+- 删除：无
 
 - [ ] **步骤 1：编写失败的测试**
 
-```python
-def test_specific_behavior():
-    result = function(input)
-    assert result == expected
-```
+  指明测试文件、行为、输入和 oracle；只有签名或脆弱逻辑无法从来源确定时才内联必要代码。
 
 - [ ] **步骤 2：运行测试验证失败**
 
-运行：`pytest tests/path/test.py::test_name -v`
-预期：FAIL，报错 "function not defined"
+  运行：`<exact command>`
+  预期：`FAIL`，且失败原因是缺少目标行为。
 
 - [ ] **步骤 3：编写最少实现代码**
 
-```python
-def function(input):
-    return expected
-```
+  指明修改位置、必须保持的接口／约束和最小行为；不复制可从当前允许文件直接读取的整段代码。
 
 - [ ] **步骤 4：运行测试验证通过**
 
-运行：`pytest tests/path/test.py::test_name -v`
-预期：PASS
+  运行：`<exact command>`
+  预期：`PASS`，并写明证据位置。
 
-- [ ] **步骤 5：Commit**
+**Stop conditions：** [来源过期、越界、验证失败或缺权限时的 BLOCKED／STOP 与下一安全动作]
 
-```bash
-git add tests/path/test.py src/path/file.py
-git commit -m "feat: add specific feature"
+**Delivery authorization：** [`{status, actions, scope, authority, decided_at, evidence_ref}`]
 ```
-````
 
 ## 禁止占位符
 
@@ -106,26 +97,30 @@ git commit -m "feat: add specific feature"
 - "添加适当的错误处理" / "添加验证" / "处理边界情况"
 - "为上述代码编写测试"（没有实际测试代码）
 - "类似任务 N"（重复代码——工程师可能不按顺序阅读任务）
-- 只描述做什么而不展示怎么做的步骤（代码步骤必须有代码块）
+- 只描述目标，不给精确位置、接口、约束或验证 oracle
 - 引用了未在任何任务中定义的类型、函数或方法
 
 ## 注意事项
 - 始终使用精确的文件路径
-- 每个步骤都包含完整代码——如果步骤涉及代码变更，就展示代码
+- 必要签名／数据结构必须精确；整段实现仅在歧义或脆弱性确有需要时内联
 - 精确的命令和预期输出
-- DRY、YAGNI、TDD、频繁 commit
+- DRY、YAGNI、TDD；Git 步骤服从 `delivery_authorization`
 
 ## 自检
 
 编写完整计划后，以全新视角审视规格并对照检查计划。这是你自己执行的检查清单——不是子代理调度。
 
-**1. 规格覆盖度：** 浏览规格中的每个章节/需求。你能指出实现它的任务吗？列出所有遗漏。
+**1. 来源新鲜度：** 逐项核对每个任务的来源内容指纹和批准依据；任一变化将任务包标记 stale，重新派生。
 
-**2. 占位符扫描：** 搜索计划中的红旗——上方"禁止占位符"章节中的任何模式。修复它们。
+**2. 原文覆盖度：** 重新浏览批准原始规格中的每个适用章节／需求、Out of Scope 和跨功能约束；指出对应 Task／Test／Evidence，修复遗漏或越界。
 
-**3. 类型一致性：** 后续任务中使用的类型、方法签名和属性名是否与前面任务中定义的一致？任务 3 中叫 `clearLayers()` 但任务 7 中叫 `clearFullLayers()` 就是 bug。
+**3. 执行包完整性：** 检查 artifact-contract 的必需字段、精确验证预期、停止条件和授权；缺失即 BLOCKED。
 
-如果发现问题，直接内联修复。无需重新审查——修好继续推进。如果发现规格中的需求没有对应任务，就添加任务。
+**4. 接口一致性：** 后续任务使用的类型、签名和属性名必须与其 `Consumes` 来源及前序 `Produces` 一致。
+
+**5. 占位符扫描：** 搜索上方“禁止占位符”的模式并修复。
+
+发现派生表达错误可重新生成并复核；发现原始规格冲突、缺批准或权限时停止并回到属主，不得在计划内自行裁决。
 
 ## 执行交接
 

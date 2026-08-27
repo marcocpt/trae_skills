@@ -7,9 +7,9 @@ description: 当需要编写新功能/重大重构/API 迁移的完整规格套�
 
 ## 目标
 
-先读规则和 grill，再按"需求 → 设计 → 视觉原型（UI）→ 测试用例表"逐篇完成。每篇都经过用户确认和原子提交，不能批量生成后一次确认。
+先读规则和 grill，再按"需求 → 设计 → 视觉原型（UI）→ 测试用例表"逐篇完成。每篇都经过用户确认并记录版本／内容指纹；Git 交付按已明确的策略单独执行，不能把内容批准当作 Git 授权。
 
-长流程遵循 [dd-workflow-runtime](../dd-workflow-runtime/SKILL.md)；默认只加载本文件，进入具体 Stage 时再读 reference，以减少 token 而不降低 Gate。
+长流程遵循 [dd-workflow-runtime](../dd-workflow-runtime/SKILL.md)；规范事实、派生视图和证据遵循 [artifact-contract](../dd-workflow-runtime/references/artifact-contract.md)。默认只加载本文件，进入具体 Stage 时再读 reference，以减少 token 而不降低 Gate。
 
 ## 适用边界
 
@@ -32,6 +32,7 @@ invocation_mode: standalone
 host: auto
 requested_entry: rules | requirements | design | visual | test-matrix
 state_file: $(git rev-parse --git-dir)/writing-specs-state.json
+delivery_policy: project-rules
 ```
 
 由 Feature workflow 调用时：
@@ -41,9 +42,10 @@ invocation_mode: child
 upstream_requirements_seed: <path-or-state-key>
 worktree_path: <inherited>
 resolved_decisions: []
+delivery_policy: <inherited>
 ```
 
-`child` 复用上游 worktree 和需求事实，完成后返回规格路径、Commit 和 Gate 证据，不执行最终 Host Close。原子 writer 和 Git/CI 能力使用 `helper`。
+`child` 复用上游 worktree、需求事实和交付边界，完成后返回规格路径、批准版本／内容指纹、Gate 与适用的 Delivery 证据，不执行最终 Host Close。原子 writer 和 Git/CI 能力使用 `helper`。
 
 
 ### 单文档模式
@@ -53,8 +55,8 @@ resolved_decisions: []
 ## Preflight 与恢复
 
 1. 读取适用规则、`docs.md`、功能列表和最近规格；
-2. 恢复状态；状态缺失时从临时笔记、文档、review、Commit 重建；
-3. 验证 worktree、文档顺序和已确认版本；
+2. 恢复状态；状态缺失时从临时笔记、文档、review、批准证据和适用的 Commit 重建；
+3. 验证 worktree、文档顺序、已确认版本及内容指纹；
 4. Gap Scan 定位第一个未满足 Gate；
 5. 首次写文件前确定工作环境；`child` 继承父工作流环境，不重复询问；
 6. 已确认文档不重写、不重问；未确认下游产物不能作为有效基线。
@@ -64,11 +66,12 @@ resolved_decisions: []
 - feature id/name、mode、worktree；
 - rules/requirements seed；
 - 当前文档与版本；
-- 已完成 Stage、文档/review/summary/Commit；
+- 已完成 Stage、文档/review/summary、批准版本／内容指纹；
+- `delivery_policy`、Git 授权状态与实际 Delivery 证据；
 - 用户确认与 blocking issue；
 - `next_safe_action`。
 
-每次 ASK 结果、文档写入、review、确认和 Commit 后原子持久化。
+每次 ASK 结果、文档写入、review、确认和已授权 Delivery 动作后原子持久化。
 
 ## Stage Graph
 
@@ -77,19 +80,19 @@ Rules & References
         ↓
 Grill / Upstream Seed Check
         ↓
-Requirements → Confirm → Commit
+Requirements → Confirm → Persist
         ↓
-Design       → Confirm → Commit
+Design       → Confirm → Persist
         ↓
-Visual (UI)  → Confirm → Commit
+Visual (UI)  → Confirm → Persist
         ↓
-Test Matrix  → Confirm → Commit
+Test Matrix  → Confirm → Persist
         ↓
-Cleanup → Return to parent / Host Close
+Delivery（按策略）→ Cleanup → Return to parent / Host Close
 ```
 
 <HARD-GATE>
-严格按依赖推进。每篇文档必须"写 → 自检 → 用户确认 → 提交"，其 Commit 可追溯后才能进入下一篇。禁止并行编写不同文档、批量确认、跨阶段累积未提交变更。
+严格按依赖推进。每篇文档必须"写 → 自检 → 用户确认 → 持久化批准版本／内容指纹"后才能进入下一篇。Git Stage／Commit／Push 只按已明确的 `delivery_policy` 和授权执行；同一 worktree 内不得因 Git 未被要求或被明确禁止而撤销内容批准或重复询问。禁止并行编写不同文档、批量确认，禁止跨 worktree 消费未交付状态。
 </HARD-GATE>
 
 ## Stage 0：规则与参考
@@ -101,7 +104,7 @@ Cleanup → Return to parent / Host Close
 - app 功能列表中的编号、优先级、相关功能；
 - 最近 1–3 份规格的结构和粒度。
 
-写 `.step0-rules-summary.md` 并提交。缺文件时先搜索；确实不存在则记录默认来源或 ASK 唯一 blocker。详细清单见 [intake-and-requirements.md](references/intake-and-requirements.md)。
+写 `.step0-rules-summary.md` 并持久化；是否 Git 交付由 `delivery_policy` 决定。缺文件时先搜索；确实不存在则记录默认来源或 ASK 唯一 blocker。详细清单见 [intake-and-requirements.md](references/intake-and-requirements.md)。
 
 ## Stage 1：Grill 或 Seed Check
 
@@ -109,7 +112,7 @@ Cleanup → Return to parent / Host Close
 
 `child`：优先验证上游 Requirements Seed；一致则记录复用，不重复 grill。冲突或 blocker 才 ASK。
 
-确认后写 `.step1-requirements-summary.md` 或 `.step1-requirements-confirmed.md` 并提交。
+确认后写 `.step1-requirements-summary.md` 或 `.step1-requirements-confirmed.md`，记录确认依据并按交付策略处理。
 
 ## Stage 2：Requirements
 
@@ -120,7 +123,7 @@ Cleanup → Return to parent / Host Close
 - 不含类名、方法、字段、枚举、框架 API、并发原语或文件路径；
 - 无 TODO/TBD/占位符。
 
-写入后先落盘 draft 并完成自检，再进入确认与提交。完整写作与检查见 [intake-and-requirements.md](references/intake-and-requirements.md)。
+写入后先落盘 draft 并完成自检，再进入内容确认；Git 交付是独立 Gate。完整写作与检查见 [intake-and-requirements.md](references/intake-and-requirements.md)。
 
 ## Stage 3：Design
 
@@ -143,7 +146,7 @@ Cleanup → Return to parent / Host Close
 - 每个 FR 至少映射一个 Test ID / 用例，引用 AC 编号；不复写 Given/When/Then（唯一属主是 AC，多用例只写差异化断言）；
 - 登记 Population 分母与 item registry（紧凑记法，不机械展开）、oracle、数值 policy、Evidence schema；
 - 追溯矩阵不在正文手写，由 trace_map 或生成产物承载；
-- 标记现有覆盖 `COVERED / PARTIAL / MISSING / DEFERRED`；
+- 按 artifact-contract 标记现有覆盖；
 - UI AC 有真实可见证据；
 - 头部记录所基于的 Requirements/Design 版本。
 
@@ -151,33 +154,25 @@ Cleanup → Return to parent / Host Close
 
 ## 自检与确认
 
-写作时同步完成 A/B/C 三方向自检，不单设审查轮次：
-
-| 方向 | 关注点 |
-|---|---|
-| A | 完整性、一致性、项目规则与文档层级 P0 |
-| B | 范围、YAGNI、可设计/架构质量 |
-| C | 可验证性、FR/AC 映射、UI 可观测性 |
-
-自检发现的问题立即修复后再提交确认。确认前展示自检结论和遗留建议，然后一次 ASK：
+通用 A/B/C 名称和语义只取自 [review-gate](../dd-workflow-runtime/references/review-gate.md)；本 writer 只补 Requirements／Design／Visual／Test Matrix 特有检查，见 [review-and-delivery.md](references/review-and-delivery.md)。自检发现的问题立即修复后再提交内容确认。确认前展示自检结论和遗留建议，然后一次 ASK：
 
 1. 确认并进入下一篇；
 2. 修改本篇并重新确认；
 3. 回到上游文档/需求澄清。
 
-最后一篇也必须确认。详细模板、Commit 和恢复规则见 [review-and-delivery.md](references/review-and-delivery.md)。
+最后一篇也必须确认。详细模板、Delivery 和恢复规则见 [review-and-delivery.md](references/review-and-delivery.md)。
 
 ## Cleanup 与 Exit Gate
 
-所有文档确认和提交后：
+所有文档确认并持久化后：
 
-1. 删除本技能创建的 `.step0/.step1` 临时笔记并提交；
+1. 删除本技能创建的 `.step0/.step1` 临时笔记；Git 处理仍遵循已明确交付策略；
 2. 不删除上游 Feature 创建的 seed；
-3. 验证文档版本、review、summary、Commit 和同步关系；
+3. 验证文档版本、内容指纹、批准依据、review、summary、同步关系和适用的 Delivery 证据；
 4. 确认 blocking issue 为零；
 5. 原子持久化最终状态。
 
-默认保留逐步 Commit 以保证恢复和追溯。只有用户明确要求且项目规则允许时，才把历史整理作为独立 Delivery 任务；不得在本工作流中擅自 reset、force push 或破坏父工作流提交。
+版本、内容指纹和批准依据负责内容追溯；它们不授权 Git。只有用户当前明确授权，或工作流开始时已明确采用的项目交付策略，才执行 Stage／Commit／Push。未要求记 `not-required`，明确禁止记 `not-authorized`；不得在本工作流中擅自 reset、force push 或破坏父工作流提交。
 
 `child` 将结果返回 Feature workflow；`standalone` 进入 Host Close。
 
@@ -202,7 +197,8 @@ Codex：正常交付最终摘要，除非用户或项目规则要求额外确认
 - 并行写多篇或批量确认；
 - 未完整展示自检结论就确认；
 - Requirements/Design 违反文档层级 P0；
-- 上一步未确认、未提交就进入下游；
+- 上一步未确认或批准版本／内容指纹未持久化就进入下游；
+- 把内容批准解释成 Git／外部动作授权，或因用户已禁止 Git 而重复询问；
 - child 自行 Host Close；
 - Trae 完成后直接结束。
 
@@ -212,4 +208,4 @@ Codex：正常交付最终摘要，除非用户或项目规则要求额外确认
 - Requirements writer：[references/requirements-writer.md](references/requirements-writer.md)
 - Design writer：[references/design-writer.md](references/design-writer.md)
 - Design、Visual、Test Matrix 汇总：[references/downstream-documents.md](references/downstream-documents.md)
-- 自检、确认、提交、恢复与补救：[references/review-and-delivery.md](references/review-and-delivery.md)
+- 自检、确认、Delivery、恢复与补救：[references/review-and-delivery.md](references/review-and-delivery.md)

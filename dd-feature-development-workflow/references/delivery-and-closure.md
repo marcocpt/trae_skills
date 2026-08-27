@@ -4,7 +4,7 @@
 
 ## 1. Documentation
 
-读取项目测试/文档规则，比较已交付 SHA 与规格，不只看文件列表。分析：
+读取项目测试／文档规则，比较已交付 SHA（尚未要求 Commit 时比较冻结 diff／文件指纹）与规格，不只看文件列表。分析：
 
 - 直接行为与依赖；
 - 共享模型、协议、配置、持久化；
@@ -25,19 +25,19 @@ Gate：文档与已验证行为一致，`current_stage=delivery`。
 
 ## 2. Delivery
 
-按共享运行时 Delivery policy 与项目 Git/CI 规则执行：
+先按共享运行时解析 `delivery_policy` 和每类动作的授权；内容批准本身不授权 Git。只执行其中明确要求且获准的动作：
 
 1. 检查工作区和准确 diff；
 2. lint / typecheck；
 3. 必需测试或已存在的同 SHA CI 证据；
-4. 按逻辑 commit；
-5. push 正确分支；
-6. 等待与该 SHA 对应的 CI；
+4. 策略要求且获准时按逻辑 commit；
+5. 策略要求且获准时 push 正确分支；
+6. 需要远程 CI 时等待与该 SHA 对应的结果；
 7. 按需同步 AI-test。
 
 不得 force push、推错 main/master、暂存无关脏文件或提交秘密。AI-test 同步前先检查目标 worktree 是否有未提交变更；dirty 或同步失败才 ASK。
 
-每个外部动作前写 `in_progress`，完成后记录 SHA、run 和远端状态。Gate：项目要求的 Delivery 动作全部有证据，`current_stage=closure`。
+每个外部动作前写 `in_progress`，完成后记录 SHA、run 和远端状态。未要求的动作记 `not-required`，明确禁止的动作记 `not-authorized`；后续 Gate 依赖被禁止动作时保持 `BLOCKED`，不得假装完成。Gate：项目要求且获准的 Delivery 动作全部有证据，`current_stage=closure`。
 
 ## 3. Closure
 

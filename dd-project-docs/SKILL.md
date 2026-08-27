@@ -36,8 +36,9 @@ resolved_decisions: []
 ## 通用 Gate
 
 1. 先读取适用项目规则与已批准上游 SSOT；
-2. 不重复询问已解决事实，只询问当前 artifact 的 blocker；
-3. 文档层级不得越界：项目合同不写实现细节，Phase Contract 不替代 Feature Requirements/Design；
-4. 写入后按 [review-gate](../dd-workflow-runtime/references/review-gate.md) 自检；
-5. 需要用户裁决时按 [ask](../dd-workflow-runtime/references/ask.md)；
-6. `child` 只返回父工作流，不执行 Host Close。
+2. 规范事实、人审视图与派生材料遵循 [artifact-contract](../dd-workflow-runtime/references/artifact-contract.md)，本 writer 只拥有当前 artifact 的新增事实；
+3. 不重复询问已解决事实，只询问当前 artifact 的 blocker；
+4. 文档层级不得越界：项目合同不写实现细节，Phase Contract 不替代 Feature Requirements/Design；
+5. 写入后按 [review-gate](../dd-workflow-runtime/references/review-gate.md) 自检；
+6. 需要用户裁决时按 [ask](../dd-workflow-runtime/references/ask.md)；
+7. `child` 只返回父工作流，不执行 Host Close。
