@@ -55,7 +55,7 @@
 - [x] 第五轮 findings 本地核对：全部属实，已修复（见下）
 - [x] 第六轮送审：MCP 通道返回 **不能 ACCEPTED**：R5-002（ci.md 仍把 gh 不可用当 local-final 条件）、R-009（测试未跨文件断言 CI）。同时确认 R5-001、R4-001/002 已 CLOSED
 - [x] 第六轮 findings 本地核对：全部属实，已修复（见下）
-- [ ] 第七轮送审：修复后继续 MCP 送审，直到 ChatGPT 返回 `CLOSED`
+- [x] **第七轮送审：MCP 通道返回 `ACCEPTED`**（多次轮询一致）——外审迭代闭环达成，ChatGPT 满意。conversation: `chatgpt-review-skills-develop-0828-0920`，task `98026ccc-cb08-4805-b242-c766a2ef6223`
 
 ## 第三轮 findings 与修复记录
 
@@ -90,6 +90,12 @@
 |---|---|---|---|
 | R5-002 | MEDIUM | 属实：ci.md 本地诊断封闭列表仍含"gh 不可用且用户选择不修复"，与 test-location 的 remote_ci_required 模型冲突 | ci.md 改为仅 `remote_ci_required=false` 才 local-final；gh 不可用→BLOCKED/ASK；红线"CI 不可用"定义同步；test-location 删"两种情形"旧措辞 |
 | R-009 | MEDIUM | 属实：test_gh_unavailable 只查 TEST_LOCATION 不查 CI | 扩为跨文件断言（CI+TEST_LOCATION），加"两种情形"负向断言 |
+
+## 第七轮送审结果
+
+- 结果：**ACCEPTED**（ChatGPT 审核满意，外审迭代闭环）
+- 验证：同一 task 多次轮询均返回 `ACCEPTED`（`review-bundle-r7 +2`），非中途快照
+- 该轮确认前六轮全部 findings 均已正确修复，无新问题
 
 ## 第二轮 findings 与修复记录
 
