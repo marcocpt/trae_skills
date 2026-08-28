@@ -1,3 +1,7 @@
+> retired-reference: not-routed
+>
+> 本文件已由 `intake-and-environment.md`、`specification.md`、`planning-stage.md` 取代；主 `SKILL.md` 不再路由。保留以作历史对照，删除待精确授权（`cleanup_pending_authorization`）。
+
 # Feature Specification and Planning
 
 只在 Intake、Environment、Specification 或 Planning Stage 读取。

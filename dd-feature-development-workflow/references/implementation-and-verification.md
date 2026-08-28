@@ -1,3 +1,7 @@
+> retired-reference: not-routed
+>
+> 本文件已由 `implementation.md`、`candidate.md` 取代；主 `SKILL.md` 不再路由。保留以作历史对照，删除待精确授权（`cleanup_pending_authorization`）。
+
 # Feature Implementation and Verification
 
 只在 Implementation 或 Final Candidate Stage 读取。

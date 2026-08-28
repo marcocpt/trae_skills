@@ -1,3 +1,7 @@
+> retired-reference: not-routed
+>
+> 孤儿模板，无活动消费者；主 `SKILL.md` 不再路由。保留以作历史对照，删除待精确授权（`cleanup_pending_authorization`）。
+
 # 计划文档审查员提示模板
 
 调度计划文档审查员子代理时使用此模板。
