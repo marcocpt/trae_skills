@@ -53,18 +53,19 @@ gh workflow run "<workflow-name>" --ref <当前分支>
   3. 其他错误 → 用 AskUserQuestion 询问：重试 / 排查 CI 配置 / 终止
 - **禁止**：把"触发本身失败"等同于"CI 不可用"降级本地——触发失败是步骤 2 的分支，不是步骤 3 的入口
 
-### 3. 本地测试（无自建服务器或 CI 不可用）
+### 3. 本地测试（仅当真正不存在远端 CI 能力）
 
 仅当以下任一成立时执行（封闭列表，不得扩展）：
-- 项目无 `.github/workflows/` 自建服务器配置
+- 项目无 `.github/workflows/` 自建服务器配置（真正不存在远端 CI 能力）
 - `gh` 命令不可用且用户在 AskUserQuestion 中选择不修复鉴权
-- **已有 CI 结果不可复用**（commit 不一致）且 CI 触发失败且用户在 AskUserQuestion 中明确选择本地
+
+**CI 触发失败（分支未 push、`gh workflow run` 报错、鉴权失败等）不进入本封闭列表**——一律按步骤 2 的"触发本身失败" AskUserQuestion 流程处理（修复/重试/终止），不允许据此降级本地测试作为最终验证。
 
 运行项目对应的测试命令（如 `xcodebuild test`、`swift test`、`npm test`、`cargo test`、`pytest`、`go test`）。具体命令以项目 `AGENTS.md` / 项目脚本为准；本文件不复制项目特定命令。
 
 > **"用户明确要求"不凌驾于 CI 优先之上**：当步骤 1 已有可复用的成功 CI 结果时，用户要求本地不构成降级理由。此时应用 AskUserQuestion 给出"复用 CI 结果（推荐）/ 仍要本地仅作参考 / 终止"选项。
 >
-> **"CI 不可用"的严格定义**：仅指上述封闭列表三种情形。分支未 push、`gh workflow run` 报错、CI 触发失败**均不构成"CI 不可用"**——这些是步骤 2 的"触发本身失败"，按步骤 2 的 AskUserQuestion 流程处理。
+> **"CI 不可用"的严格定义**：仅指上述封闭列表两种情形。分支未 push、`gh workflow run` 报错、CI 触发失败**均不构成"CI 不可用"**——这些是步骤 2 的"触发本身失败"，按步骤 2 的 AskUserQuestion 流程处理。
 >
 > **有必需远端 CI Gate 时的本地测试边界**：本地测试只能在上述封闭列表情形下作为**最终验证**；存在必需远端 CI Gate 时，无论用户如何选择，"本地"最多得到 `CONDITIONAL`/`BLOCKED` 结果，**不得据此声明 PASS**（与 [ci.md](ci.md) 场景 2.4/3 的风险豁免一致）。
 

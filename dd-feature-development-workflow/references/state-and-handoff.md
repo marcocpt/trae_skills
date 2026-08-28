@@ -72,15 +72,17 @@ merge、push、cleanup 等不可瞬时动作使用运行时的 `in_progress: {op
 
 ## 3. legacy `current_step` mapping
 
+`current_step`/`current_phase` 只作兼容 label，**不得用于排序或推进**；恢复顺序唯一读取 `current_stage` + Stage graph。冻结映射与新 Stage 顺序一致：
+
 ```text
 0 → intake
 1 → environment
 2 → specification
 3 → planning
 4 / 4.x → implementation
-5 / 5.x → final-candidate
-6 → confirmation
-7 → documentation
+5 / 5.x → documentation
+6 / 6.x → final-candidate
+7 → confirmation
 8 → delivery
 9 / 9.x → closure
 ```

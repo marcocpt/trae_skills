@@ -183,6 +183,20 @@ class TestStateProducerConsumerConsistent(unittest.TestCase):
         self.assertNotIn("integration_ci_run.head_sha == candidate_sha", impl,
                          "Integration Gate must not reference candidate_sha before freeze (R-005)")
 
+    def test_feature_closure_keeps_state_until_after_cleanup(self):
+        state = read(STATE)
+        delivery = read(DELIVERY)
+        # state.md must not delete feature state immediately after merge.
+        self.assertIn("feature-development", state,
+                      "state.md must branch deletion by WORKFLOW_TYPE (R4-001)")
+        self.assertIn("禁止在 Closure 校验与 Receipt 写入前删除", state,
+                      "state.md must forbid deleting feature state before Closure (R4-001)")
+        # closure writes Receipt and cleanup in_progress before deleting state.
+        self.assertIn("Completion Receipt", delivery,
+                      "delivery must write Completion Receipt during Closure (R4-001)")
+        self.assertIn("operation: cleanup", delivery,
+                      "delivery must write cleanup in_progress before state disposal (R4-001)")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -12,7 +12,7 @@
 
 - dd-bug-fix-workflow 或 dd-feature-development-workflow 的步骤开始前，需要恢复工作上下文
 - 工作树创建/验证成功后写入状态
-- 合并清理前删除状态
+- 合并后按 `WORKFLOW_TYPE` 分支处置状态：bug-fix 允许合并清理时删除；feature-development 须先完成 Closure（写 Completion Receipt、`in_progress.operation=cleanup`），cleanup 完成或 worktree 删除后才删除/归档活动状态，**不得在 Closure 前删除**
 
 ## 参数化
 
@@ -148,7 +148,7 @@ Bootstrap 没有状态文件时，先从仓库中的 `docs.md`、Roadmap、Archi
 - **更新 `final_candidate_branch`**（仅 feature-development）：创建最终合并候选分支时记录
 - **更新候选 exact-SHA 字段**（仅 feature-development）：冻结候选时写 `candidate_sha`、`candidate_review`、`full_spec_gap`；完整远程 CI 通过且 `full_ci_run.head_sha == candidate_sha` 时才写 `full_ci_run={run_id,url,head_sha,conclusion}` 与 `full_ci_passed=true`
 - **更新 `in_progress`**：merge/push/cleanup 等不可瞬时动作执行前写 `in_progress: {operation, target, source, started_at}`（见 runtime-contract §4），动作成功后写完成证据再清除；**不另设布尔兼容字段**
-- **删除**：合并成功后（**禁止 merge 前删除**），须在 `git merge --no-ff` 成功后执行，此时 `git-dir` 指向 worktree 私有目录
+- **删除**（按 `WORKFLOW_TYPE` 分支）：**bug-fix** 在 `git merge --no-ff` 成功后、清理前可删除（**禁止 merge 前删除**）；**feature-development** 在 merge 后仍须保留状态直到 Closure 完成——写 Completion Receipt、cleanup 执行并验证后才删除/归档活动状态，**禁止在 Closure 校验与 Receipt 写入前删除**（delivery-and-closure 的 Closure 流程为准）
 - **Bootstrap 写入**：Preflight 结束后写入；每个节点 Gate 通过后更新 `current_node`、`completed_nodes`、`artifacts` 和 gaps
 - **Bootstrap 完成**：Handoff 准备后设为 `handoff-ready`；下游确认接收且 Exit Gate 通过后、Host Close ASK 前设为 `completed`，不立即删除
 
@@ -188,9 +188,9 @@ with open(state_file, 'w') as f:
 "
 ```
 
-### 合并中状态标记（仅 bug-fix 步骤 7.1 / feature-dev 合并步骤）
+### 合并中状态标记（仅 bug-fix 步骤 7.1 / feature-dev Delivery 合并步骤）
 
-执行 `git merge` 前必须先标记合并中状态，merge 成功后才删除状态文件：
+执行 `git merge` 前必须先标记合并中状态；merge 成功后按 `WORKFLOW_TYPE` 处置：
 
 ```bash
 # 1. merge 前更新状态文件
@@ -210,10 +210,15 @@ cd "$main_root"
 git checkout "$BASE_BRANCH"
 git merge --no-ff <工作树分支>
 
-# 3. merge 成功后回到 worktree 删除状态文件
+# 3. merge 成功后处置状态（按 WORKFLOW_TYPE）
+#    - bug-fix: 清理时可直接删除
+#    - feature-development: 保留直到 Closure 完成（Receipt 写入、cleanup 验证后）才删除
 cd "$WORKTREE_PATH"
 git_dir=$(git rev-parse --git-dir)
-rm -f "$git_dir/${WORKFLOW_TYPE}-state.json"
+if [ "$WORKFLOW_TYPE" = "bug-fix" ]; then
+  rm -f "$git_dir/${WORKFLOW_TYPE}-state.json"
+fi
+# feature-development: 继续执行 delivery-and-closure 的 Closure 流程，最后才删除/归档
 ```
 
 ### 状态文件不存在时的恢复策略
@@ -227,12 +232,14 @@ rm -f "$git_dir/${WORKFLOW_TYPE}-state.json"
 5. 若无 commit：识别为「TDD 中」状态，询问用户是否继续修复或重新开始
 6. 仅当无法判断进度时，才从步骤 0 重新开始
 
-### 删除模板（merge 成功后执行）
+### 删除模板（仅 bug-fix 合并清理时执行）
 
 ```bash
 git_dir=$(git rev-parse --git-dir)
 rm -f "$git_dir/${WORKFLOW_TYPE}-state.json"
 ```
+
+> feature-development **不适用此模板**：merge 后先完成 Closure（校验 candidate/full_ci/completed_phases、写 Completion Receipt、`in_progress.operation=cleanup` 并执行），cleanup 完成或 worktree 删除后才删除/归档活动状态（见 delivery-and-closure §2/§3）。
 
 ## 并发检查
 

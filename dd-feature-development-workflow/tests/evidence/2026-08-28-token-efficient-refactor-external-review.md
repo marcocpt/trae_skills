@@ -49,7 +49,9 @@
 - [x] R-001..R-009 本地核对：全部属实，已修复（commit `e57350f`）
 - [x] 第三轮送审：通过 **chatgpt-review MCP 通道**（`chatgpt_send_file` 上传快照，conversation `chatgpt-review-skills-develop-0828-0920`）返回 **不 ACCEPTED**：R-001（state.md producer 仍写旧字段）、R-004（merge_in_progress 双重属主）、R-005（Integration Gate 引用未冻结 candidate_sha）、R-007（本地最终验证边界）+ 1 验证缺口
 - [x] 第三轮 findings 本地核对：全部属实，已修复（见下）
-- [ ] 第四轮送审：修复后继续 MCP 送审，直到 ChatGPT 返回 `CLOSED`
+- [x] 第四轮送审：MCP 通道返回 **不能 ACCEPTED**：R4-001（merge 后提前删 state）、R-007（CI trigger 降级矛盾）、R4-002（legacy mapping 顺序冲突）+ R-009（测试文件未入 bundle）。同时确认 R-001/R-002/R-003/R-004主体/R-005/R-008 已 CLOSED
+- [x] 第四轮 findings 本地核对：全部属实，已修复（见下）
+- [ ] 第五轮送审：修复后继续 MCP 送审（bundle 将含测试文件），直到 ChatGPT 返回 `CLOSED`
 
 ## 第三轮 findings 与修复记录
 
@@ -60,6 +62,15 @@
 | R-005 | HIGH | 属实：implementation §3.1 绑定 `integration_ci_run.head_sha == candidate_sha`（循环依赖） | 改为绑定 `integration_verification.bindings.implementation_digest`；candidate_sha 留 Final Candidate |
 | R-007 | MEDIUM | 属实：test-location 封闭列表与 ci.md 风险豁免叠加 | test-location 增加"有必需远端 CI Gate 时本地最多 CONDITIONAL/BLOCKED，不得 PASS"边界 |
 | 验证缺口 | VERIFY | 属实：无 state.md producer 断言 | 新增 TestStateProducerConsumerConsistent（3 个断言） |
+
+## 第四轮 findings 与修复记录
+
+| ID | Severity | 核对 | 修复 |
+|---|---|---|---|
+| R4-001 | HIGH | 属实：state.md 规定 merge 成功后即删 state，Feature Closure 失去事实源 | state.md 按 WORKFLOW_TYPE 分支：feature-development 保留 state 直到 Closure 完成（Receipt + cleanup 验证后）才删除 |
+| R-007 | MEDIUM | 属实：ci.md/test-location 封闭列表允许"CI 触发失败+用户选本地→本地最终验证"，与红线矛盾 | CI 触发失败不进入 local-final-verification 封闭列表，一律 ASK 修复/重试/终止 |
+| R4-002 | MEDIUM | 属实：legacy current_step 映射顺序与新 Stage 顺序冲突 | 冻结映射为新顺序（4=impl,5=doc,6=final-candidate,7=confirmation,8=delivery,9=closure），current_step 仅作 label 不用于排序 |
+| R-009 | VERIFY | 属实：测试文件未入 bundle | 下一轮 bundle 含测试快照；新增 R4-001 回归断言 |
 
 ## 第二轮 findings 与修复记录
 
