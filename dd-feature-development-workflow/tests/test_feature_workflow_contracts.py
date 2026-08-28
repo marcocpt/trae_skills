@@ -15,6 +15,9 @@ RUNTIME_ROOT = WORKFLOW_ROOT.parent / "dd-workflow-runtime"
 
 SKILL = WORKFLOW_ROOT / "SKILL.md"
 ARTIFACT = RUNTIME_ROOT / "references" / "artifact-contract.md"
+ARTIFACT_VERIFICATION = RUNTIME_ROOT / "references" / "artifact-verification.md"
+ARTIFACT_SOURCE = RUNTIME_ROOT / "references" / "artifact-source-and-packet.md"
+ARTIFACT_LIFECYCLE = RUNTIME_ROOT / "references" / "artifact-lifecycle.md"
 REVIEW_GATE = RUNTIME_ROOT / "references" / "review-gate.md"
 CANDIDATE = WORKFLOW_ROOT / "references" / "candidate.md"
 DELIVERY = WORKFLOW_ROOT / "references" / "delivery-and-closure.md"
@@ -117,7 +120,7 @@ class TestCompactVerificationKeepsInvariants(unittest.TestCase):
     """AC-04: compact verification keeps coverage/run/bindings/validity."""
 
     def test_compact_verification_keeps_coverage_run_bindings_validity(self):
-        text = read(ARTIFACT)
+        text = read(ARTIFACT_VERIFICATION)
         for key in ("coverage", "runs", "bindings", "validity"):
             self.assertIn(key, text,
                           f"verification must keep '{key}' (AC-04)")
