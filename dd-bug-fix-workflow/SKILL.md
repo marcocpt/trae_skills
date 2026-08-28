@@ -90,7 +90,7 @@ User Verification
 
 ## Bug State
 
-除运行时通用字段外，Bug 工作流记录领域状态：症状与期望行为、复现步骤、日志来源、调试日志路径、失败测试、根因、修复分支与提交、CI 运行、用户验证结论、文档路径、merge commit。完整字段 schema、旧状态 `current_step` 映射与字段冲突/状态缺失的恢复规则见 [state.md](references/state.md)，状态在每个 Stage Gate 通过后原子写入。
+除运行时通用字段外，Bug 工作流记录领域增量状态：症状与期望行为、复现步骤、日志来源、调试日志路径、失败测试、根因、修复提交、CI 运行、用户验证结论、文档路径、merge commit。Bug 领域增量字段 schema、旧状态 `current_step` 映射与字段冲突/状态缺失的恢复规则见 [state.md](references/state.md)，状态在每个 Stage Gate 通过后原子写入。
 
 ## Stage 路由
 

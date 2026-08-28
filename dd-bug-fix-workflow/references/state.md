@@ -1,10 +1,10 @@
 # Bug 工作流状态字段与恢复
 
-通用状态合同由 [dd-workflow-runtime/state](../../dd-workflow-runtime/references/state.md) 拥有；本文件只定义 Bug 工作流的领域字段、legacy 映射与冲突修正规则。
+通用状态合同由 [dd-workflow-runtime/state](../../dd-workflow-runtime/references/state.md) 拥有：分支专用字段 `<BRANCH_FIELD>` 对 bug-fix 解析为 `fix_branch`，由 runtime 拥有，不在本文件重复定义。本文件只定义 Bug 工作流的领域增量字段、legacy 映射与冲突修正规则。
 
-## 领域字段
+## 领域增量字段
 
-除运行时通用字段外记录：
+除运行时通用字段（含 `fix_branch`）外记录：
 
 ```yaml
 bug_id: ""
@@ -15,7 +15,6 @@ log_sources: []
 debug_log_path: null
 failing_test: null
 root_cause: null
-fix_branch: ""
 fix_commits: []
 ci_runs: []
 user_verified: false
