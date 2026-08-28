@@ -252,7 +252,7 @@ digraph project_research {
 - 文件名：`docs/planning/技术调研.md`（按项目 docs.md 命名规则优先）
 - 格式：Markdown，层级标题
 - 文档头部：`> 最后更新：YYYY-MM-DD | 版本：vX.Y`
-- 文末：版本记录列表
+- 文末：版本记录（仅保留最新一行：版本号 + 一句话语义变化；更早历史由 Git 承担）
 - 中文标点（，。！？：；），英文术语保持原文
 - 不使用 emoji
 - ADR 候选文件标注"待批准"状态

@@ -250,7 +250,7 @@ digraph skill_relation {
 - 文件名：`docs/standards/CODING_STANDARDS.md`、`docs/standards/git-commit-message.md`（必含）；`docs/standards/{语言/测试规则}.md`（可选）
 - 格式：Markdown，层级标题
 - 文档头部：`> 最后更新：YYYY-MM-DD | 版本：vX.Y`
-- 文末：版本记录列表
+- 文末：版本记录（仅保留最新一行：版本号 + 一句话语义变化；更早历史由 Git 承担）
 - 中文标点（，。！？：；），英文术语保持原文
 - 不使用 emoji（除非用户明确要求）
 - 不写具体类名 / 方法签名作为命名示例
