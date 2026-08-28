@@ -157,7 +157,7 @@ trigger: 什么事件发生时必须处理本条
 
 ## 产物生命周期与 INDEX（引用共享合同）
 
-- LATER 条目与 INDEX 分别为 `working`/`derived`，详见 [dd-workflow-runtime/artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) §3。刷新 INDEX 与条目属于同一 change set 是不变量；只有当已获得 Delivery 授权要求 commit 时才要求同一 commit。
+- LATER 条目与 INDEX 分别为 `working`/`derived`，详见 [dd-workflow-runtime/artifact-lifecycle](../../dd-workflow-runtime/references/artifact-lifecycle.md) §3。刷新 INDEX 与条目属于同一 change set 是不变量；只有当已获得 Delivery 授权要求 commit 时才要求同一 commit。
 
 ## INDEX 刷新
 

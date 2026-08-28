@@ -37,7 +37,7 @@
 
 ## 生命周期与关闭（引用共享合同）
 
-生命周期、同步影响与保留的唯一定义见 [dd-workflow-runtime/artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) §3。Phase Contract 不重定义 `canonical`/`active-change`/`closed-change`/`derived`/`evidence`/`decision`/`working`、`phase_activity`/`package_lifecycle`/`package_review` 或 `gates` 字段；仅引用并增加项目级检查：关闭时把 Requirements / Design / Test Policy 的长期事实提升到 canonical（按影响矩阵 `updated|no-update|stale|not-applicable|retired` 判定），生成 closure README，`closed-change` 后不再同步，下游不得用子 change review 状态自动重开或关闭 Phase。
+生命周期、同步影响与保留的唯一定义见 [dd-workflow-runtime/artifact-lifecycle](../../dd-workflow-runtime/references/artifact-lifecycle.md) §3。Phase Contract 不重定义 `canonical`/`active-change`/`closed-change`/`derived`/`evidence`/`decision`/`working`、`phase_activity`/`package_lifecycle`/`package_review` 或 `gates` 字段；仅引用并增加项目级检查：关闭时把 Requirements / Design / Test Policy 的长期事实提升到 canonical（按影响矩阵 `updated|no-update|stale|not-applicable|retired` 判定），生成 closure README，`closed-change` 后不再同步，下游不得用子 change review 状态自动重开或关闭 Phase。
 
 ## 输入要求
 
