@@ -62,7 +62,7 @@ Feature F5.2「可视化工具栏」，规格套件已批准。Requirements 中�
 
 ## 根因
 
-[references/specification-and-planning.md](../references/specification-and-planning.md) 第 4 节 Planning 的「拆分」段落只给「简单/中等/复杂」三档软描述，没有：
+[references/planning-stage.md](../references/planning-stage.md) 的「拆分档位」段落只给「简单/中等/复杂」三档软描述，没有：
 
 1. `<HARD-GATE>` 强制「Phase ≥ 3 必须每 Phase 独立计划文件；Phase ≥ 6 或跨子系统必须额外加跨 Phase 集成计划」；
 2. 显式 `writing-plans` 调用合同（要传 `phase_list`、每 Phase 的 IN/OUT/依赖/AC 映射）；
