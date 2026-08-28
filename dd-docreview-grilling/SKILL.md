@@ -76,7 +76,7 @@ state_file: $(git rev-parse --git-dir)/docreview-state.json
 
 ## 产物生命周期（引用共享合同）
 
-review 文件（TODO 状态、验证摘要、逐批验证摘要、临时清单）为 `working`/`evidence`，详见 [dd-workflow-runtime/artifact-contract](../dd-workflow-runtime/references/artifact-contract.md) §3。已关闭 finding 的逐批摘要只有在当前合同和必要证据已吸收后才可按 `retention` 清理；ADR 与当前 Gate evidence 按依赖保留。使用 `updated|no-update|stale|not-applicable|retired` 判定影响，不在正文中复制审查过程。
+review 文件（TODO 状态、验证摘要、逐批验证摘要、临时清单）为 `working`/`evidence`，详见 [dd-workflow-runtime/artifact-lifecycle](../dd-workflow-runtime/references/artifact-lifecycle.md) §3。已关闭 finding 的逐批摘要只有在当前合同和必要证据已吸收后才可按 `retention` 清理；ADR 与当前 Gate evidence 按依赖保留。使用 `updated|no-update|stale|not-applicable|retired` 判定影响，不在正文中复制审查过程。
 
 ## TODO / LATER
 

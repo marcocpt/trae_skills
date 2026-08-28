@@ -2,7 +2,7 @@
 
 只在 Planning Stage 读取。本文件只拥有 Phase 档位、`phase_list` 和对 [planning.md](planning.md) 的调用合同；计划内容生成语义由 planning.md 拥有。
 
-从磁盘完整重读已批准的全部原始规格与 review，核对每份来源的版本、内容指纹和批准依据；摘要只用于定位，不能代替原文。然后识别 Phase 数量与依赖，再使用 planning reference。
+从磁盘完整读取一次已批准的全部原始规格与 review，建立 `source_manifest` + `normative coverage index`（来源 digest 与可枚举 normative anchors 清单），核对版本、指纹和批准；摘要只定位。然后识别 Phase 数量与依赖，再使用 planning reference。首次读取后生成 `canonical-index.json`（`{normative_anchors:[...], source_manifest_digest:<sha256>, source_digests:{...}}`）并与当前 `source_manifest` 绑定；无 stable ID 的 normative 段无法纳入可靠索引时标记“不可机械证明”走全文复核逃生口。自检默认以 inventory 为基准做覆盖集合检查，仅在 missing/partial/conflicting、source digest drift、anchor 无法定位或来源缺少稳定 normative IDs 时定向回读对应 canonical anchor；不得为自检无条件再次完整读取整套规格，无法证明 index 完整时允许一次全文复核——机械校验为 `validate-workflow-artifact.py planning-index <canonical-index.json> <plan>`，仅该双参 JSON 索引路径允许机械 PASS。
 
 ## 拆分档位（按 Phase 数量强制）
 
@@ -63,7 +63,7 @@ phase_list:
 - 提交边界和回滚；
 - AC → Task → Test/Evidence 映射。
 
-每个可执行 Task 必须按 [artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) 实例化弱模型执行包：Phase plan 头部定义唯一 `source_manifest`，Task 用 `sources: [{ref, anchors}]`。缺任一来源指纹、批准依据、输入／输出、写入范围、精确验证、停止条件或 Delivery 授权时保持 `BLOCKED`，不得进入 Implementation。
+每个可执行 Task 必须按 [artifact-source-and-packet](../../dd-workflow-runtime/references/artifact-source-and-packet.md) 实例化弱模型执行包：Phase plan 头部定义唯一 `source_manifest`，Task 用 `sources: [{ref, anchors}]`。缺任一来源指纹、批准依据、输入／输出、写入范围、精确验证、停止条件或 Delivery 授权时保持 `BLOCKED`，不得进入 Implementation。
 
 规格已冻结的事实引用不复制：
 

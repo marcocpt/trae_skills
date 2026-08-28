@@ -1,6 +1,6 @@
 # Downstream Documents
 
-> 派生与生命周期唯一定义见 [dd-workflow-runtime/artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) §3；本文件仅保留领域增量，不重定义 `canonical`/`derived`/`closed-change` 或 `updated|no-update|stale`。
+> 派生与生命周期唯一定义见 [dd-workflow-runtime/artifact-lifecycle](../../dd-workflow-runtime/references/artifact-lifecycle.md) §3；本文件仅保留领域增量，不重定义 `canonical`/`derived`/`closed-change` 或 `updated|no-update|stale`。
 
 ## 目录
 

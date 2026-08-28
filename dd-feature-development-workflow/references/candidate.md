@@ -22,7 +22,7 @@
 
 ## 4. 独立 A/B/C 审查 + full-spec gap
 
-以 `review_level=standard`、`review_execution=auto` 审查同一冻结 SHA（AC-08）。Reviewer 输入为 canonical spec、frozen diff、Phase verification refs；输出 A/B/C findings 和逐 requirement/AC 的 full-spec gap table。无安全独立路线且未获外部授权时 `BLOCKED`，不得 inline 降级为独立 PASS。
+以 `review_level=standard`、`review_execution=auto` 审查同一冻结 SHA（AC-08）。Reviewer 输入为 canonical spec、frozen diff、Phase verification refs；输出 A/B/C findings 和 full-spec gap table——必须覆盖所有适用的 normative stable IDs/anchors（含 FR/NFR/AC、Out of Scope、global/cross-cutting invariants、Constraints、failure/degradation paths、compatibility/migration、explicit negative requirements/Decision Freedom 禁止项），有 stable ID 时以 ID 标识、无则用稳定 section anchor，不复制正文；每项仍需记录 coverage/disposition 及对应 implementation/test/evidence ref。无安全独立路线且未获外部授权时 `BLOCKED`，不得 inline 降级为独立 PASS。
 
 ## 5. Full CI on exact SHA
 
@@ -50,11 +50,9 @@ full_ci_run:
   url: <run-url>
   head_sha: <candidate_sha>
   conclusion: success
-full_ci_passed: true
-candidate_ready: true
 current_stage: confirmation
 ```
 
-`full_ci_run.head_sha` 必须等于 `candidate_sha`；`candidate_review.sha` 与 `full_spec_gap.sha` 也必须等于 `candidate_sha`。任一不等即 `stale`，不得推进。
+`full_ci_run.head_sha` 必须等于 `candidate_sha` 且 `conclusion` 终态均落盘；`candidate_review.sha` 与 `full_spec_gap.sha` 也必须等于 `candidate_sha`；`PASS` 仅当 `conclusion==success && head_sha==candidate_sha`，`null` 表示未有终态，任一不等或结论非 success 即 `stale/BLOCKED`，不得推进。候选是否就绪只由上述字段推导判定，不输出派生布尔。
 
 Candidate Gate 不更新 develop/main。Confirmation 只决定交付或回退；Delivery 只能推进同一 `candidate_sha`（AC-09）。
