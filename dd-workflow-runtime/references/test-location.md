@@ -72,9 +72,9 @@ ci_control_available 当前能否查询/触发该 CI（gh 可用 → true）
 
 > **"用户明确要求"不凌驾于 CI 优先之上**：当步骤 1 已有可复用的成功 CI 结果时，用户要求本地不构成降级理由。此时应用 AskUserQuestion 给出"复用 CI 结果（推荐）/ 仍要本地仅作参考 / 终止"选项。
 >
-> **"CI 不可用"的严格定义**：仅指上述封闭列表两种情形。分支未 push、`gh workflow run` 报错、CI 触发失败**均不构成"CI 不可用"**——这些是步骤 2 的"触发本身失败"，按步骤 2 的 AskUserQuestion 流程处理。
+> **"CI 不可用"的严格定义**：仅指 `remote_ci_required=false`（项目无 `.github/workflows/` 配置）。`gh` 不可用、分支未 push、`gh workflow run` 报错、CI 触发失败**均不构成"CI 不可用"**——`remote_ci_required=true` 时这些只导致 `BLOCKED`/ASK，按步骤 2 的 AskUserQuestion 流程处理。
 >
-> **有必需远端 CI Gate 时的本地测试边界**：本地测试只能在上述封闭列表情形下作为**最终验证**；存在必需远端 CI Gate 时，无论用户如何选择，"本地"最多得到 `CONDITIONAL`/`BLOCKED` 结果，**不得据此声明 PASS**（与 [ci.md](ci.md) 场景 2.4/3 的风险豁免一致）。
+> **有必需远端 CI Gate 时的本地测试边界**：本地测试只能在 `remote_ci_required=false` 时作为**最终验证**；`remote_ci_required=true` 时，无论用户如何选择，"本地"最多得到 `CONDITIONAL`/`BLOCKED` 结果，**不得据此声明 PASS**（与 [ci.md](ci.md) 场景 2.4/3 的风险豁免一致）。
 
 ## 授权 blocker
 

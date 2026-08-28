@@ -53,7 +53,9 @@
 - [x] 第四轮 findings 本地核对：全部属实，已修复（见下）
 - [x] 第五轮送审：MCP 通道返回 **不能 ACCEPTED**：R5-001（场景 4 用户要求绕过）、R5-002（gh 不可用≠无远端 CI）、R-009（缺 4 项机械断言）。同时确认 R4-001/R4-002/R-007主体/R-009材料 已 CLOSED
 - [x] 第五轮 findings 本地核对：全部属实，已修复（见下）
-- [ ] 第六轮送审：修复后继续 MCP 送审，直到 ChatGPT 返回 `CLOSED`
+- [x] 第六轮送审：MCP 通道返回 **不能 ACCEPTED**：R5-002（ci.md 仍把 gh 不可用当 local-final 条件）、R-009（测试未跨文件断言 CI）。同时确认 R5-001、R4-001/002 已 CLOSED
+- [x] 第六轮 findings 本地核对：全部属实，已修复（见下）
+- [ ] 第七轮送审：修复后继续 MCP 送审，直到 ChatGPT 返回 `CLOSED`
 
 ## 第三轮 findings 与修复记录
 
@@ -81,6 +83,13 @@
 | R5-001 | MEDIUM | 属实：ci.md 场景 4 仍允许"用户明确要求"绕过 CI 优先 | 场景 4 本地全量测试仅作补充诊断；有必需远端 CI Gate 时不得仅因用户要求降级 |
 | R5-002 | MEDIUM | 属实：gh 不可用被等同于"无远端 CI 能力" | 拆为 remote_ci_required / ci_control_available 两概念；gh 不可用→BLOCKED/ASK，不归入无远端 CI |
 | R-009 | MEDIUM | 属实：缺 4 项机械断言 | 新增 test_ci_trigger_failure_cannot_fall_back_to_local_final、test_user_request_cannot_bypass_required_remote_ci、test_workflow_selector_is_shared_by_all_scenarios、test_gh_unavailable_not_equal_remote_ci_absent、test_legacy_stage_mapping_matches_stage_graph |
+
+## 第六轮 findings 与修复记录
+
+| ID | Severity | 核对 | 修复 |
+|---|---|---|---|
+| R5-002 | MEDIUM | 属实：ci.md 本地诊断封闭列表仍含"gh 不可用且用户选择不修复"，与 test-location 的 remote_ci_required 模型冲突 | ci.md 改为仅 `remote_ci_required=false` 才 local-final；gh 不可用→BLOCKED/ASK；红线"CI 不可用"定义同步；test-location 删"两种情形"旧措辞 |
+| R-009 | MEDIUM | 属实：test_gh_unavailable 只查 TEST_LOCATION 不查 CI | 扩为跨文件断言（CI+TEST_LOCATION），加"两种情形"负向断言 |
 
 ## 第二轮 findings 与修复记录
 

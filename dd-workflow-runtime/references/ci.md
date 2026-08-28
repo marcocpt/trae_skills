@@ -140,10 +140,9 @@ fi
 
 本地命令（含 [ci-xcode.md](ci-xcode.md) 的 Xcode adapter）**只用于理解失败原因或收集诊断**，不证明修复成功，也不能关闭必需远端 CI Gate。
 
-仅在以下封闭列表条件满足时才可使用本地测试作为最终验证：
+仅在 `remote_ci_required=false`（项目无 `.github/workflows/` 配置，真正不存在远端 CI 能力）时才可使用本地测试作为最终验证（见 [test-location.md](test-location.md) 步骤 3 的两个独立概念）。
 
-- 项目无 `.github/workflows/` 配置（真正不存在远端 CI 能力）
-- `gh` 命令不可用且用户选择不修复
+**`remote_ci_required=true` 但 `ci_control_available=false`**（如 `gh` 不可用、鉴权失败、触发失败）**不进入此封闭列表**——此时 `BLOCKED` / ASK（修复鉴权、换工具、重试、终止），本地只作诊断，不能 final PASS。
 
 **CI 触发失败（`gh workflow run` 报错、分支未 push、鉴权失败等）不进入此封闭列表**——一律按"触发本身失败"的 ASK 流程处理（修复/重试/终止），不允许据此降级本地测试作为最终验证。
 
@@ -154,7 +153,7 @@ fi
 - 跳过基线测试验证；
 - 不询问就带着失败的测试继续；
 - **以"当前分支未 push 导致 CI 触发失败"为由降级本地测试**——必须先查 BASE_BRANCH 的 CI 结果；若 BASE_BRANCH 也无结果，用结构化 ASK 询问是否 push 后触发 CI，不得直接降级本地；
-- **以"CI 不可用"宽泛措辞降级本地**——"CI 不可用"仅指：项目无 `.github/workflows/` 配置、`gh` 命令不可用且用户选择不修复。分支未 push、`gh workflow run` 报错、CI 触发失败**均不构成"CI 不可用"**，也不允许据此降级本地测试作为最终验证；
+- **以"CI 不可用"宽泛措辞降级本地**——"CI 不可用"仅指：`remote_ci_required=false`（项目无 `.github/workflows/` 配置）。`gh` 不可用、分支未 push、`gh workflow run` 报错、CI 触发失败**均不构成"CI 不可用"**——`remote_ci_required=true` 时控制工具不可用只导致 `BLOCKED`/ASK，不允许据此降级本地测试作为最终验证；
 - **以"用户明确要求"凌驾于 CI 优先之上**——当已有可复用的成功 CI 结果时，用户要求本地不构成降级理由；应用结构化 ASK 给出"复用 CI 结果（推荐）/ 仍要本地仅作参考 / 终止"选项；
 - 未授权 push（缺 `delivery_authorization`）时仍 push 触发 CI；
 - 用固定 workflow/scheme/项目名替代项目文档与脚本；

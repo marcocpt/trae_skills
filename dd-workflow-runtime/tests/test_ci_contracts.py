@@ -151,14 +151,27 @@ class TestCIHardeningContracts(unittest.TestCase):
                       "ci.md must state scenarios 1-4 reuse the same selector (R-008)")
 
     def test_gh_unavailable_not_equal_remote_ci_absent(self):
+        ci = read(CI)
         test_loc = read(TEST_LOCATION)
+        # both files must distinguish remote_ci_required / ci_control_available.
         self.assertIn("remote_ci_required", test_loc,
                       "test-location must distinguish remote_ci_required (R5-002)")
         self.assertIn("ci_control_available", test_loc,
                       "test-location must distinguish ci_control_available (R5-002)")
+        self.assertIn("remote_ci_required", ci,
+                      "ci.md must use remote_ci_required concept (R5-002)")
+        self.assertIn("ci_control_available", ci,
+                      "ci.md must use ci_control_available concept (R5-002)")
+        # gh-unavailable must NOT be a local-final condition in either file.
+        self.assertNotIn("gh 命令不可用且用户选择不修复",
+                         ci.split("## 本地诊断")[1].split("## 红线")[0],
+                         "ci.md local-diagnosis section must not list gh-unavailable as local-final (R5-002)")
         self.assertNotIn("gh 命令不可用且用户在 AskUserQuestion 中选择不修复鉴权",
                          test_loc.split("### 3.")[1].split("运行项目对应")[0],
                          "gh-unavailable must not be listed as local-final condition (R5-002)")
+        # stale wording must not remain.
+        self.assertNotIn("上述封闭列表两种情形", test_loc,
+                         "test-location stale 'two conditions' wording must be removed (R5-002)")
 
 
 if __name__ == "__main__":
