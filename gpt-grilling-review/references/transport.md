@@ -49,12 +49,21 @@
 
 worktree 动态变化，送审前先确认仍存在：`git -C /Users/dengdeng/Working/PDF/CPDF worktree list`。
 
+### Tunnel 解析规则（强制）
+
+ChatGPT 只能通过 **Tunnel 工具按 repo 名解析**到本地真实目录，映射固定：
+
+- `work/<相对路径>` → `~/Working/<相对路径>`
+- `cpdf` / `cpdf-wt/<分组>/<分支名>` → CPDF 仓库对应位置
+
+**content 中的 repo 必须是上表的名字形式，严禁使用任何绝对路径（如 `/Users/dengdeng/Working/...`）或项目真实目录名。** 弱模型送审前必须把本地绝对路径按此表换算成 `work/<相对路径>` 形式（例：`/Users/dengdeng/Working/Keyboard/Macim-worktrees/F-3.3` → `work/Keyboard/Macim-worktrees/F-3.3`）。文件清单也必须是 repo 内相对路径，不得写绝对路径。
+
 ## content 模板
 
 **分支整体审（最常用）：**
 
 ```
-请使用你可用的工具，自行读取仓库 "<repo>" 的代码（不要依赖我提供内容）：
+请使用 Tunnel 工具按仓库名读取 "<repo>" 的代码（不要依赖我提供内容，也不要猜绝对路径——"<repo>" 即本地 work 下的相对路径，Tunnel 会解析到真实目录）：
 1. 查看 git 状态与当前分支；
 2. 查看该分支相对 develop 的全部改动；
 3. 审核这些改动的代码质量、正确性与潜在风险。
@@ -65,25 +74,26 @@ worktree 动态变化，送审前先确认仍存在：`git -C /Users/dengdeng/Wo
 **复审（同 conversation_id 续发）：**
 
 ```
-我已按你上一轮意见修改，请重新读取仓库 "<repo>" 相对 develop 的最新改动，
+我已按你上一轮意见修改，请通过 Tunnel 工具重新读取仓库 "<repo>" 相对 develop 的最新改动（repo 名=work 下相对路径，不要猜绝对路径），
 重点复查上次问题 <编号> 是否修复，并检查是否引入新问题。输出格式同上。
 ```
 
 **针对性审：**
 
 ```
-请读取仓库 "<repo>" 的 <目录/文件> 及其测试，专门审核 <关注点>。
+请通过 Tunnel 工具读取仓库 "<repo>"（repo 名=work 下相对路径）的 <目录/文件> 及其测试，专门审核 <关注点>。
 输出结构化意见（问题、位置、建议）。
 ```
 
 ## 禁忌
 
-- content 提及 MCP、tunnel、浏览器、插件等实现机制 → 只写业务视角
+- content 透漏 MCP/浏览器/插件等底层实现细节；repo 必须以 `work/<相对路径>` 形式给出，并明确让 ChatGPT 用 Tunnel 工具按 repo 名读取（不得写绝对路径，也不得写项目真实目录名）
 - 粘贴代码/diff 进 content → 审核方自行读取
 - 敏感文件（密钥/凭据/.env）进入请求
 - timeout_seconds 超过 3600（参数上限）
 - `[RUNNING]` 期间重复提交
 - 省略模板末尾的逃逸句
+- 在 content 中写本地绝对路径（如 `/Users/dengdeng/Working/...`）或项目真实目录名代替 `work/<相对路径>` 形式的 repo 名
 
 ## 红线 - 出现即停下纠正
 

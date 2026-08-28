@@ -73,7 +73,7 @@ disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING 
 开始前必须确认（缺失则向用户提问，不得猜测）：
 
 1. **仓库名**：按 [transport.md](references/transport.md) 的仓库命名规则；送审前 `git worktree list` 确认存在
-2. **文件清单**：用户指定的待审文件（仓库内相对路径）；用户只给了目录或分支时，先送审"列范围"请求，拿到 ChatGPT 发现的文件清单后与用户确认
+2. **文件清单**：用户指定的待审文件（仓库内相对路径）；用户只给了目录或分支时，先送审"列范围"请求，拿到 ChatGPT 发现的文件清单后与用户确认。**文件清单与 repo 名都必须是 `work/<相对路径>` 形式，禁止任何绝对路径**
 3. **可选权威依据**：需求/设计/规范文档路径
 4. **修改前 baseline**（修复阶段必记）：当前 HEAD、`git status --short`、已有 dirty diff、相关测试命令及既有失败。**禁止修改/覆盖用户已有变更**
 
@@ -146,8 +146,8 @@ disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING 
 调用契约遵循 [transport.md](references/transport.md)。content：
 
 ```
-请使用你可用的工具，自行读取仓库 "<repo>" 中的以下文件（不要依赖我提供内容）：
-<文件清单，每行一个相对路径>
+请使用 Tunnel 工具按仓库名读取仓库 "<repo>" 中的以下文件（不要依赖我提供内容，也不要猜绝对路径——"<repo>" 即本地 work 下的相对路径，Tunnel 会解析到真实目录）：
+<文件清单，每行一个 repo 内相对路径>
 
 逐文件审核：正确性、边界处理、错误传播、与同目录其他代码的一致性；
 如有提供需求/设计文档（<文档路径>），同时审核实现与文档的一致性。
@@ -160,6 +160,8 @@ UNREADABLE: <未能读取的文件>
 
 只要有指定文件未读到，不得宣称范围审核完成。如果无法读取任何指定文件，直接回复一行：无法读取指定文件。
 ```
+
+**repo 名与路径形式（强制）**：`<repo>` 必须按 [transport.md](references/transport.md) 命名表给出（~/Working 下项目一律 `work/<相对路径>`，如 `work/Keyboard/Macim-worktrees/F-3.3`），**严禁在 content 中写任何绝对路径**；`<文件清单>` 必须是该 repo 内的相对路径，同样不得写绝对路径。弱模型送审前须把本地绝对路径换算为 `work/<相对路径>` 形式。
 
 ## 修复后复查（按风险分级）
 
@@ -306,4 +308,4 @@ STATUS: HUMAN_DECISION_REQUIRED
 - 修改后不送复查就宣称 finding CLOSED；把非 CLOSED 回复当作 CLOSED；TODO/LATER/ACCEPTED_RISK 当作 CLOSED
 - 修改前不记 baseline；修改/覆盖用户已有变更
 - 复审发现的新问题不经过分流直接修
-- 复审 content 提及通道/工具实现机制（保持业务视角）
+- 复审 content 透漏 MCP/浏览器/插件等底层实现细节（须明确用 Tunnel 工具按 `work/<相对路径>` repo 名读取，但不得写绝对路径，保持业务视角）
