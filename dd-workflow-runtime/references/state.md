@@ -75,7 +75,6 @@
   "candidate_review": {"level": "standard", "execution": "auto", "sha": "<candidate_sha>", "review_ref": "<review-ref>"},
   "full_spec_gap": {"sha": "<candidate_sha>", "gap_table_ref": "<gap-table-ref>"},
   "full_ci_run": {"run_id": "<run-id>", "url": "<run-url>", "head_sha": "<candidate_sha>", "conclusion": "success"},
-  "full_ci_passed": false,
   "commits": {
     "specs": "<规格文档套件提交 sha>",
     "plans": "<commit-sha>"
@@ -83,7 +82,7 @@
 }
 ```
 
-> **三层增量验证约束**：feature-development 工作流采用三层验证。`completed_phases` 记录已通过本地快速验证的 phase 列表，`smoke_ci_phases` 记录触发过远程 UI Smoke CI 的 phase 列表；`final_candidate_branch`、`candidate_sha`、`candidate_review`、`full_spec_gap`、`full_ci_run`、`full_ci_passed` 跟踪最终合并候选，且 `candidate_review.sha == full_spec_gap.sha == full_ci_run.head_sha == candidate_sha`（exact-SHA 不变量）。
+> **三层增量验证约束**：feature-development 工作流采用三层验证。`completed_phases` 记录已通过本地快速验证的 phase 列表，`smoke_ci_phases` 记录触发过远程 UI Smoke CI 的 phase 列表；`final_candidate_branch`、`candidate_sha`、`candidate_review`、`full_spec_gap`、`full_ci_run` 跟踪最终合并候选，且 `candidate_review.sha == full_spec_gap.sha == full_ci_run.head_sha == candidate_sha`（exact-SHA 不变量）；`full_ci_run.conclusion` 终态均落盘，`PASS` 仅当 `conclusion==success` 且 `head_sha==candidate_sha`。
 
 ### project-bootstrap 特有字段
 
@@ -146,7 +145,7 @@ Bootstrap 没有状态文件时，先从仓库中的 `docs.md`、Roadmap、Archi
 - **更新 `completed_phases`**（仅 feature-development）：每完成一个 phase 的本地验证，追加当前 phase 编号到此数组
 - **更新 `smoke_ci_phases`**（仅 feature-development）：每触发一次远程 UI Smoke CI，追加当前 phase 编号到此数组
 - **更新 `final_candidate_branch`**（仅 feature-development）：创建最终合并候选分支时记录
-- **更新候选 exact-SHA 字段**（仅 feature-development）：冻结候选时写 `candidate_sha`、`candidate_review`、`full_spec_gap`；完整远程 CI 通过且 `full_ci_run.head_sha == candidate_sha` 时才写 `full_ci_run={run_id,url,head_sha,conclusion}` 与 `full_ci_passed=true`
+- **更新候选 exact-SHA 字段**（仅 feature-development）：冻结候选时写 `candidate_sha`、`candidate_review`、`full_spec_gap`；完整远程 CI 终态（`success|failure|cancelled|timed_out|…`）后即写 `full_ci_run={run_id,url,head_sha,conclusion}`（无论成功失败），`PASS` 仅当 `conclusion==success && head_sha==candidate_sha`，`null` 表示未有终态
 - **更新 `in_progress`**：merge/push/cleanup 等不可瞬时动作执行前写 `in_progress: {operation, target, source, started_at}`（见 runtime-contract §4），动作成功后写完成证据再清除；**不另设布尔兼容字段**
 - **删除**（按 `WORKFLOW_TYPE` 分支）：**bug-fix** 在 `git merge --no-ff` 成功后、清理前可删除（**禁止 merge 前删除**）；**feature-development** 在 merge 后仍须保留状态直到 Closure 完成——写 Completion Receipt、cleanup 执行并验证后才删除/归档活动状态，**禁止在 Closure 校验与 Receipt 写入前删除**（delivery-and-closure 的 Closure 流程为准）
 - **Bootstrap 写入**：Preflight 结束后写入；每个节点 Gate 通过后更新 `current_node`、`completed_nodes`、`artifacts` 和 gaps

@@ -35,7 +35,7 @@ review_sha == gap_sha == ci_sha == candidate_sha
 清理前验证（对齐 exact-SHA 语义）：
 
 - `completed_phases` 数量等于 `total_phases`；
-- `candidate_sha` 与 `full_ci_run.head_sha` 相同，且 `full_ci_passed=true`；
+- `candidate_sha` 与 `full_ci_run.head_sha` 相同，且 `full_ci_run.conclusion==success && head_sha==candidate_sha`，`full_ci_run` 终态均落盘（`success|failure|cancelled|…`），`null` 表示未有终态；
 - develop/目标分支包含该 `candidate_sha`；
 - Documentation 与 Delivery Gate 已通过；
 - 工作区无未解释变更。

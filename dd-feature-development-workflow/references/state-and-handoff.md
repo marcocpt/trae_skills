@@ -53,15 +53,14 @@ final_candidate_branch: null
 candidate_sha: null
 candidate_review: null          # {level, execution, sha, review_ref}
 full_spec_gap: null             # {sha, gap_table_ref}
-full_ci_run: null               # {run_id, url, head_sha, conclusion}
-full_ci_passed: false
+full_ci_run: null               # {run_id, url, head_sha, conclusion} 终态均落盘，null=未有终态
 candidate_ready: false
 bootstrap_handoff_consumed: false
 bootstrap_state_path: null
 phase_contract_path: null
 ```
 
-候选字段不变量：`candidate_review.sha == full_spec_gap.sha == full_ci_run.head_sha == candidate_sha`；任一缺失或不一致即 `stale`，恢复/Closure 据此判定，不猜测。
+候选字段不变量：`candidate_review.sha == full_spec_gap.sha == full_ci_run.head_sha == candidate_sha`；且 `full_ci_run.conclusion` 终态均落盘，`PASS` 仅当 `conclusion==success && head_sha==candidate_sha`，`null` 表示未有终态；任一缺失或不一致即 `stale`，恢复/Closure 据此判定，不猜测。
 
 ### 2.1 in-progress 镜像
 

@@ -50,11 +50,10 @@ full_ci_run:
   url: <run-url>
   head_sha: <candidate_sha>
   conclusion: success
-full_ci_passed: true
 candidate_ready: true
 current_stage: confirmation
 ```
 
-`full_ci_run.head_sha` 必须等于 `candidate_sha`；`candidate_review.sha` 与 `full_spec_gap.sha` 也必须等于 `candidate_sha`。任一不等即 `stale`，不得推进。
+`full_ci_run.head_sha` 必须等于 `candidate_sha` 且 `conclusion` 终态均落盘；`candidate_review.sha` 与 `full_spec_gap.sha` 也必须等于 `candidate_sha`；`PASS` 仅当 `conclusion==success && head_sha==candidate_sha`，`null` 表示未有终态，任一不等或结论非 success 即 `stale/BLOCKED`，不得推进。
 
 Candidate Gate 不更新 develop/main。Confirmation 只决定交付或回退；Delivery 只能推进同一 `candidate_sha`（AC-09）。

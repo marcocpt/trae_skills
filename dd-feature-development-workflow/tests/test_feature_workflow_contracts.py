@@ -256,8 +256,23 @@ class TestStateProducerConsumerConsistent(unittest.TestCase):
                          "state.md producer must not write legacy merge_in_progress (R-004)")
         self.assertIn("full_ci_run", state,
                       "state.md producer must write structured full_ci_run (R-001)")
-        self.assertIn("full_ci_passed", state,
-                      "state.md producer must write full_ci_passed (R-001)")
+        self.assertNotIn("full_ci_passed", state,
+                         "state.md must not write derived full_ci_passed (Batch4 P0-1)")
+        self.assertIn("conclusion", state,
+                      "state.md full_ci_run must have conclusion (Batch4 P0-1)")
+
+    def test_no_derived_full_ci_passed_anywhere(self):
+        for path, name in ((STATE, "state.md"), (CANDIDATE, "candidate.md"),
+                           (STATE_AND_HANDOFF, "state-and-handoff.md"), (DELIVERY, "delivery-and-closure.md")):
+            text = read(path)
+            self.assertNotIn("full_ci_passed", text,
+                             f"{name} must not contain derived full_ci_passed (Batch4 P0-1)")
+        # delivery closure must check conclusion==success, not full_ci_passed
+        delivery = read(DELIVERY)
+        self.assertIn("conclusion==success", delivery,
+                      "delivery closure must check conclusion==success (Batch4 P0-1)")
+        self.assertIn("full_ci_run", delivery,
+                      "delivery must reference full_ci_run (Batch4 P0-1)")
 
     def test_feature_state_uses_in_progress_not_booleans(self):
         handoff = read(STATE_AND_HANDOFF)
