@@ -4,12 +4,12 @@
 
 ## 1. Phase Loop
 
-每个 Phase：
+一个 Phase 可含多个 Task；Phase 责任：把所有 Task 的 TDD 循环推进到 Local Gate 全过，才进入下一 Phase。每个 Phase：
 
 1. 验证 package/manifest/source digests 与当前 worktree 一致；任一 stale 回 Planning 重新派生；
 2. **选择性读取**：读取 Task anchors、所有声明为 global 的约束、Out of Scope 与失败路径；打开 `consumes` 与 integration anchors（AC-05）。不得每 Phase 完整重读全部原始规格；
 3. 合同漂移处理：实现细节漂移且合同仍成立 → 在当前 scope 内适配；接口/架构/规格假设失效 → package stale，回 Planning；
-4. 按任务执行 TDD；
+4. 对每个 Task 按 TDD 循环执行（Red/Green/Refactor）；
 5. 保存 compact verification（`plan + result`，含 coverage/runs/bindings/validity）与适用的 UI 证据；
 6. 持久化当前 Phase 的 diff／文件指纹；只有 `delivery_authorization` 允许时才按逻辑提交；
 7. 执行 Local Gate；
@@ -19,17 +19,35 @@
 
 Phase 结束时不得有未解释变更，并记录 diff／文件内容指纹；若交付策略要求 Commit，再记录完成 SHA。不要创建空提交，也不要把内容批准或计划中的 Commit 示例当成授权。
 
+### Verification 的 Delivery 状态
+
+每个 Phase 的 verification 必须记录 Delivery 授权状态，不得缺省：
+
+```yaml
+verification:
+  plan: {...}
+  result: {...}
+  delivery:
+    commit: not-required | not-authorized | pending | completed
+    push: not-required | not-authorized | pending | completed
+    ci: not-required | not-authorized | pending | completed
+```
+
+Verification 未提交/未运行/未授权的部分必须记 `not-required`、`not-authorized` 或 `pending`，不得留空或默认为"已执行"；后续 Gate 依赖被禁止动作时 `BLOCKED`。
+
 ## 2. TDD
 
 ### Red
 
 - 从当前 AC 编写最小失败测试；
+- **运行绑定**：Red 的结论是"当前代码失败"——必须在允许的位置实际运行并确认测试因正确原因失败；不能仅凭"测试已写好"声称红灯已确认；
 - XCTest/普通单元测试可在本地确认因正确原因失败；
 - 环境敏感 UI 测试按项目 CI 策略验证，不能在未执行时声称红灯已确认；
 - 无法自动化时先定义可重复手动验证和证据。
 
 ### Green
 
+- **运行绑定**：Green 的结论是"当前代码通过"——必须在允许的位置实际运行并确认测试通过，再把实现标为绿；
 - 只实现满足当前测试的最小行为；
 - 不捆绑无关重构；
 - 单元测试在允许的位置快速验证；

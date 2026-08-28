@@ -106,6 +106,17 @@ source_manifest:
 **Delivery authorization：** [`{status, actions, scope, authority, decided_at, evidence_ref}`]
 ```
 
+## 跨 Phase 集成计划
+
+当 `split_mode=per-phase-with-integration`（Phase ≥ 6 或跨子系统，见 [planning-stage.md](planning-stage.md) 拆分档位）时，除逐 Phase 子计划外，必须额外产出 `plan-integration-cross-phase.md`。该文件：
+
+- 显式列出 Phase 间 IN/OUT 契约与依赖边（哪些 `Produces` 被哪些下游 Phase `Consumes`）；
+- 覆盖跨 Phase 的端到端 AC 与集成验收（不能由任一 Phase 独立验证的部分）；
+- 定义集成验收的验证命令与证据位置；
+- 明确集成计划不是 Phase 子计划的替代，也不是把 Phase 内容复制合并成一个总计划。
+
+未产出 integration plan 时，复杂档不得进入 Implementation（`BLOCKED`）。
+
 ## 禁止占位符
 
 每个步骤都必须包含工程师需要的实际内容。以下是**计划缺陷**——绝不要写出来：

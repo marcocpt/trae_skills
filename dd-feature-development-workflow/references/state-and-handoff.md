@@ -50,12 +50,14 @@ completed_phases: []
 smoke_ci_phases: []
 commits: {}
 final_candidate_branch: null
-final_candidate_sha: null
-final_ci_run: null
-final_ci_passed: false
+candidate_sha: null
+full_ci_run: null
+full_ci_passed: false
 candidate_review: null
 full_spec_gap: null
 candidate_ready: false
+merge_in_progress: false
+cleanup_in_progress: false
 bootstrap_handoff_consumed: false
 bootstrap_state_path: null
 phase_contract_path: null

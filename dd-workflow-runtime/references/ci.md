@@ -18,10 +18,11 @@ dd-bug-fix-workflow 和 dd-feature-development-workflow（以及 dd-ai-refactor-
 
 按优先级检索（commit 一致即可复用）：
 
-1. 先查当前分支：`gh run list --workflow <workflow-name> --branch <当前分支> --limit 1`
-2. 当前分支无远端或无结果时，**必须**再查 BASE_BRANCH：`gh run list --workflow <workflow-name> --branch <BASE_BRANCH> --limit 1`
-3. 任一返回 `conclusion=success` 且 `headSha` 等于当前工作树 HEAD → 复用 CI 结果（记录复用来源分支与 run ID），跳过本地测试
-4. `status=in_progress` → 等待 CI 完成，不重复触发
+1. 解析 `<workflow-name>`：优先项目 `AGENTS.md`/`project_memory.md` 记录的 workflow 名；无记录时自动检测 `.github/workflows/*.yml`；仍无法唯一解析时 ASK / BLOCKED，不得猜名
+2. 先查当前分支：`gh run list --workflow <workflow-name> --branch <当前分支> --limit 1`
+3. 当前分支无远端或无结果时，**必须**再查 BASE_BRANCH：`gh run list --workflow <workflow-name> --branch <BASE_BRANCH> --limit 1`
+4. 任一返回 `conclusion=success` 且 `headSha` 等于当前工作树 HEAD → 复用 CI 结果（记录复用来源分支与 run ID），跳过本地测试
+5. `status=in_progress` → 等待 CI 完成，不重复触发
 
 **触发 CI**（无可用结果且当前分支已 push 时）：
 
@@ -81,7 +82,7 @@ gh run watch "$RUN_ID" --exit-status
 - **CI 失败**（测试用例未通过）→ **结构化 ASK**：
   - 拉取 CI 日志（`gh run view <run-id> --log-failed`）分析失败原因，回到 TDD 修复
   - 本地复现排查（仅用于理解失败原因，修复后必须重新走 CI 验证）
-  - 跳过继续（不推荐）
+  - 跳过继续：**仅当**同改动已有基线 CI 证据（BASE_BRANCH 对应 HEAD 的 `conclusion=success`）且用户明确选择跳过时允许；否则 `BLOCKED`，不得跳过
 
 ## 场景 3：Push 后等待 CI
 
@@ -108,8 +109,8 @@ fi
 ```
 
 - **成功** → 进入下一步
-- **CI 失败** → **结构化 ASK**：拉取日志分析修复 / 本地复现定位 / 跳过（不推荐）
-- **未找到 run** → **结构化 ASK**：手动触发后重新等待 / 检查 workflow 文件配置 / 跳过（不推荐）
+- **CI 失败** → **结构化 ASK**：拉取日志分析修复 / 本地复现定位 / 跳过（仅当有基线 CI 证据且用户明确选择）
+- **未找到 run** → **结构化 ASK**：手动触发后重新等待 / 检查 workflow 文件配置 / 跳过（仅当有基线 CI 证据且用户明确选择）
 
 ## 场景 4：合并后 CI 验证
 
