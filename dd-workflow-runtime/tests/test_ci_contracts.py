@@ -114,5 +114,52 @@ class TestRefactorNoUnconditionalPush(unittest.TestCase):
                       "Refactor must gate push on delivery_authorization (AC-10)")
 
 
+class TestCIHardeningContracts(unittest.TestCase):
+    """R5-001/R5-002/R-009: CI trigger/user bypass/workflow selector contracts."""
+
+    def test_ci_trigger_failure_cannot_fall_back_to_local_final(self):
+        ci = read(CI)
+        test_loc = read(TEST_LOCATION)
+        # trigger failure must not enter the local-final closed list.
+        self.assertIn("CI 触发失败（`gh workflow run` 报错、分支未 push、鉴权失败等）不进入此封闭列表",
+                      ci,
+                      "ci.md must exclude CI trigger failure from local-final closed list (R-007)")
+        self.assertIn("CI 触发失败（分支未 push、`gh workflow run` 报错、鉴权失败等）不进入本封闭列表",
+                      test_loc,
+                      "test-location must exclude CI trigger failure from local-final (R-007/R5-002)")
+        # local-final closed list must NOT include trigger-failure + user-local option.
+        self.assertNotIn("无可用 CI 结果且 CI 触发失败且用户明确选择本地",
+                         ci,
+                         "ci.md local-final closed list must not contain trigger-failure option (R-007)")
+
+    def test_user_request_cannot_bypass_required_remote_ci(self):
+        ci = read(CI)
+        test_loc = read(TEST_LOCATION)
+        # scene 4 must not allow "user request" alone to downgrade.
+        self.assertNotIn("仅当 CI 不可用或用户明确要求", ci,
+                         "ci.md scene 4 must not allow user-request downgrade (R5-001)")
+        self.assertIn("用户要求不凌驾 CI 优先", ci,
+                      "ci.md must keep user-request-does-not-override rule (R5-001)")
+        self.assertIn("用户明确要求\"不凌驾于 CI 优先之上", test_loc,
+                      "test-location must keep user-request-does-not-override rule (R5-001)")
+
+    def test_workflow_selector_is_shared_by_all_scenarios(self):
+        ci = read(CI)
+        self.assertIn("工作流选择器（所有场景共用）", ci,
+                      "ci.md must define workflow selector as shared pre-step (R-008/R5-002)")
+        self.assertIn("场景 1-4 全部复用同一解析值", ci,
+                      "ci.md must state scenarios 1-4 reuse the same selector (R-008)")
+
+    def test_gh_unavailable_not_equal_remote_ci_absent(self):
+        test_loc = read(TEST_LOCATION)
+        self.assertIn("remote_ci_required", test_loc,
+                      "test-location must distinguish remote_ci_required (R5-002)")
+        self.assertIn("ci_control_available", test_loc,
+                      "test-location must distinguish ci_control_available (R5-002)")
+        self.assertNotIn("gh 命令不可用且用户在 AskUserQuestion 中选择不修复鉴权",
+                         test_loc.split("### 3.")[1].split("运行项目对应")[0],
+                         "gh-unavailable must not be listed as local-final condition (R5-002)")
+
+
 if __name__ == "__main__":
     unittest.main()

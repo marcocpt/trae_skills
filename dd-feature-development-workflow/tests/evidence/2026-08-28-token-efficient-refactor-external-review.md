@@ -51,7 +51,9 @@
 - [x] 第三轮 findings 本地核对：全部属实，已修复（见下）
 - [x] 第四轮送审：MCP 通道返回 **不能 ACCEPTED**：R4-001（merge 后提前删 state）、R-007（CI trigger 降级矛盾）、R4-002（legacy mapping 顺序冲突）+ R-009（测试文件未入 bundle）。同时确认 R-001/R-002/R-003/R-004主体/R-005/R-008 已 CLOSED
 - [x] 第四轮 findings 本地核对：全部属实，已修复（见下）
-- [ ] 第五轮送审：修复后继续 MCP 送审（bundle 将含测试文件），直到 ChatGPT 返回 `CLOSED`
+- [x] 第五轮送审：MCP 通道返回 **不能 ACCEPTED**：R5-001（场景 4 用户要求绕过）、R5-002（gh 不可用≠无远端 CI）、R-009（缺 4 项机械断言）。同时确认 R4-001/R4-002/R-007主体/R-009材料 已 CLOSED
+- [x] 第五轮 findings 本地核对：全部属实，已修复（见下）
+- [ ] 第六轮送审：修复后继续 MCP 送审，直到 ChatGPT 返回 `CLOSED`
 
 ## 第三轮 findings 与修复记录
 
@@ -71,6 +73,14 @@
 | R-007 | MEDIUM | 属实：ci.md/test-location 封闭列表允许"CI 触发失败+用户选本地→本地最终验证"，与红线矛盾 | CI 触发失败不进入 local-final-verification 封闭列表，一律 ASK 修复/重试/终止 |
 | R4-002 | MEDIUM | 属实：legacy current_step 映射顺序与新 Stage 顺序冲突 | 冻结映射为新顺序（4=impl,5=doc,6=final-candidate,7=confirmation,8=delivery,9=closure），current_step 仅作 label 不用于排序 |
 | R-009 | VERIFY | 属实：测试文件未入 bundle | 下一轮 bundle 含测试快照；新增 R4-001 回归断言 |
+
+## 第五轮 findings 与修复记录
+
+| ID | Severity | 核对 | 修复 |
+|---|---|---|---|
+| R5-001 | MEDIUM | 属实：ci.md 场景 4 仍允许"用户明确要求"绕过 CI 优先 | 场景 4 本地全量测试仅作补充诊断；有必需远端 CI Gate 时不得仅因用户要求降级 |
+| R5-002 | MEDIUM | 属实：gh 不可用被等同于"无远端 CI 能力" | 拆为 remote_ci_required / ci_control_available 两概念；gh 不可用→BLOCKED/ASK，不归入无远端 CI |
+| R-009 | MEDIUM | 属实：缺 4 项机械断言 | 新增 test_ci_trigger_failure_cannot_fall_back_to_local_final、test_user_request_cannot_bypass_required_remote_ci、test_workflow_selector_is_shared_by_all_scenarios、test_gh_unavailable_not_equal_remote_ci_absent、test_legacy_stage_mapping_matches_stage_graph |
 
 ## 第二轮 findings 与修复记录
 

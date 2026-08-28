@@ -53,11 +53,18 @@ gh workflow run "<workflow-name>" --ref <当前分支>
   3. 其他错误 → 用 AskUserQuestion 询问：重试 / 排查 CI 配置 / 终止
 - **禁止**：把"触发本身失败"等同于"CI 不可用"降级本地——触发失败是步骤 2 的分支，不是步骤 3 的入口
 
-### 3. 本地测试（仅当真正不存在远端 CI 能力）
+### 3. 本地测试（仅当无必需远端 CI Gate）
 
-仅当以下任一成立时执行（封闭列表，不得扩展）：
-- 项目无 `.github/workflows/` 自建服务器配置（真正不存在远端 CI 能力）
-- `gh` 命令不可用且用户在 AskUserQuestion 中选择不修复鉴权
+先用两个独立概念判定：
+
+```text
+remote_ci_required   是否必需远端 CI Gate（项目存在 CI 配置 → true）
+ci_control_available 当前能否查询/触发该 CI（gh 可用 → true）
+```
+
+**本地测试作为最终验证**仅当 `remote_ci_required=false`（项目无 `.github/workflows/` 配置，真正不存在远端 CI 能力）时允许。
+
+`remote_ci_required=true` 但 `ci_control_available=false`（如 `gh` 不可用、鉴权失败、触发失败）**不归入"不存在远端 CI 能力"**——此时 `BLOCKED` / ASK（修复鉴权、换工具、终止），不得把"控制工具不可用"当作"CI 不存在"而降级本地最终验证。
 
 **CI 触发失败（分支未 push、`gh workflow run` 报错、鉴权失败等）不进入本封闭列表**——一律按步骤 2 的"触发本身失败" AskUserQuestion 流程处理（修复/重试/终止），不允许据此降级本地测试作为最终验证。
 

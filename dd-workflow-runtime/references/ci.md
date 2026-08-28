@@ -129,7 +129,7 @@ fi
 2. **CI 全量验证**（**必需**）：
    - **已 push**：`gh run list --workflow <workflow-name> --branch "$BASE_BRANCH" --limit 1` 查找对应 SHA 的 run，`gh run watch` 等待结果
    - **未 push**：先检查 `delivery_authorization`；授权后 push，再等待 CI 结果（与场景 3 相同流程）；未授权停在 Delivery 边界
-3. **本地全量测试**（**仅当** CI 不可用或用户明确要求）：按项目命令执行
+3. **本地全量测试**：仅作补充诊断；**不存在必需远端 CI Gate 时**，才按 [test-location.md](test-location.md) 的 local-final-verification 规则作为最终验证。存在必需远端 CI Gate 时不得仅因"用户明确要求"降级（红线：用户要求不凌驾 CI 优先）
 
 - **CI 通过** → 继续清理工作树
 - **CI 失败** → **结构化 ASK**：拉取 CI 日志分析修复 / `git merge --abort` 撤销合并回到 TDD / 本地复现排查

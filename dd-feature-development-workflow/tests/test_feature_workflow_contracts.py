@@ -197,6 +197,21 @@ class TestStateProducerConsumerConsistent(unittest.TestCase):
         self.assertIn("operation: cleanup", delivery,
                       "delivery must write cleanup in_progress before state disposal (R4-001)")
 
+    def test_legacy_stage_mapping_matches_stage_graph(self):
+        handoff = read(STATE_AND_HANDOFF)
+        # legacy mapping must follow new Stage order: impl → doc → final-candidate → confirmation.
+        mapping_block = handoff.split("legacy `current_step` mapping")[1]
+        self.assertIn("4 / 4.x → implementation", mapping_block,
+                      "legacy mapping must keep implementation at 4 (R4-002)")
+        self.assertIn("5 / 5.x → documentation", mapping_block,
+                      "legacy mapping must map documentation to 5, before final-candidate (R4-002)")
+        self.assertIn("6 / 6.x → final-candidate", mapping_block,
+                      "legacy mapping must map final-candidate to 6 (R4-002)")
+        self.assertIn("7 → confirmation", mapping_block,
+                      "legacy mapping must map confirmation to 7 (R4-002)")
+        self.assertIn("不得用于排序或推进", mapping_block,
+                      "legacy current_step must be label-only, not for ordering (R4-002)")
+
 
 if __name__ == "__main__":
     unittest.main()
