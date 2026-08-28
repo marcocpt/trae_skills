@@ -71,7 +71,11 @@
   "completed_phases": ["<已完成本地验证的 Phase 编号列表>"],
   "smoke_ci_phases": ["<触发过远程 UI Smoke CI 的 Phase 编号列表>"],
   "final_candidate_branch": "<最终合并候选分支名>",
-  "final_ci_passed": false,
+  "candidate_sha": "<冻结候选 SHA>",
+  "candidate_review": {"level": "standard", "execution": "auto", "sha": "<candidate_sha>", "review_ref": "<review-ref>"},
+  "full_spec_gap": {"sha": "<candidate_sha>", "gap_table_ref": "<gap-table-ref>"},
+  "full_ci_run": {"run_id": "<run-id>", "url": "<run-url>", "head_sha": "<candidate_sha>", "conclusion": "success"},
+  "full_ci_passed": false,
   "commits": {
     "specs": "<规格文档套件提交 sha>",
     "plans": "<commit-sha>"
@@ -79,7 +83,7 @@
 }
 ```
 
-> **三层增量验证约束**：feature-development 工作流采用三层验证。`completed_phases` 记录已通过本地快速验证的 phase 列表，`smoke_ci_phases` 记录触发过远程 UI Smoke CI 的 phase 列表，`final_candidate_branch` 和 `final_ci_passed` 跟踪最终合并候选的状态。
+> **三层增量验证约束**：feature-development 工作流采用三层验证。`completed_phases` 记录已通过本地快速验证的 phase 列表，`smoke_ci_phases` 记录触发过远程 UI Smoke CI 的 phase 列表；`final_candidate_branch`、`candidate_sha`、`candidate_review`、`full_spec_gap`、`full_ci_run`、`full_ci_passed` 跟踪最终合并候选，且 `candidate_review.sha == full_spec_gap.sha == full_ci_run.head_sha == candidate_sha`（exact-SHA 不变量）。
 
 ### project-bootstrap 特有字段
 

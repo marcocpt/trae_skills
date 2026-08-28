@@ -37,11 +37,24 @@
 ```yaml
 final_candidate_branch: ci/F0-final-candidate
 candidate_sha: <sha>
-candidate_review: <review-ref>
-full_spec_gap: <gap-table-ref>
-full_ci_run: <run-id-or-url>
+candidate_review:
+  level: standard
+  execution: auto
+  sha: <candidate_sha>
+  review_ref: <review-ref>
+full_spec_gap:
+  sha: <candidate_sha>
+  gap_table_ref: <gap-table-ref>
+full_ci_run:
+  run_id: <run-id>
+  url: <run-url>
+  head_sha: <candidate_sha>
+  conclusion: success
+full_ci_passed: true
 candidate_ready: true
 current_stage: confirmation
 ```
+
+`full_ci_run.head_sha` 必须等于 `candidate_sha`；`candidate_review.sha` 与 `full_spec_gap.sha` 也必须等于 `candidate_sha`。任一不等即 `stale`，不得推进。
 
 Candidate Gate 不更新 develop/main。Confirmation 只决定交付或回退；Delivery 只能推进同一 `candidate_sha`（AC-09）。

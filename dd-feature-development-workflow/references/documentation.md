@@ -21,4 +21,4 @@
 
 行为未改变时不要为了“同步”篡改需求。修改文档时遵循版本和 history 规则。
 
-Gate：文档与已验证行为一致，且发生在候选冻结之前。候选冻结后任何内容变化使 Documentation 需要重做（AC-07/AC-08）。
+Gate：文档与已验证行为一致，且发生在候选冻结之前。通过后 `current_stage=final-candidate`（AC-07）。候选冻结后任何内容变化使 Documentation 需要重做（AC-07/AC-08）。

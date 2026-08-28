@@ -51,17 +51,24 @@ smoke_ci_phases: []
 commits: {}
 final_candidate_branch: null
 candidate_sha: null
-full_ci_run: null
+candidate_review: null          # {level, execution, sha, review_ref}
+full_spec_gap: null             # {sha, gap_table_ref}
+full_ci_run: null               # {run_id, url, head_sha, conclusion}
 full_ci_passed: false
-candidate_review: null
-full_spec_gap: null
 candidate_ready: false
-merge_in_progress: false
-cleanup_in_progress: false
 bootstrap_handoff_consumed: false
 bootstrap_state_path: null
 phase_contract_path: null
 ```
+
+候选字段不变量：`candidate_review.sha == full_spec_gap.sha == full_ci_run.head_sha == candidate_sha`；任一缺失或不一致即 `stale`，恢复/Closure 据此判定，不猜测。
+
+### 2.1 in-progress 镜像
+
+merge、push、cleanup 等不可瞬时动作使用运行时的 `in_progress: {operation, target, source, started_at}`（见 runtime-contract §4），不另设布尔兼容字段。merge/cleanup 两条恢复分支：
+
+- `in_progress.operation=merge`：核对目标分支是否已含 `candidate_sha`；已含则清除 `in_progress` 并进入 Closure；未含则询问是否继续合并；
+- `in_progress.operation=cleanup`：核对清理目标是否存在；存在则先完成剩余清理动作，再清除 `in_progress` 并写 Receipt。
 
 ## 3. legacy `current_step` mapping
 

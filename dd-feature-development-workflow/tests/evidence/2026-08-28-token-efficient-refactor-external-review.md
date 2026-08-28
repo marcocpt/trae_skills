@@ -45,4 +45,20 @@
 ## 处置与复查状态
 
 - [x] 修复（含 F-001..F-013）
-- [ ] 针对性复查：修复后再次送审，直到 ChatGPT 返回 `CLOSED`
+- [x] 第二轮送审（修复后）：返回 `REQUEST_CHANGES`（R-001..R-009：2 HIGH、7 MEDIUM）
+- [x] R-001..R-009 本地核对：全部属实，已修复（commit `aad1a20` 后二次修复）
+- [ ] 第三轮送审：二次修复后再次送审，直到 ChatGPT 返回 `CLOSED`
+
+## 第二轮 findings 与修复记录
+
+| ID | Severity | 核对 | 修复 |
+|---|---|---|---|
+| R-001 | HIGH | 属实：state.md 仍留 `final_ci_passed`；candidate 输出未结构化 | candidate.md/state.md/state-and-handoff 统一为 `{run_id,url,head_sha,conclusion}` + review/gap SHA binding |
+| R-002 | HIGH | 属实：`verification.delivery` 违反 plan+result 唯一 schema | 改为 `phase_delivery`，authorization/execution 分离；Red/Green run 各自带 digest |
+| R-003 | MEDIUM | 属实：final-candidate Gate 写在 delivery-and-closure | 移到 documentation.md；delivery-and-closure 删除 Documentation 节 |
+| R-004 | MEDIUM | 属实：布尔 merge/cleanup 与 `in_progress` 双重属主 | 移除布尔字段，镜像 `in_progress: {operation,...}`，定义 merge/cleanup 恢复分支 |
+| R-005 | MEDIUM | 属实：integration plan 无执行属主 | implementation 增加 §3.1 Post-Phase Integration Gate |
+| R-006 | MEDIUM | 属实：baseline-4 自称"同一子系统不同层"又判跨子系统 | 冻结为"数据/服务/UI 三子系统"，5 文件验收成立 |
+| R-007 | MEDIUM | 属实：ci.md 跳过与 test-location"不跳过失败验证"冲突 | 跳过=风险豁免，Gate 保持 `CONDITIONAL` 禁止据此声明 PASS |
+| R-008 | MEDIUM | 属实：workflow-name 解析只在场景 1 | 提升为所有场景共同前置"工作流选择器"，单一属主 |
+| R-009 | MEDIUM | 属实：测试断言偏弱/no-op | 强化 exact-SHA 结构化断言、cross-file producer/consumer、documentation Gate 属主断言、修复 no-op replace |

@@ -18,6 +18,7 @@ ARTIFACT = RUNTIME_ROOT / "references" / "artifact-contract.md"
 REVIEW_GATE = RUNTIME_ROOT / "references" / "review-gate.md"
 CANDIDATE = WORKFLOW_ROOT / "references" / "candidate.md"
 DELIVERY = WORKFLOW_ROOT / "references" / "delivery-and-closure.md"
+DOCUMENTATION = WORKFLOW_ROOT / "references" / "documentation.md"
 
 
 def read(path: Path) -> str:
@@ -57,13 +58,33 @@ class TestDeliveryPromotesExactCandidateSha(unittest.TestCase):
     """AC-09: Delivery only promotes the exact candidate SHA."""
 
     def test_delivery_promotes_exact_candidate_sha(self):
-        text = read(DELIVERY)
-        self.assertIn("delivery_authorization", text,
+        delivery = read(DELIVERY)
+        candidate = read(CANDIDATE)
+        self.assertIn("delivery_authorization", delivery,
                       "delivery_authorization must be kept independently (AC-09)")
-        self.assertIn("candidate_sha", text,
+        self.assertIn("candidate_sha", delivery,
                       "Delivery must reference candidate_sha (AC-09)")
-        self.assertIn("review_sha == gap_sha == ci_sha == candidate_sha", text,
+        self.assertIn("review_sha == gap_sha == ci_sha == candidate_sha", delivery,
                       "Delivery must enforce exact-SHA invariant (AC-09)")
+        # candidate.md must emit structured exact-SHA fields for consumption.
+        self.assertIn("full_ci_run.head_sha", candidate,
+                      "candidate.md must bind full_ci_run.head_sha to candidate_sha (R-001)")
+        self.assertIn("candidate_review.sha", candidate,
+                      "candidate.md must bind review to candidate_sha (R-001)")
+        self.assertIn("full_spec_gap.sha", candidate,
+                      "candidate.md must bind gap to candidate_sha (R-001)")
+        # closure must consume the same fields (cross-file producer/consumer).
+        self.assertIn("full_ci_run.head_sha", delivery,
+                      "closure must consume full_ci_run.head_sha (R-001)")
+
+    def test_documentation_gate_owned_by_documentation_reference(self):
+        doc = read(DOCUMENTATION)
+        delivery = read(DELIVERY)
+        # final-candidate transition is owned by documentation.md, not delivery.
+        self.assertIn("current_stage=final-candidate", doc,
+                      "documentation.md must own the final-candidate Gate (R-003)")
+        self.assertNotIn("current_stage=final-candidate", delivery,
+                         "delivery-and-closure.md must not own the documentation Gate (R-003)")
 
 
 class TestPhaseReadsAnchorsNotFullSpecs(unittest.TestCase):

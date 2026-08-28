@@ -12,17 +12,26 @@ dd-bug-fix-workflow 和 dd-feature-development-workflow（以及 dd-ai-refactor-
 
 各工作流在需要验证精确 SHA 的 CI 结果时引用本 reference。使用共享 CI 时按「场景」取语义，但**不携带任何项目特定步骤号**；各工作流的 Stage 只引用场景语义，不复制命令。
 
+## 前置：工作流选择器（所有场景共用）
+
+进入任一场景前必须解析 `<workflow-name>`：
+
+1. 优先项目 `AGENTS.md` / `project_memory.md` 记录的 workflow 文件名（单一属主：项目文档）；
+2. 无记录时自动检测 `.github/workflows/*.yml`；
+3. 无法唯一解析（多个 yml 且项目未记录）时 ASK / BLOCKED，不得猜名。
+
+解析结果作为 `workflow_selector` 传入本 reference，场景 1-4 全部复用同一解析值。本 reference 不重复 test-location.md 的 CI 配置检测。
+
 ## 场景 1：基线 CI 验证
 
 **语义**：确认起点 commit 干净。起点 = BASE_BRANCH 的 HEAD（新创建分支尚未 push，远端无此分支，此时**必须**查 BASE_BRANCH 的 CI 结果——工作树 HEAD 等于 BASE_BRANCH HEAD，基线 commit 已有成功 CI 证据即满足复用条件）。
 
-按优先级检索（commit 一致即可复用）：
+按优先级检索（commit 一致即可复用）。`<workflow-name>` 来自上方"前置：工作流选择器"的 `workflow_selector`，本场景不再重复解析：
 
-1. 解析 `<workflow-name>`：优先项目 `AGENTS.md`/`project_memory.md` 记录的 workflow 名；无记录时自动检测 `.github/workflows/*.yml`；仍无法唯一解析时 ASK / BLOCKED，不得猜名
-2. 先查当前分支：`gh run list --workflow <workflow-name> --branch <当前分支> --limit 1`
-3. 当前分支无远端或无结果时，**必须**再查 BASE_BRANCH：`gh run list --workflow <workflow-name> --branch <BASE_BRANCH> --limit 1`
-4. 任一返回 `conclusion=success` 且 `headSha` 等于当前工作树 HEAD → 复用 CI 结果（记录复用来源分支与 run ID），跳过本地测试
-5. `status=in_progress` → 等待 CI 完成，不重复触发
+1. 先查当前分支：`gh run list --workflow <workflow-name> --branch <当前分支> --limit 1`
+2. 当前分支无远端或无结果时，**必须**再查 BASE_BRANCH：`gh run list --workflow <workflow-name> --branch <BASE_BRANCH> --limit 1`
+3. 任一返回 `conclusion=success` 且 `headSha` 等于当前工作树 HEAD → 复用 CI 结果（记录复用来源分支与 run ID），跳过本地测试
+4. `status=in_progress` → 等待 CI 完成，不重复触发
 
 **触发 CI**（无可用结果且当前分支已 push 时）：
 
@@ -82,7 +91,7 @@ gh run watch "$RUN_ID" --exit-status
 - **CI 失败**（测试用例未通过）→ **结构化 ASK**：
   - 拉取 CI 日志（`gh run view <run-id> --log-failed`）分析失败原因，回到 TDD 修复
   - 本地复现排查（仅用于理解失败原因，修复后必须重新走 CI 验证）
-  - 跳过继续：**仅当**同改动已有基线 CI 证据（BASE_BRANCH 对应 HEAD 的 `conclusion=success`）且用户明确选择跳过时允许；否则 `BLOCKED`，不得跳过
+  - 跳过：**仅**作为风险豁免，且同时满足——同改动有基线 CI 证据（BASE_BRANCH 对应 HEAD `conclusion=success`）、用户明确授权、记录 baseline SHA/run、current SHA、失败分类；**禁止据此声明 CI Gate PASS**，Gate 保持 `CONDITIONAL`（未满足），后续依赖该 Gate 的步骤保持 `BLOCKED`。否则不得跳过。
 
 ## 场景 3：Push 后等待 CI
 
@@ -109,8 +118,8 @@ fi
 ```
 
 - **成功** → 进入下一步
-- **CI 失败** → **结构化 ASK**：拉取日志分析修复 / 本地复现定位 / 跳过（仅当有基线 CI 证据且用户明确选择）
-- **未找到 run** → **结构化 ASK**：手动触发后重新等待 / 检查 workflow 文件配置 / 跳过（仅当有基线 CI 证据且用户明确选择）
+- **CI 失败** → **结构化 ASK**：拉取日志分析修复 / 本地复现定位 / 跳过（仅作为风险豁免：有基线 CI 证据 + 用户明确授权 + 记录 baseline/current SHA 与失败分类；Gate 保持 `CONDITIONAL`，禁止据此声明 PASS）
+- **未找到 run** → **结构化 ASK**：手动触发后重新等待 / 检查 workflow 文件配置 / 跳过（仅作为风险豁免，规则同上）
 
 ## 场景 4：合并后 CI 验证
 
@@ -148,7 +157,7 @@ fi
 - **以"用户明确要求"凌驾于 CI 优先之上**——当已有可复用的成功 CI 结果时，用户要求本地不构成降级理由；应用结构化 ASK 给出"复用 CI 结果（推荐）/ 仍要本地仅作参考 / 终止"选项；
 - 未授权 push（缺 `delivery_authorization`）时仍 push 触发 CI；
 - 用固定 workflow/scheme/项目名替代项目文档与脚本；
-- 本地复现/诊断通过即宣称必需远端 CI Gate 已关闭。
+- 本地测试作为 CI 替代，或本地复现/诊断通过即宣称必需远端 CI Gate 已关闭。
 
 ## 合理化借口表
 

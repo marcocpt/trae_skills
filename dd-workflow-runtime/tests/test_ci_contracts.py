@@ -82,12 +82,12 @@ class TestLocalDiagnosisCannotCloseRemoteGate(unittest.TestCase):
 
     def test_ci_md_local_diagnosis_cannot_close_remote_gate(self):
         text = read(CI)
-        self.assertIn("本地", text,
-                      "ci.md must discuss local diagnosis limits (AC-10)")
-        self.assertNotIn("本地测试替代 CI",
-                         text.replace("禁止", "禁止").replace("本地测试替代 CI",
-                                                           "本地测试替代 CI"),
-                         "placeholder; see below")
+        self.assertIn("只用于理解失败原因或收集诊断", text,
+                      "ci.md must scope local diagnosis to failure understanding (AC-10)")
+        self.assertIn("不能关闭必需远端 CI Gate", text,
+                      "ci.md must forbid local diagnosis closing remote CI Gate (AC-10)")
+        self.assertIn("禁止本地测试作为 CI 替代", text,
+                      "ci.md must forbid local testing as CI substitute (AC-10)")
 
 
 class TestCIXcodeAdapterGeneric(unittest.TestCase):

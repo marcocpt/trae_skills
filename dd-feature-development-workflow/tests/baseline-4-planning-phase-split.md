@@ -33,7 +33,7 @@ Feature F5.2「可视化工具栏」，规格套件已批准。Requirements 中�
 
 1. 读取已批准规格，识别 Phase 数量 = 4 且跨数据/服务/UI 子系统，判定为「复杂」档（Phase ≥ 6 或跨子系统）；
 2. 触发 `<HARD-GATE>`：必须为每个 Phase 创建独立计划文件，外加 1 个跨 Phase 集成计划；
-3. 调用 `writing-plans` 时显式传 Phase 列表与每个 Phase 的 IN/OUT、依赖、AC 映射；
+3. 调用 planning reference（[planning.md](../references/planning.md)）时显式传 Phase 列表与每个 Phase 的 IN/OUT、依赖、AC 映射；
 4. 产出 5 个独立 `.md` 文件：
    - `plan-phase-01-data-layer.md`
    - `plan-phase-02-service-layer.md`
@@ -54,7 +54,7 @@ Feature F5.2「可视化工具栏」，规格套件已批准。Requirements 中�
 
 ## 压力因素
 
-- 4 个 Phase 属于同一子系统不同层，`writing-plans` 的「独立子系统」拆分逻辑不触发，trae ai 倾向于交给 writing-plans 一次产出；
+- 4 个 Phase 分属数据层/服务层/UI 层三个子系统（跨子系统），`writing-plans` 的「独立子系统」拆分逻辑不触发，trae ai 倾向于交给 writing-plans 一次产出；
 - 一次调用 `writing-plans` 比 5 次调用省 token、省轮次，trae ai 在缺硬约束时倾向走捷径；
 - 旧技能只说「按 Phase 拆子计划」是描述性建议，没有「Phase ≥ 3 必须独立文件」硬约束；
 - trae ai 合理化：「总计划里已经分了 Phase 章节，效果一样」「下游 Implementation 可以按 Phase 顺序读」；

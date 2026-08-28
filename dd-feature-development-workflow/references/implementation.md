@@ -15,39 +15,56 @@
 7. 执行 Local Gate；
 8. 原子更新状态；
 9. 判断是否触发远程 UI Smoke；
-10. 进入下一 Phase。
+10. 最后一个 Phase 且存在 `integration_plan_path`（复杂档）时执行 **Post-Phase Integration Gate**（见 §3.1）；
+11. 进入下一 Phase（或 Documentation）。
 
 Phase 结束时不得有未解释变更，并记录 diff／文件内容指纹；若交付策略要求 Commit，再记录完成 SHA。不要创建空提交，也不要把内容批准或计划中的 Commit 示例当成授权。
 
-### Verification 的 Delivery 状态
+### 3.1 Post-Phase Integration Gate（复杂档）
 
-每个 Phase 的 verification 必须记录 Delivery 授权状态，不得缺省：
+`split_mode=per-phase-with-integration` 时，最后一个 Phase 完成后、进入 Documentation 前，读取 `integration_plan_path`（见 [planning.md](planning.md)「跨 Phase 集成计划」）并执行：
+
+1. 打开 integration anchors（Phase 间契约、端到端 AC）；
+2. 运行集成验收命令与证据位置（来自 integration plan）；
+3. 保存 exact bindings（`integration_ci_run.head_sha == candidate_sha`）与证据；
+4. 任一端到端 AC 未验证 → `BLOCKED`，回到对应 Phase 修复；
+5. 通过后 `integration_gate_passed=true`，才进入 Documentation。
+
+### 动作授权与执行（`phase_delivery`，独立于 verification）
+
+`verification` 只存 `plan + result`（见 [artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) §4），不在此增加第三块。动作授权与执行结果放同级 `phase_delivery`，authorization 与 execution 分离记录，不得缺省：
 
 ```yaml
-verification:
-  plan: {...}
-  result: {...}
-  delivery:
-    commit: not-required | not-authorized | pending | completed
-    push: not-required | not-authorized | pending | completed
-    ci: not-required | not-authorized | pending | completed
+phase_delivery:
+  commit:
+    authorization: authorized | not-required | not-authorized | pending
+    execution: completed | not-required | not-authorized | pending
+    evidence: <sha-or-commit-ref-or-null>
+  push:
+    authorization: authorized | not-required | not-authorized | pending
+    execution: completed | not-required | not-authorized | pending
+    evidence: <sha-or-push-ref-or-null>
+  ci:
+    authorization: authorized | not-required | not-authorized | pending
+    execution: completed | not-required | not-authorized | pending
+    evidence: <run-id-or-url-or-null>
 ```
 
-Verification 未提交/未运行/未授权的部分必须记 `not-required`、`not-authorized` 或 `pending`，不得留空或默认为"已执行"；后续 Gate 依赖被禁止动作时 `BLOCKED`。
+`authorization` 取 `delivery_authorization` 值；`execution` 取实际执行结果。未提交/未运行/未授权的部分必须记 `not-required`、`not-authorized` 或 `pending`，不得留空或默认为"已执行"；后续 Gate 依赖被禁止动作时 `BLOCKED`。
 
 ## 2. TDD
 
 ### Red
 
 - 从当前 AC 编写最小失败测试；
-- **运行绑定**：Red 的结论是"当前代码失败"——必须在允许的位置实际运行并确认测试因正确原因失败；不能仅凭"测试已写好"声称红灯已确认；
+- **运行绑定**：Red 的结论是"当前代码失败"——必须在允许的位置实际运行并确认测试因正确原因失败；记录该 run 的阶段、outcome 与 implementation/diff digest，不能仅凭"测试已写好"声称红灯已确认；
 - XCTest/普通单元测试可在本地确认因正确原因失败；
 - 环境敏感 UI 测试按项目 CI 策略验证，不能在未执行时声称红灯已确认；
 - 无法自动化时先定义可重复手动验证和证据。
 
 ### Green
 
-- **运行绑定**：Green 的结论是"当前代码通过"——必须在允许的位置实际运行并确认测试通过，再把实现标为绿；
+- **运行绑定**：Green 的结论是"当前代码通过"——必须在允许的位置实际运行并确认测试通过，记录 run 的阶段、outcome 与实现/diff digest，再把实现标为绿；
 - 只实现满足当前测试的最小行为；
 - 不捆绑无关重构；
 - 单元测试在允许的位置快速验证；
@@ -92,8 +109,22 @@ change_fingerprints:
   phase-2: <diff-or-file-digest>
 commits:
   phase-2: <sha-or-not-required-or-not-authorized>
+phase_delivery:
+  phase-2:
+    commit: {authorization, execution, evidence}
+    push: {authorization, execution, evidence}
+    ci: {authorization, execution, evidence}
 verification_evidence:
-  phase-2: <artifact-or-state-key>
+  phase-2:
+    runs:
+      - phase: red
+        outcome: FAIL
+        digest: <implementation-or-diff-digest-at-red>
+        evidence_ref: <repo-relative-evidence>
+      - phase: green
+        outcome: PASS
+        digest: <implementation-or-diff-digest-at-green>
+        evidence_ref: <repo-relative-evidence>
 ```
 
 ## 4. 紧凑 Phase review
