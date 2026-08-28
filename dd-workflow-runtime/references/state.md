@@ -145,9 +145,9 @@ Bootstrap 没有状态文件时，先从仓库中的 `docs.md`、Roadmap、Archi
 - **更新 `phase_plan_paths` / `integration_plan_path`**（仅 feature-development）：Planning Stage 拆分档位为 `per-phase` 或 `per-phase-with-integration` 时，写入每个 Phase 子计划路径数组；复杂档同时写 `integration_plan_path`。`phase_plan_paths` 长度必须等于 `total_phases`，否则禁止推进到 implementation
 - **更新 `completed_phases`**（仅 feature-development）：每完成一个 phase 的本地验证，追加当前 phase 编号到此数组
 - **更新 `smoke_ci_phases`**（仅 feature-development）：每触发一次远程 UI Smoke CI，追加当前 phase 编号到此数组
-- **更新 `final_candidate_branch`**（仅 feature-development）：步骤 5 创建最终合并候选分支时记录
-- **更新 `final_ci_passed`**（仅 feature-development）：步骤 5 完整远程 CI 通过时设置为 `true`
-- **更新 `merge_in_progress`**：合并操作执行前设置为 `true`，merge 成功后清除或直接删除状态文件
+- **更新 `final_candidate_branch`**（仅 feature-development）：创建最终合并候选分支时记录
+- **更新候选 exact-SHA 字段**（仅 feature-development）：冻结候选时写 `candidate_sha`、`candidate_review`、`full_spec_gap`；完整远程 CI 通过且 `full_ci_run.head_sha == candidate_sha` 时才写 `full_ci_run={run_id,url,head_sha,conclusion}` 与 `full_ci_passed=true`
+- **更新 `in_progress`**：merge/push/cleanup 等不可瞬时动作执行前写 `in_progress: {operation, target, source, started_at}`（见 runtime-contract §4），动作成功后写完成证据再清除；**不另设布尔兼容字段**
 - **删除**：合并成功后（**禁止 merge 前删除**），须在 `git merge --no-ff` 成功后执行，此时 `git-dir` 指向 worktree 私有目录
 - **Bootstrap 写入**：Preflight 结束后写入；每个节点 Gate 通过后更新 `current_node`、`completed_nodes`、`artifacts` 和 gaps
 - **Bootstrap 完成**：Handoff 准备后设为 `handoff-ready`；下游确认接收且 Exit Gate 通过后、Host Close ASK 前设为 `completed`，不立即删除
@@ -200,8 +200,7 @@ import json
 state_file = '$git_dir/${WORKFLOW_TYPE}-state.json'
 with open(state_file) as f:
     state = json.load(f)
-state['current_step'] = '<合并步骤>-merging'
-state['merge_in_progress'] = True
+state['in_progress'] = {'operation': 'merge', 'target': '$BASE_BRANCH', 'source': '<工作树分支>', 'started_at': '<ISO 时间>'}
 with open(state_file, 'w') as f:
     json.dump(state, f, indent=2)
 "

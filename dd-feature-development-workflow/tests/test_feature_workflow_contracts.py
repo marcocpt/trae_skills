@@ -19,6 +19,9 @@ REVIEW_GATE = RUNTIME_ROOT / "references" / "review-gate.md"
 CANDIDATE = WORKFLOW_ROOT / "references" / "candidate.md"
 DELIVERY = WORKFLOW_ROOT / "references" / "delivery-and-closure.md"
 DOCUMENTATION = WORKFLOW_ROOT / "references" / "documentation.md"
+STATE = RUNTIME_ROOT / "references" / "state.md"
+STATE_AND_HANDOFF = WORKFLOW_ROOT / "references" / "state-and-handoff.md"
+IMPLEMENTATION = WORKFLOW_ROOT / "references" / "implementation.md"
 
 
 def read(path: Path) -> str:
@@ -148,6 +151,37 @@ class TestRetiredReferencesHaveNoActiveLinks(unittest.TestCase):
                         "implementation-and-verification.md"):
             self.assertNotIn(retired, skill,
                              f"SKILL.md must not route retired {retired} (AC-13)")
+
+
+class TestStateProducerConsumerConsistent(unittest.TestCase):
+    """R-001/R-004: shared state.md producer must match feature schema consumer."""
+
+    def test_state_md_no_legacy_candidate_fields(self):
+        state = read(STATE)
+        self.assertNotIn("final_ci_passed", state,
+                         "state.md producer must not write legacy final_ci_passed (R-001)")
+        self.assertNotIn("merge_in_progress", state,
+                         "state.md producer must not write legacy merge_in_progress (R-004)")
+        self.assertIn("full_ci_run", state,
+                      "state.md producer must write structured full_ci_run (R-001)")
+        self.assertIn("full_ci_passed", state,
+                      "state.md producer must write full_ci_passed (R-001)")
+
+    def test_feature_state_uses_in_progress_not_booleans(self):
+        handoff = read(STATE_AND_HANDOFF)
+        self.assertIn("in_progress", handoff,
+                      "feature state must reuse runtime in_progress (R-004)")
+        self.assertNotIn("merge_in_progress", handoff,
+                         "feature state must not define boolean merge_in_progress (R-004)")
+        self.assertNotIn("cleanup_in_progress", handoff,
+                         "feature state must not define boolean cleanup_in_progress (R-004)")
+
+    def test_integration_gate_binds_implementation_digest_not_candidate_sha(self):
+        impl = read(IMPLEMENTATION)
+        self.assertIn("integration_verification.bindings.implementation_digest", impl,
+                      "Integration Gate must bind implementation digest, not candidate_sha (R-005)")
+        self.assertNotIn("integration_ci_run.head_sha == candidate_sha", impl,
+                         "Integration Gate must not reference candidate_sha before freeze (R-005)")
 
 
 if __name__ == "__main__":

@@ -26,9 +26,11 @@ Phase 结束时不得有未解释变更，并记录 diff／文件内容指纹；
 
 1. 打开 integration anchors（Phase 间契约、端到端 AC）；
 2. 运行集成验收命令与证据位置（来自 integration plan）；
-3. 保存 exact bindings（`integration_ci_run.head_sha == candidate_sha`）与证据；
+3. 保存 exact bindings：`integration_verification.bindings.implementation_digest`（或已有 commit 时 `integration_ci_run.head_sha == implementation_head_sha`）与证据；**此时候选尚未冻结，不得引用 `candidate_sha`**（那在 Final Candidate 阶段建立）；
 4. 任一端到端 AC 未验证 → `BLOCKED`，回到对应 Phase 修复；
 5. 通过后 `integration_gate_passed=true`，才进入 Documentation。
+
+Final Candidate 阶段再建立独立的 `candidate_review.sha == full_spec_gap.sha == full_ci_run.head_sha == candidate_sha`。
 
 ### 动作授权与执行（`phase_delivery`，独立于 verification）
 

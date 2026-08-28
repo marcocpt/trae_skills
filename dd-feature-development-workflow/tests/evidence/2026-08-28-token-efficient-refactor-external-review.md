@@ -47,8 +47,19 @@
 - [x] 修复（含 F-001..F-013）
 - [x] 第二轮送审（修复后）：返回 `REQUEST_CHANGES`（R-001..R-009：2 HIGH、7 MEDIUM）
 - [x] R-001..R-009 本地核对：全部属实，已修复（commit `e57350f`）
-- [x] 第三轮送审（尝试）：**BLOCKED_EXTERNAL_USAGE_LIMIT**——ChatGPT/Codex 账号到达使用上限（"You've hit your usage limit"，约 2026-08-28 15:19 后恢复），无法完成本轮外审；不伪造 ACCEPTED
-- [ ] 第三轮送审：使用上限恢复后继续，直到 ChatGPT 返回 `CLOSED`
+- [x] 第三轮送审：通过 **chatgpt-review MCP 通道**（`chatgpt_send_file` 上传快照，conversation `chatgpt-review-skills-develop-0828-0920`）返回 **不 ACCEPTED**：R-001（state.md producer 仍写旧字段）、R-004（merge_in_progress 双重属主）、R-005（Integration Gate 引用未冻结 candidate_sha）、R-007（本地最终验证边界）+ 1 验证缺口
+- [x] 第三轮 findings 本地核对：全部属实，已修复（见下）
+- [ ] 第四轮送审：修复后继续 MCP 送审，直到 ChatGPT 返回 `CLOSED`
+
+## 第三轮 findings 与修复记录
+
+| ID | Severity | 核对 | 修复 |
+|---|---|---|---|
+| R-001 | HIGH | 属实：state.md:149 仍写 `final_ci_passed` | 改为写 `full_ci_run={...}` + `full_ci_passed=true`，要求 `head_sha==candidate_sha` 才置 true |
+| R-004 | MEDIUM | 属实：state.md:150/204 仍用 `merge_in_progress` 布尔+模板代码 | 统一 `in_progress: {operation,target,source,started_at}`；模板代码同步 |
+| R-005 | HIGH | 属实：implementation §3.1 绑定 `integration_ci_run.head_sha == candidate_sha`（循环依赖） | 改为绑定 `integration_verification.bindings.implementation_digest`；candidate_sha 留 Final Candidate |
+| R-007 | MEDIUM | 属实：test-location 封闭列表与 ci.md 风险豁免叠加 | test-location 增加"有必需远端 CI Gate 时本地最多 CONDITIONAL/BLOCKED，不得 PASS"边界 |
+| 验证缺口 | VERIFY | 属实：无 state.md producer 断言 | 新增 TestStateProducerConsumerConsistent（3 个断言） |
 
 ## 第二轮 findings 与修复记录
 
