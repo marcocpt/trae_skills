@@ -53,10 +53,26 @@
 
 ## 任务结构
 
+Phase plan 头部定义一次 `source_manifest`（每个被引用来源的完整 metadata 只出现一次，见 [artifact-contract §2.1](../../dd-workflow-runtime/references/artifact-contract.md)）；每个 Task 只写 `sources: [{ref, anchors}]`，不复制 path/version/digest/approval。
+
+```markdown
+### Phase plan 头部
+
+**source_manifest：** [完整来源 metadata 唯一一次定义]
+```yaml
+source_manifest:
+  SPEC-REQ:
+    stable_id: SPEC-REQ
+    path: docs/specs/feature/requirements.md
+    digest: sha256:current-content
+    approval: {status, authority, decided_at, evidence_ref}
+    version_label: v1.0  # optional
+```
+
 ```markdown
 ### 任务 N：[组件名称]
 
-**Sources：** [逐项填写路径、ID、版本、内容指纹、`approval={status, authority, decided_at, evidence_ref}`]
+**Sources：** `sources: [{ref: SPEC-REQ, anchors: [FR-001, AC-001]}]`（完整 metadata 见 plan 头部 `source_manifest`）
 
 **Consumes：** [精确输入／接口]
 
