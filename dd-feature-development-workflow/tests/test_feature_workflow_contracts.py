@@ -56,11 +56,19 @@ class TestCandidateDoesNotPromoteTarget(unittest.TestCase):
 
     def test_candidate_does_not_promote_target(self):
         text = read(CANDIDATE)
-        self.assertIn("candidate_ready", text,
-                      "Candidate output must expose candidate_ready (AC-08)")
+        self.assertNotIn("candidate_ready", text,
+                         "Candidate must not expose derived candidate_ready (single-review P0)")
         # Candidate must NOT promote develop/main itself.
         self.assertIn("Candidate Gate 不更新 develop/main", text,
                       "Candidate must not promote develop/main (AC-08)")
+
+    def test_no_derived_candidate_ready_anywhere(self):
+        for path, name in ((STATE, "state.md"), (CANDIDATE, "candidate.md"),
+                           (STATE_AND_HANDOFF, "state-and-handoff.md"), (DELIVERY, "delivery-and-closure.md")):
+            self.assertNotIn("candidate_ready", read(path),
+                             f"{name} must not contain derived candidate_ready (single-review P0)")
+        self.assertIn("候选是否就绪只由上述源字段推导判定", read(STATE_AND_HANDOFF),
+                      "state-and-handoff must derive candidate readiness from source fields (single-review P0)")
 
 
 class TestDeliveryPromotesExactCandidateSha(unittest.TestCase):
