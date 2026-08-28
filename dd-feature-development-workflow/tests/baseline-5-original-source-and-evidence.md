@@ -8,10 +8,10 @@
 
 1. 实现前及最终符合性检查都读取已批准原始 Requirements／Design／Test Matrix；摘要只作导航；
 2. 从原文重新提取适用 ID、Out of Scope 与跨功能约束，检查遗漏和越界；
-3. 分别记录 `verification_plan`、`existing_coverage`、`run_result`、`evidence_validity`；
-4. 测试文件存在、`COVERED` 或旧 CI 均不能单独推出本次 PASS；
-5. 无法核对已有测试映射时为 `UNVERIFIED` 并设 blocker；证据不匹配时为 `stale`，均不得 PASS；
-6. 弱模型任务包必须包含每个来源的版本、内容指纹和结构化批准证据，以及 Consumes／Produces、写入范围、验证预期、停止条件和结构化 Git／外部动作授权；来源变化后整包失效。
+3. verification 存成 `plan` + `result` 两块；`result` 内保留 `coverage`、`runs`、`bindings`、`validity` 四个语义（AC-04）；
+4. 测试文件存在、`covered` 或旧 CI 均不能单独推出本次 PASS；
+5. 无法核对已有测试映射时为 `unverified` 并设 blocker；candidate SHA 与 evidence binding 不一致或证据过期时为 `stale`，均不得 PASS；
+6. 弱模型任务包头部定义唯一 `source_manifest`（每个来源完整 metadata 只一次），Task 只写 `sources: [{ref, anchors}]`；Consumes／Produces、写入范围、验证预期、停止条件和结构化 Git／外部动作授权；来源变化后整包失效。
 
 ## 修改前实测（2026-08-27，luna-worker）
 

@@ -18,7 +18,8 @@
 | 字段 | 必需内容 |
 |---|---|
 | `task_id` | 稳定 ID、目标、依赖 |
-| `sources` | 逐项路径、稳定 ID、版本、内容指纹、`approval` |
+| `source_manifest` | 每个被引用来源的完整 metadata **唯一一次**定义（见 §2.1） |
+| `sources` | Task 级引用：`{ref, anchors}`，不复制 path/version/digest/approval |
 | `constraints` | 相关约束、失败路径、跨功能约束、授权边界 |
 | `consumes` / `produces` | 精确输入、输出、下游接口 |
 | `write_scope` | 可创建／修改／删除的文件；未列路径禁止写 |
@@ -26,6 +27,31 @@
 | `verification` | 精确命令／人工步骤、预期、通过条件、证据位置 |
 | `stop_conditions` | `BLOCKED`／`STOP` 条件和下一安全动作 |
 | `delivery_authorization` | Git／外部动作状态、范围和证据 |
+
+### 2.1 Source Manifest（唯一属主）
+
+完整 source metadata 在一个 Phase plan 中**只出现一次**；Task 只写 `sources: [{ref, anchors}]`。字段名不得另造同义词：
+
+```yaml
+source_manifest:
+  SPEC-REQ:
+    stable_id: SPEC-REQ
+    path: docs/specs/feature/requirements.md
+    digest: sha256:current-content
+    approval:
+      status: approved
+      authority: user-or-project-role
+      decided_at: 2026-08-28
+      evidence_ref: repository-or-thread-reference
+    version_label: v1.0  # optional, not a stale Gate input
+
+task:
+  sources:
+    - ref: SPEC-REQ
+      anchors: [FR-001, AC-001]
+```
+
+规则：执行前同时验证 manifest digest、source digest 与 approval→digest 绑定。`version_label` 只作可选人类标签，不作为 stale Gate 输入。缺任一绑定或不一致即 `stale`／`BLOCKED`。
 
 - `approval={status, authority, decided_at, evidence_ref}`，只有与当前指纹绑定的 `approved` 有效。
 - `delivery_authorization={status, actions, scope, authority, decided_at, evidence_ref}`；`status` 只取 `authorized | not-required | not-authorized | pending`。仅可执行 `authorized` 中明确列出的动作和范围；`pending`／缺字段在动作边界 `BLOCKED`。内容批准不授权动作。
@@ -110,18 +136,45 @@ deletion_authorization: evidence reference or none
 - `unique_evidence=true` 禁止自动删除；人工删除仍需明确授权并留下记录。
 - 任何删除都必须有替代物核验和明确授权；缺少 `replacement` 核验或 `deletion_authorization` 的 `unique_evidence` 不得进入删除清单。
 
-## 4. 验证证据（与来源/实现/环境绑定，不回填合同）
+## 4. 验证证据（compact：`plan` + `result`，保留四个不变量）
+
+verification 只存两块：`plan` 与 `result`。但 `coverage`、`run`、`bindings`、`validity` 四个语义**必须**存在；`validity` 每次都验证，不只异常时记录。
+
+```yaml
+verification:
+  plan:
+    requirement_refs: [AC-001]
+    checks:
+      - id: CHECK-001
+        command: exact-command-or-manual-step
+        oracle: exact-pass-condition
+  result:
+    coverage:
+      AC-001: covered
+    runs:
+      - check_id: CHECK-001
+        outcome: PASS
+        evidence_ref: repository-relative-evidence
+    bindings:
+      source_manifest_digest: sha256:current-manifest
+      implementation_digest: git-or-file-digest
+      environment: recorded-environment-id
+    validity: valid
+```
 
 | 字段 | 记录 | 不能推出 |
 |---|---|---|
-| `verification_plan` | 计划检查、oracle、预期 | 已覆盖或已通过 |
-| `existing_coverage` | 指定来源版本的 AC／路径覆盖 | 本次运行通过 |
-| `run_result` | 本次命令／步骤、环境、实现／构建指纹、时间、`PASS | FAIL | NOT_RUN` | 后续版本仍有效 |
-| `evidence_validity` | 与当前来源、实现／构建、环境、AC 的匹配：`valid | stale | unreadable | unverified` | 未运行也可 PASS |
+| `plan` | 计划检查、oracle、预期、requirement refs | 已覆盖或已通过 |
+| `result.coverage` | 指定来源版本的 AC／路径覆盖 | 本次运行通过 |
+| `result.runs` | 本次命令／步骤、`PASS | FAIL | NOT_RUN`、证据位置 | 后续版本仍有效 |
+| `result.bindings` | source_manifest_digest、implementation_digest、environment | — |
+| `result.validity` | `valid | stale | unreadable | unverified` | 未运行也可 PASS |
 
-`existing_coverage` 只取 `COVERED`（完整）、`PARTIAL`（部分）、`MISSING`（缺失）、`DEFERRED`（已批准延后，含负责人／触发条件）、`UNVERIFIED`（无法核对，设 blocker）。测试存在或 `COVERED` 都不等于运行通过。只有必需 `run_result=PASS`、`evidence_validity=valid`、AC／失败路径无缺口且 blocker 为零，Gate 才能 `PASS`。
+Gate 规则：必需 coverage 无 `partial|missing|unverified`；必需 run 全部 `PASS`；bindings 与当前输入一致；`validity` 必须为 `valid`。非 `valid` 时才追加 `validity_exception`，但 exception 不能替代 validity 检查——即使 run 全 PASS、无 exception，只要 candidate SHA 与 evidence binding 不一致，也必须判 `stale`。
 
-计划写规范；覆盖快照、运行结果、审查发现和进度写既有状态／证据记录，不回填冻结合同。
+`coverage` 只取 `covered`（完整）、`partial`（部分）、`missing`（缺失）、`deferred`（已批准延后，含负责人／触发条件）、`unverified`（无法核对，设 blocker）。测试存在或 `covered` 都不等于运行通过。只有必需 `run=PASS`、`validity=valid`、AC／失败路径无缺口且 blocker 为零，Gate 才能 `PASS`。
+
+计划写规范；覆盖快照、运行结果、审查发现和进度写既有状态／证据记录，不回填冻结合同。旧的 `verification_plan`／`existing_coverage`／`run_result`／`evidence_validity` 四层并列字段不再作为现行合同。
 
 ## 5. 最小化
 

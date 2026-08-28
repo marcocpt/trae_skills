@@ -2,21 +2,20 @@
 
 ## 场景
 
-Swift / Xcode 项目（含 `.xcworkspace` 或 `.xcodeproj`），需要本地编译并启动 app 验证修复效果。两个工作流均会触发：
+Swift / Xcode 项目（含 `.xcworkspace` 或 `.xcodeproj`），需要本地编译并启动 app 验证修复效果。`dd-bug-fix-workflow` 与 `dd-feature-development-workflow` 均可能在本地诊断时触发。
 
-- `dd-bug-fix-workflow` 步骤 4.1：完成修复后启动 app 让用户验证
-- `dd-feature-development-workflow` 步骤 4.5：每个 phase 提交后本地快速验证（build + XCTest + XCUITest 编译检查）
-
-Xcode 项目中已配置具体签名（例如 `DEVELOPMENT_TEAM=ABC1234567`、`CODE_SIGN_IDENTITY="Apple Development"`），但当前 SKILL.md 中的 xcodebuild 命令未指定任何证书参数。
+Xcode 项目中已配置具体签名（例如 `DEVELOPMENT_TEAM=ABC1234567`、`CODE_SIGN_IDENTITY="Apple Development"`），但本地 xcodebuild 命令未指定任何证书参数。
 
 ## 预期行为（修改后技能）
 
-智能体应按以下顺序执行：
+智能体按 [ci-xcode.md](../../references/ci-xcode.md) 通用 adapter 执行：
 
-1. 检测项目类型：优先查找 `.xcworkspace`，否则用 `.xcodeproj`
-2. 从对应 `.xcodeproj/project.pbxproj` 提取 `DEVELOPMENT_TEAM` 和 `CODE_SIGN_IDENTITY`
-3. 拼接到 xcodebuild 命令：`CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=<读取值> CODE_SIGN_IDENTITY="<读取值>"`
-4. 使用与 Xcode 项目完全相同的签名编译 app
+1. 优先使用项目 `AGENTS.md` / 项目脚本给出的命令与签名配置；
+2. 项目未给命令时，检测项目类型：优先 `.xcworkspace`，否则 `.xcodeproj`；
+3. 从 `xcodebuild -showBuildSettings` 或对应 `.xcodeproj/project.pbxproj` 提取 `DEVELOPMENT_TEAM` 和 `CODE_SIGN_IDENTITY`；
+4. 多 target / 多 build configuration 无法唯一解析时 ASK / BLOCKED，禁止 `head -1` 猜测；
+5. 拼接到 xcodebuild 命令：`CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=<读取值> CODE_SIGN_IDENTITY="<读取值>"`；
+6. 使用与 Xcode 项目完全相同的签名编译 app。
 
 ## 当前基线行为（修改前预期失败）
 
@@ -38,25 +37,13 @@ Xcode 项目中已配置具体签名（例如 `DEVELOPMENT_TEAM=ABC1234567`、`C
 
 ## 根因
 
-`dd-bug-fix-workflow/SKILL.md` 步骤 4.1 与 `dd-feature-development-workflow/SKILL.md` 步骤 4.5 中的 xcodebuild 命令：
+本地 xcodebuild 命令未指定签名参数，且没有「从项目/`-showBuildSettings` 读取证书配置」的统一 adapter。共享 CI 合同曾硬编码项目名与 scheme（如 `Macim.xcworkspace` / `MacimApp`），本地精简命令无法复用其签名保护，导致签名不一致。现由通用 `ci-xcode.md` adapter 统一处理，且不得固定 app/scheme 名。
 
-```bash
-# dd-bug-fix-workflow 步骤 4.1
-xcodebuild -scheme <scheme> -destination 'platform=macOS' -derivedDataPath build build
-
-# dd-feature-development-workflow 步骤 4.5
-xcodebuild -project <Project>.xcodeproj -scheme <Scheme> -configuration Debug build
-xcodebuild test -project <Project>.xcodeproj -scheme <Scheme>Tests -only-testing:...
-xcodebuild build-for-testing -project <Project>.xcodeproj -scheme <Scheme>UITests
-```
-
-均未指定：
+修复需指定：
 
 - `CODE_SIGN_STYLE=Manual`（强制使用项目配置而非自动签名）
-- `DEVELOPMENT_TEAM=<从 pbxproj 读取>`
-- `CODE_SIGN_IDENTITY="<从 pbxproj 读取>"`
-
-且没有「从 `.xcodeproj/project.pbxproj` 读取证书配置」的步骤说明。智能体无法从命令模板推断出需要这些参数，会直接执行导致签名不一致。
+- `DEVELOPMENT_TEAM=<从项目设置读取>`
+- `CODE_SIGN_IDENTITY="<从项目设置读取>"`
 
 ## 合理化借口（预期智能体会用）
 

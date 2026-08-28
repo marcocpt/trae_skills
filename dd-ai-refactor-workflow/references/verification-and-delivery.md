@@ -10,16 +10,16 @@
 - [红线覆盖](#红线覆盖)
 - [完成证据](#完成证据)
 
-## 每个 Commit 的固定循环
+## 每个逻辑批次的固定循环
 
-1. 只修改一个重构意图；
+1. 每个逻辑批次只处理一个重构意图（一个 Commit 只解决一种问题）；
 2. 运行允许的快速静态/局部诊断；
-3. 提交，不夹带无关文件；
-4. push；
+3. 完成该批次的确定性验证（lint/build/typecheck/定向测试）；
+4. 只有 `delivery_authorization` 允许 push 时才 push；未授权 push 时停在 Delivery 边界，返回 blocker；
 5. 按 [dd-workflow-runtime/ci](../../dd-workflow-runtime/references/ci.md) 等待同一 SHA 的 CI；
 6. 保存 run、结论与下一批状态。
 
-行为保持由 Characterization Test 与远端 CI 证明；远端 CI 通过才满足行为保持 Gate。前提：受影响可观察行为已全部映射到 Characterization Test，未覆盖路径先补测试再重构，重构 Commit 不得弱化 characterization oracle。
+行为保持由 Characterization Test 与远端 CI 证明；远端 CI 通过才满足行为保持 Gate。必需远端 CI 未授权时不得以本地测试替代或关闭该 Gate。前提：受影响可观察行为已全部映射到 Characterization Test，未覆盖路径先补测试再重构，重构 Commit 不得弱化 characterization oracle。
 
 **文档同步：** 按 [artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) §3.3 裁决，本 workflow 属 pure-refactor 路由，具体 disposition 取共享合同（不复制路由表）。
 

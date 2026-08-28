@@ -1,31 +1,20 @@
 # Feature Delivery and Closure
 
-只在 Documentation、Delivery 或 Closure Stage 读取。
+只在 Delivery 或 Closure Stage 读取。Documentation 正文由 [documentation.md](documentation.md) 拥有，本文件不重复。
 
-## 1. Documentation
+## 1. Delivery
 
-读取项目测试／文档规则，比较已交付 SHA（尚未要求 Commit 时比较冻结 diff／文件指纹）与规格，不只看文件列表。分析：
+### 1.1 exact-SHA invariant
 
-- 直接行为与依赖；
-- 共享模型、协议、配置、持久化；
-- 用户流程和高风险路径；
-- 新增、更新、执行或暂缓的测试。
+Delivery 只推进同一个 `candidate_sha`。先检查 confirmation、action-specific `delivery_authorization`，并验证：
 
-检查：
+```text
+review_sha == gap_sha == ci_sha == candidate_sha
+```
 
-- Requirements 的 AC、范围和约束；
-- Design 的职责、数据流、状态和回退；
-- Visual 与最终 UI；
-- Test Cases 的状态、证据、AC 映射和统计；
-- 代码测试名称、断言和替身。
+四个 SHA 任一不等即 `BLOCKED`，不得 promote/push/merge。候选后任何内容变化返回 Documentation/Final Candidate 重新冻结（AC-09）。内容批准、测试 PASS、Reviewer PASS 均不授权 Git 或外部动作。
 
-文档同步按 [artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) §3.3 裁决，输出每份文档的 `updated | no-update | stale | not-applicable | retired` 及原因；状态和证据不回填合同，`closed-change` 不回写。Feature 必须覆盖 bug 恢复、行为变化、纯重构、test-only 四类适用变更，具体 disposition 取共享合同，不在下游复制完整路由表。
-
-行为未改变时不要为了“同步”篡改需求。修改文档时遵循版本和 history 规则。
-
-Gate：文档与已验证行为一致，`current_stage=delivery`。
-
-## 2. Delivery
+### 1.2 动作
 
 先按共享运行时解析 `delivery_policy` 和每类动作的授权；内容批准本身不授权 Git。只执行其中明确要求且获准的动作：
 
@@ -39,22 +28,23 @@ Gate：文档与已验证行为一致，`current_stage=delivery`。
 
 不得 force push、推错 main/master、暂存无关脏文件或提交秘密。AI-test 同步前先检查目标 worktree 是否有未提交变更；dirty 或同步失败才 ASK。
 
-每个外部动作前写 `in_progress`，完成后记录 SHA、run 和远端状态。未要求的动作记 `not-required`，明确禁止的动作记 `not-authorized`；后续 Gate 依赖被禁止动作时保持 `BLOCKED`，不得假装完成。Gate：项目要求且获准的 Delivery 动作全部有证据，`current_stage=closure`。
+每个外部动作前写 `in_progress: {operation, target, source, started_at}`，完成后记录 SHA、run 和远端状态。未要求的动作记 `not-required`，明确禁止的动作记 `not-authorized`；后续 Gate 依赖被禁止动作时保持 `BLOCKED`，不得假装完成。Gate：项目要求且获准的 Delivery 动作全部有证据，`current_stage=closure`。
 
-## 3. Closure
+## 2. Closure
 
-清理前验证：
+清理前验证（对齐 exact-SHA 语义）：
 
 - `completed_phases` 数量等于 `total_phases`；
-- `final_candidate_sha` 与完整 CI SHA 相同；
-- `final_ci_passed=true`；
-- develop/目标分支包含该 SHA；
+- `candidate_sha` 与 `full_ci_run.head_sha` 相同，且 `full_ci_passed=true`；
+- develop/目标分支包含该 `candidate_sha`；
 - Documentation 与 Delivery Gate 已通过；
 - 工作区无未解释变更。
 
+先写 `in_progress: {operation: cleanup, target: <worktree-or-branch>, source: <main_root>}` 再执行清理；cleanup 完成或 worktree 删除后状态随之处置（见下）。
+
 ### 隔离 worktree
 
-1. 记录 `cleanup` in progress；
+1. 记录 `in_progress.operation=cleanup`；
 2. 删除工作流临时需求摘要；
 3. 写 Completion Receipt；
 4. 按项目规则删除 worktree、本地工作分支和允许删除的远端分支；
@@ -79,7 +69,7 @@ next_safe_action: resume closure decision
 
 暂停不是完成，不写 completed Receipt，不触发最终 Host Close。
 
-## 4. Host Close
+## 3. Host Close
 
 真正完成后遵循 `dd-workflow-runtime`：
 

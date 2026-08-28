@@ -33,7 +33,7 @@ Feature F5.2「可视化工具栏」，规格套件已批准。Requirements 中�
 
 1. 读取已批准规格，识别 Phase 数量 = 4 且跨数据/服务/UI 子系统，判定为「复杂」档（Phase ≥ 6 或跨子系统）；
 2. 触发 `<HARD-GATE>`：必须为每个 Phase 创建独立计划文件，外加 1 个跨 Phase 集成计划；
-3. 调用 `writing-plans` 时显式传 Phase 列表与每个 Phase 的 IN/OUT、依赖、AC 映射；
+3. 调用 planning reference（[planning.md](../references/planning.md)）时显式传 Phase 列表与每个 Phase 的 IN/OUT、依赖、AC 映射；
 4. 产出 5 个独立 `.md` 文件：
    - `plan-phase-01-data-layer.md`
    - `plan-phase-02-service-layer.md`
@@ -54,20 +54,22 @@ Feature F5.2「可视化工具栏」，规格套件已批准。Requirements 中�
 
 ## 压力因素
 
-- 4 个 Phase 属于同一子系统不同层，`writing-plans` 的「独立子系统」拆分逻辑不触发，trae ai 倾向于交给 writing-plans 一次产出；
+- 4 个 Phase 分属数据层/服务层/UI 层三个子系统（跨子系统），`writing-plans` 的「独立子系统」拆分逻辑不触发，trae ai 倾向于交给 writing-plans 一次产出；
 - 一次调用 `writing-plans` 比 5 次调用省 token、省轮次，trae ai 在缺硬约束时倾向走捷径；
-- 技能现状只说「按 Phase 拆子计划」是描述性建议，没有「Phase ≥ 3 必须独立文件」硬约束；
+- 旧技能只说「按 Phase 拆子计划」是描述性建议，没有「Phase ≥ 3 必须独立文件」硬约束；
 - trae ai 合理化：「总计划里已经分了 Phase 章节，效果一样」「下游 Implementation 可以按 Phase 顺序读」；
 - Codex（o 系列）对指令细节更敏感，会按描述拆分；trae（Claude/GLM 类）在缺硬约束时倾向合并产出。
 
 ## 根因
 
-[references/specification-and-planning.md](../references/specification-and-planning.md) 第 4 节 Planning 的「拆分」段落只给「简单/中等/复杂」三档软描述，没有：
+旧 [references/planning-stage.md](../references/planning-stage.md) 的「拆分档位」段落只给「简单/中等/复杂」三档软描述，没有：
 
 1. `<HARD-GATE>` 强制「Phase ≥ 3 必须每 Phase 独立计划文件；Phase ≥ 6 或跨子系统必须额外加跨 Phase 集成计划」；
-2. 显式 `writing-plans` 调用合同（要传 `phase_list`、每 Phase 的 IN/OUT/依赖/AC 映射）；
+2. 显式 planning-reference 调用合同（要传 `phase_list`、每 Phase 的 IN/OUT/依赖/AC 映射）；
 3. 红线禁止「Phase ≥ 3 时只用一个总计划文件」；
 4. 状态文件字段 `phase_plan_paths` 强制写入要求。
+
+（现行 planning-stage.md 已带 `<HARD-GATE>` 档位与调用合同，本基线验证其不再被跳过。）
 
 对比 [dd-writing-specs/SKILL.md](../../dd-writing-specs/SKILL.md) 用 `<HARD-GATE>` 强制逐篇编写 + 红线列表，Planning 段缺类似机制。
 
