@@ -34,7 +34,7 @@ Final Candidate 阶段再建立独立的 `candidate_review.sha == full_spec_gap.
 
 ### 动作授权与执行（`phase_delivery`，独立于 verification）
 
-`verification` 只存 `plan + result`（见 [artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) §4），不在此增加第三块。动作授权与执行结果放同级 `phase_delivery`，authorization 与 execution 分离记录，不得缺省：
+`verification` 只存 `plan + result`（见 [artifact-verification](../../dd-workflow-runtime/references/artifact-verification.md) §4），不在此增加第三块。动作授权与执行结果放同级 `phase_delivery`，authorization 与 execution 分离记录，不得缺省：
 
 ```yaml
 phase_delivery:
@@ -88,13 +88,13 @@ phase_delivery:
 - UI 测试 target 的编译或静态可执行性检查；
 - AC → 测试/证据映射无缺口；
 - 从已读 anchors/global constraints 重新提取当前 Phase 适用的 FR／NFR／AC、Out of Scope、失败路径和跨功能约束，形成来源定位 → 实现／测试／证据的 gap table；不得复用 Intake 摘要中的旧清单；
-- gap table 与原始规格逐项一致，且实现与当前执行包、项目规则无遗漏或越界；
+- gap table 必须逐项覆盖当前 Phase 所有 Task 的 sources[].anchors，以及本 Phase 适用的 global constraints、Out of Scope、failure paths 和 integration anchors，并与这些已读原文一致；不得为 Local Gate 无条件重新扫描全部 canonical spec，Feature 全规格覆盖由 Final Candidate full_spec_gap 独立验证；且实现与当前执行包、项目规则无遗漏或越界；
 - 受影响回归、错误、边界与并发相关测试通过；
 - 测试不绑定非契约内部实现，不使用会掩盖真实行为的过度 mock；
 - 当前 Phase 范围（有 Commit 时用 SHA range，否则用冻结 diff／文件指纹）无新增临时日志、TODO 或未解释 skip；
 - 项目规定的其他快速 Gate。
 
-按 [artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) 写入 compact verification（`plan + result`）。计划、测试文件存在、`covered` 或旧 CI 不能替代当前运行；未运行、失败、bindings 不一致或 `validity != valid` 均不得 PASS。
+按 [artifact-verification](../../dd-workflow-runtime/references/artifact-verification.md) 写入 compact verification（`plan + result`）。计划、测试文件存在、`covered` 或旧 CI 不能替代当前运行；未运行、失败、bindings 不一致或 `validity != valid` 均不得 PASS。
 
 Swift/Xcode 构建遵循 `dd-workflow-runtime/ci` 的项目/工作区检测和签名合同；不要在本文件硬编码证书或 scheme。
 
@@ -136,6 +136,8 @@ Local Gate 先执行 lint/build/typecheck/定向测试/映射检查，再保存 
 命中 [review-gate](../../dd-workflow-runtime/references/review-gate.md) 的风险触发器时，按现有 `review_level`／`model-routing` 升级独立强审；普通 Phase 独立强审调用次数为零。
 
 ## 5. Risk-based UI Smoke
+
+UI 证据与新鲜度（build provenance, stale/unverified）遵循 [ui-evidence](../../dd-workflow-runtime/references/ui-evidence.md)；Implementation/Smoke 证据绑定 `implementation_digest`，冻结候选后的 Final Candidate/CI 证据才绑定 `candidate_sha`。
 
 下列任一情况默认 high risk：
 

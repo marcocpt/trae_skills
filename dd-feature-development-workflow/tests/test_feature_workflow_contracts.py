@@ -25,6 +25,9 @@ DOCUMENTATION = WORKFLOW_ROOT / "references" / "documentation.md"
 STATE = RUNTIME_ROOT / "references" / "state.md"
 STATE_AND_HANDOFF = WORKFLOW_ROOT / "references" / "state-and-handoff.md"
 IMPLEMENTATION = WORKFLOW_ROOT / "references" / "implementation.md"
+PLANNING = WORKFLOW_ROOT / "references" / "planning.md"
+PLANNING_STAGE = WORKFLOW_ROOT / "references" / "planning-stage.md"
+UI_EVIDENCE = RUNTIME_ROOT / "references" / "ui-evidence.md"
 
 
 def read(path: Path) -> str:
@@ -104,6 +107,13 @@ class TestPhaseReadsAnchorsNotFullSpecs(unittest.TestCase):
         self.assertNotIn("完整读取该包引用的批准原始规格", text,
                          "Phase must NOT re-read full approved spec (AC-05)")
 
+    def test_implementation_gap_table_uses_sources_anchors(self):
+        impl = read(IMPLEMENTATION)
+        self.assertIn("sources[].anchors", impl,
+                      "Implementation gap must be scoped to sources[].anchors (Batch1 P0-3)")
+        self.assertNotIn("gap table 与原始规格逐项一致", impl,
+                         "Implementation must not imply full-spec re-read via ambiguous phrase (Batch1 P0-3)")
+
 
 class TestCandidateRequiresFrozenReviewAndFullGap(unittest.TestCase):
     """AC-08: Candidate requires frozen standard review and full-spec gap."""
@@ -115,6 +125,13 @@ class TestCandidateRequiresFrozenReviewAndFullGap(unittest.TestCase):
         self.assertIn("full_spec_gap", text,
                       "Candidate review must produce full_spec_gap (AC-08)")
 
+    def test_candidate_full_spec_gap_covers_normative_and_negative(self):
+        text = read(CANDIDATE)
+        for key in ("normative stable IDs/anchors", "Out of Scope", "Decision Freedom",
+                    "coverage/disposition"):
+            self.assertIn(key, text,
+                          f"Candidate full-spec gap must cover '{key}' (Batch1 P1-4)")
+
 
 class TestCompactVerificationKeepsInvariants(unittest.TestCase):
     """AC-04: compact verification keeps coverage/run/bindings/validity."""
@@ -124,6 +141,78 @@ class TestCompactVerificationKeepsInvariants(unittest.TestCase):
         for key in ("coverage", "runs", "bindings", "validity"):
             self.assertIn(key, text,
                           f"verification must keep '{key}' (AC-04)")
+
+    def test_artifact_contract_is_router_and_split(self):
+        router = read(ARTIFACT)
+        # Router must point to three split files and not contain old sections duplicated
+        self.assertIn("artifact-source-and-packet.md", router,
+                      "router must route to source-and-packet (Batch2 P1-5)")
+        self.assertIn("artifact-verification.md", router,
+                      "router must route to verification (Batch2 P1-5)")
+        self.assertIn("artifact-lifecycle.md", router,
+                      "router must route to lifecycle (Batch2 P1-5)")
+        # Router should be small (progressive disclosure) and not contain full verification lifecycle content
+        self.assertLess(len(router), 3000,
+                        "router must be small (<3KB) for token saving (Batch2 P1-5)")
+        self.assertNotIn("迁移台账", router,
+                         "router must not duplicate lifecycle ledger (single owner)")
+        # Split files must each contain their owned invariants
+        self.assertIn("source_manifest", read(ARTIFACT_SOURCE),
+                      "source-and-packet must own source_manifest (Batch2 P1-5)")
+        self.assertIn("validity", read(ARTIFACT_VERIFICATION),
+                      "verification must own validity (Batch2 P1-5)")
+        self.assertIn("同步影响矩阵", read(ARTIFACT_LIFECYCLE),
+                      "lifecycle must own sync matrix (Batch2 P1-5)")
+
+    def test_planning_and_implementation_use_split_contracts(self):
+        # Hot consumers must read split files, not the old monolith
+        self.assertIn("artifact-source-and-packet.md", read(PLANNING),
+                      "planning.md must read source-and-packet (Batch2 P1-5)")
+        self.assertIn("artifact-source-and-packet.md", read(PLANNING_STAGE),
+                      "planning-stage.md must read source-and-packet (Batch2 P1-5)")
+        self.assertIn("artifact-verification.md", read(IMPLEMENTATION),
+                      "implementation.md must read verification (Batch2 P1-5)")
+        self.assertIn("artifact-lifecycle.md", read(DOCUMENTATION),
+                      "documentation.md must read lifecycle (Batch2 P1-5)")
+
+
+class TestUIFreshnessConsumesSharedEvidence(unittest.TestCase):
+    """Batch2 UI: implementation must consume shared ui-evidence freshness."""
+
+    def test_implementation_references_ui_evidence(self):
+        impl = read(IMPLEMENTATION)
+        self.assertIn("ui-evidence.md", impl,
+                      "implementation must consume shared ui-evidence (Batch2 UI)")
+
+    def test_ui_evidence_has_freshness_binding(self):
+        ui = read(UI_EVIDENCE)
+        for key in ("runtime_binding", "stale", "unverified", "build provenance"):
+            self.assertIn(key, ui,
+                          f"ui-evidence must define freshness '{key}' (Batch2 UI)")
+
+
+class TestPlanningNoDuplicateFullRead(unittest.TestCase):
+    """Batch3 P0-2: Planning 去第二次全量重读，必须以 inventory 为基准。"""
+
+    def test_planning_stage_uses_inventory_and_no_unconditional_reread(self):
+        stage = read(PLANNING_STAGE)
+        self.assertIn("normative coverage index", stage,
+                      "planning-stage must build normative coverage index (Batch3 P0-2)")
+        self.assertIn("canonical-index.json", stage,
+                      "planning-stage must define canonical-index.json with digest binding (Batch3 P0-2)")
+        self.assertIn("不得为自检无条件再次完整读取整套规格", stage,
+                      "planning-stage must forbid unconditional full re-read (Batch3 P0-2)")
+        self.assertIn("validate-workflow-artifact.py planning-index <canonical-index.json> <plan>", stage,
+                      "planning-stage must reference dual-param JSON validator (Batch3 P0-2)")
+
+    def test_planning_self_check_uses_inventory(self):
+        plan = read(PLANNING)
+        self.assertIn("canonical inventory", plan,
+                      "planning self-check must use canonical inventory (Batch3 P0-2)")
+        self.assertIn("canonical-index.json", plan,
+                      "planning must reference canonical-index.json (Batch3 P0-2)")
+        self.assertNotIn("重新浏览批准原始规格中的每个适用章节", plan,
+                         "planning must not require full re-read of every section (Batch3 P0-2)")
 
 
 class TestMainSkillRoutesEveryReferenceDirectly(unittest.TestCase):

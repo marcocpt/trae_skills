@@ -7,7 +7,7 @@
 
 为零历史上下文的执行者生成自足、可验证的任务包。只展开当前任务需要的冻结事实，不复制无关背景或整段实现；保持 DRY、YAGNI 和 TDD。
 
-通用来源、失效、证据和授权字段由 [artifact-contract](../../dd-workflow-runtime/references/artifact-contract.md) 唯一维护；本文件只定义 Feature 计划如何实例化这些字段。生命周期、同步影响与保留的唯一定义见该合同 §3，本文件不重定义 `updated|no-update|stale|not-applicable|retired` 或生命周期枚举。
+通用来源、失效、证据和授权字段由 [artifact-source-and-packet](../../dd-workflow-runtime/references/artifact-source-and-packet.md) 唯一维护；本文件只定义 Feature 计划如何实例化这些字段。生命周期、同步影响与保留的唯一定义见 [artifact-lifecycle](../../dd-workflow-runtime/references/artifact-lifecycle.md) §3，本文件不重定义 `updated|no-update|stale|not-applicable|retired` 或生命周期枚举。
 
 **上下文：** 使用 Feature workflow 已固定的 worktree；不要自行创建第二套工作环境。
 
@@ -53,7 +53,7 @@
 
 ## 任务结构
 
-Phase plan 头部定义一次 `source_manifest`（每个被引用来源的完整 metadata 只出现一次，见 [artifact-contract §2.1](../../dd-workflow-runtime/references/artifact-contract.md)）；每个 Task 只写 `sources: [{ref, anchors}]`，不复制 path/version/digest/approval。
+Phase plan 头部定义一次 `source_manifest`（每个被引用来源的完整 metadata 只出现一次，见 [artifact-source-and-packet §2.1](../../dd-workflow-runtime/references/artifact-source-and-packet.md)）；每个 Task 只写 `sources: [{ref, anchors}]`，不复制 path/version/digest/approval。
 
 ```markdown
 ### Phase plan 头部
@@ -139,9 +139,9 @@ source_manifest:
 
 **1. 来源新鲜度：** 逐项核对每个任务的来源内容指纹和批准依据；任一变化将任务包标记 stale，重新派生。
 
-**2. 原文覆盖度：** 重新浏览批准原始规格中的每个适用章节／需求、Out of Scope 和跨功能约束；指出对应 Task／Test／Evidence，修复遗漏或越界。
+**2. 原文覆盖度：** 以本 Stage 首次完整读取生成的 canonical inventory（`canonical-index.json` 含 `normative_anchors` + `source_manifest_digest` 绑定）为基准，检查 inventory → Task/Test/Evidence 是否无遗漏或越界；仅在 missing/partial/conflicting、source digest drift、anchor 无法定位或来源缺少稳定 IDs 时定向回读对应 canonical anchor，修复后复核；不得为自检无条件再次完整读取整套规格，无法证明 index 完整时允许一次全文复核（`validate-workflow-artifact.py planning-index <canonical-index.json> <plan>` 校验，仅该 JSON 索引路径允许机械 PASS）。
 
-**3. 执行包完整性：** 检查 artifact-contract 的必需字段、精确验证预期、停止条件和授权；缺失即 BLOCKED。
+**3. 执行包完整性：** 检查 [artifact-source-and-packet](../../dd-workflow-runtime/references/artifact-source-and-packet.md) 的必需字段、精确验证预期、停止条件和授权；缺失即 BLOCKED。
 
 **4. 接口一致性：** 后续任务使用的类型、签名和属性名必须与其 `Consumes` 来源及前序 `Produces` 一致。
 

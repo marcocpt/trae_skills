@@ -22,11 +22,29 @@
 4. **手动验收证据**：明确步骤、预期画面、截图/录屏/日志路径、执行时间和执行人；只能用于自动化不可行的部分。
 5. **内部状态证据**：单元测试、ViewModel 状态、Core 状态机、日志；只能证明支撑逻辑，不能单独关闭 UI AC。
 
+### 运行时新鲜度绑定（build provenance）
+
+编译产物、运行中服务或真实 UI 的证据必须证明被测实例与当前 `implementation_digest` / `candidate_sha` 一致：
+
+```yaml
+live_evidence:
+  source_binding: {implementation_digest: <git-or-file-digest>}
+  runtime_binding: {build_artifact_digest: <sha256>, build_ref: <run-id-or-build-id>}
+  environment: <recorded-environment-id>
+  evidence_ref: <repo-relative-evidence>
+```
+
+- `runtime_binding` 与 `source_binding` 一致且可追溯 → `valid`，可关闭 UI AC
+- 已知 `runtime_binding` 与当前实现不一致 → `stale`，不得复用旧证据
+- 无法证明运行实例来源（缺 build provenance）→ `unverified`，不得关闭 UI AC，需补链路或按风险升级
+- CI 场景以 `run_id + head_sha + artifact provenance` 为 freshness 依据；本地 App 需 `implementation_digest → build → build_artifact_digest → launch → evidence` 完整链
+
 ### 关闭规则
 
 - 每个 UI AC 至少需要一种 1-4 层证据；只有第 5 层证据时，状态必须标为"未完成 UI 验证"或"存在 UI 风险"。
 - 自动化不可行时，必须在设计文档和子计划中写明原因、手动验收步骤、证据保存位置和剩余风险。
 - 任何"测试不到但应该没问题"的结论都必须升级为风险项，不能作为完成依据。
+- 新鲜度 `stale` / `unverified` 的 UI 证据不得关闭对应 AC。
 
 ## 被其他 skill 引用方式
 
