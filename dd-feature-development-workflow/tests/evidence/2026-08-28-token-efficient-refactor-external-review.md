@@ -97,6 +97,18 @@
 - 验证：同一 task 多次轮询均返回 `ACCEPTED`（`review-bundle-r7 +2`），非中途快照
 - 该轮确认前六轮全部 findings 均已正确修复，无新问题
 
+## 收尾：删除 3 个已 retired reference
+
+用户授权删除先前标记 `retired-reference: not-routed` 的 3 个旧 reference：
+
+- `dd-feature-development-workflow/references/specification-and-planning.md`
+- `dd-feature-development-workflow/references/implementation-and-verification.md`
+- `dd-feature-development-workflow/references/planning-reviewer-prompt.md`
+
+删除前核对：全仓引用 grep 仅命中历史归档（重构计划 `docs/superpowers/plans/...`、技术调研 `docs/planning/...`、migration 记录、red/green 证据文件），无现行 reference 活跃链接；SKILL.md 路由（AC-13）早已不含这些文件名。删除不留下现行死链。
+
+最终验证：27 个合同测试 + 135 个 runtime 测试全部通过，`git diff --check` clean。
+
 ## 第二轮 findings 与修复记录
 
 | ID | Severity | 核对 | 修复 |
