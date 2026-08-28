@@ -7,7 +7,7 @@ description: 当实现需要规格套件、分阶段计划、TDD、CI 或用户�
 
 ## 目标
 
-把已确认的 Feature 从需求输入推进到已验证、已交付、可恢复的完成状态。主文件只负责编排、状态、Gate 和路由；规格、实现、CI 与清理细节按当前 Stage 读取 references。
+把已确认的 Feature 从需求输入推进到已验证、可恢复的完成状态。主文件只做**路由**：触发/运行时、核心不变量、Stage/Gate 图与红线；每个 Stage 的正文按需读取对应 reference，不在此重复。
 
 ## 不适用
 
@@ -32,210 +32,77 @@ required_exit_stages:
   - specification
   - planning
   - implementation
+  - documentation
   - final-candidate
   - confirmation
-  - documentation
   - delivery
   - closure
 delivery_policy: project-rules
 ```
 
-遵循运行时的 Preflight、原子状态、Gap Scan、Stage Contract、Completion Receipt 和 Host Close。现有 `current_step`/`current_phase` 作为兼容字段保留，但必须与 `current_stage` 一致。
+遵循运行时的 Preflight、原子状态、Gap Scan、Stage Contract、Completion Receipt 和 Host Close。
 
-Specification、Planning、Implementation 创建或消费规范事实、执行包和验证证据时遵循 [artifact-contract](../dd-workflow-runtime/references/artifact-contract.md)；各 Stage 只补 Feature 特有 Gate。
-
-## 核心原则
+## 核心不变量
 
 1. No approved specification, no production code；
 2. Resolved Bootstrap facts are inherited；
 3. Every Phase ends with a local quality Gate；
 4. High-risk UI changes get remote Smoke CI；
-5. The exact merge candidate entering develop gets full CI；
+5. The exact frozen candidate entering develop gets full CI；
 6. User-visible behavior requires user-visible evidence；
 7. Persist before every Stage transition；
 8. Trae completion requires a final ASK；
-9. Re-read approved originals; summaries only locate sources。
+9. Re-read approved originals; summaries only locate sources；
+10. Phase 只读 anchors/global constraints，不每 Phase 重读整份规格；
+11. Candidate Gate 不推进目标分支；Delivery 只推进同一 `candidate_sha`；
+12. 内容批准 / 测试 PASS / Reviewer PASS 均不授权 Git 或外部动作。
 
-## Stage Graph
+## Stage / Gate 图
 
-```text
-Preflight
-  ↓
-Intake
-  ↓
-Environment
-  ↓
-Specification
-  ↓
-Planning
-  ↓
-Implementation
-  ├─ Phase TDD
-  ├─ Local Gate
-  └─ Risk-based UI Smoke
-  ↓
-Final Candidate + Full CI + Promote
-  ↓
-Confirmation
-  ↓
-Documentation
-  ↓
-Delivery
-  ↓
-Closure
-```
-
-新任务按依赖推进；恢复任务从第一个未满足 Gate 的 Stage 继续。禁止重复已验证的 Stage，也禁止绕过缺失依赖。
-
-## Stage Contracts
-
-| Stage | Requires | Produces | Next | Recovery evidence |
-|---|---|---|---|---|
-| Intake | 用户请求或有效 Handoff | 已确认需求摘要 | Environment | 摘要、decisions |
-| Environment | Intake Gate | 固定 worktree、初始 state | Specification | Git 路径、基线结果 |
-| Specification | Intake、Environment | 规格套件与 review | Planning | 文档路径、批准版本／指纹、适用 Delivery 证据 |
-| Planning | Approved specification | 总计划与 Phase 执行包 | Implementation | 计划路径、来源清单／指纹、适用 Delivery 证据 |
-| Implementation | Approved plan | 实现、四层验证证据、适用 Delivery 证据 | Final Candidate | diff／commits、Phase Gate、Smoke runs |
-| Final Candidate | 全部 Phase Gate、最新 develop | 候选 SHA、完整 CI、同 SHA 推进 | Confirmation | candidate branch、run、目标分支 |
-| Confirmation | 最终实现和验证证据 | 用户继续或回退决策 | Documentation / rollback | decision、rollback state |
-| Documentation | 已验证交付行为 | 同步文档和影响结论 | Delivery | diff、文档版本、提交 |
-| Delivery | Documentation Gate | lint/push/CI/同步证据 | Closure | SHA、CI run、远端状态 |
-| Closure | 所有必需 Gate | completed Receipt 或 paused state | Host Close / resume | Receipt、清理结果、状态 |
-
-## Bootstrap Handoff
-
-Preflight 检查调用参数或 Git dir 中的 `project-bootstrap-state.json`。只消费 `status=handoff-ready` 且满足以下条件的 Handoff：
-
-1. 支持的 `handoff_version`；
-2. `source_workflow`、`source_state_path`、`worktree_path`、Goal、Scope、Mode、Selected Feature/Phase、Required Reading、Constraints 和 Verification 完整；
-3. `blocking_questions` 为空，必需路径存在；
-4. Handoff worktree 与当前工作树一致；
-5. Greenfield 有非空 `requirements_seed`；
-6. Brownfield 有 Baseline 与 `phase_contract_status=approved` 的 Phase Contract。
-
-接收后继承已解决事实、工作环境和阅读清单。Greenfield 复用 Requirements Seed；Brownfield 复用 approved Phase Contract，禁止把 `KNOWN_DEFECT` 自动升级为 AC。只询问 Feature 特有 blocker。
-
-Feature state 原子写入消费字段成功后，才把 Bootstrap state 改为 `completed`：
-
-```yaml
-bootstrap_handoff_consumed: true
-bootstrap_state_path: /absolute/path/project-bootstrap-state.json
-requirements_seed_source: bootstrap-requirements-seed
-phase_contract_path: null
-```
-
-不完整 Handoff 返回 Bootstrap blocker，不猜测、不并行维护 `dd-writing-specs` 直达出口。
-
-## Feature State
-
-除运行时通用字段外记录：
-
-```yaml
-feature_name: ""
-feature_number: F0
-requirements_path: ""
-design_path: ""
-visual_path: null
-test_case_path: ""
-review_paths: []
-plan_dir: ""
-phase_plan_paths: []
-integration_plan_path: null
-specification_approvals: []
-execution_packet_paths: []
-verification_evidence: []
-current_phase: null
-total_phases: 0
-completed_phases: []
-smoke_ci_phases: []
-commits: {}
-final_candidate_branch: null
-final_candidate_sha: null
-final_ci_run: null
-final_ci_passed: false
-bootstrap_handoff_consumed: false
-bootstrap_state_path: null
-phase_contract_path: null
-```
-
-旧状态中的 `current_step` 映射：
+五个对外 Gate 是内部十个可恢复 Stage 的聚合命名；内部仍按 Stage 推进。
 
 ```text
-0 → intake
-1 → environment
-2 → specification
-3 → planning
-4 / 4.x → implementation
-5 / 5.x → final-candidate
-6 → confirmation
-7 → documentation
-8 → delivery
-9 / 9.x → closure
+Source Gate:   intake → environment → specification
+Plan Gate:     planning
+Phase Gate:    implementation (× N Phase)
+Candidate Gate: documentation → freeze candidate SHA
+              → deterministic verification
+              → one independent A/B/C review + full-spec gap
+              → Full CI on exact SHA
+Delivery Gate: confirmation → authorized same-SHA promote → delivery → closure
 ```
 
-状态字段与产物、分支或 CI 证据冲突时，按运行时恢复合同修正后继续。状态缺失时至少检查工作分支提交、规格/计划文件、Phase 证据、候选分支和 CI 结果；禁止默认回到 Intake。
+Gate 结果与 Delivery 状态分开持久化：Candidate 可以 `PASS`，而 Delivery 同时为 `not-required`、`not-authorized`、`pending` 或 `completed`。
 
-## Stage 路由
+固定 Stage 顺序：
 
-### Intake
+```text
+intake → environment → specification → planning → implementation
+→ documentation → final-candidate → confirmation → delivery → closure
+```
 
-读取 [specification-and-planning.md](references/specification-and-planning.md) 的 Intake。
+恢复任务从第一个未满足 Gate 的 Stage 继续；禁止重复已验证 Stage 或绕过缺失依赖。
 
-收敛目标、成功标准、IN/OUT、流程、接口、兼容性、AC、Phase、UI 证据和文档位置。有效 Bootstrap Handoff 已回答的内容不得重问。Gate：需求摘要已确认并按项目提交策略持久化。
+## Stage 路由（每 Stage 一行）
 
-### Environment
+| Stage | 读取 | Gate 概要 |
+|---|---|---|
+| Intake | [intake-and-environment.md](references/intake-and-environment.md) | 需求摘要确认并持久化 |
+| Environment | [intake-and-environment.md](references/intake-and-environment.md) | 路径固定、无并发、基线有效、state 写入 |
+| Specification | [specification.md](references/specification.md) | 规格套件批准、版本/指纹/批准依据入 state |
+| Planning | [planning-stage.md](references/planning-stage.md) | Phase 档位强制、phase_plan_paths 一致 |
+| Implementation | [implementation.md](references/implementation.md) | Phase TDD + Local Gate + 紧凑 review + 风险 Smoke |
+| Documentation | [documentation.md](references/documentation.md) | 候选冻结前文档同步 |
+| Final Candidate | [candidate.md](references/candidate.md) | 冻结 SHA + 独立 review + full gap + Full CI |
+| Confirmation | [candidate.md](references/candidate.md) | 用户继续或回退决策 |
+| Delivery | [delivery-and-closure.md](references/delivery-and-closure.md) | exact-SHA + 授权 promote |
+| Closure | [delivery-and-closure.md](references/delivery-and-closure.md) | completed Receipt / paused |
 
-读取 [specification-and-planning.md](references/specification-and-planning.md) 的 Environment。
-
-有效 Handoff 必须复用其 worktree；否则首次写文件前选择隔离 worktree 或当前 worktree。Gate：路径固定、无并发工作流、工作区边界明确、基线证据有效、Feature state 已写入。
-
-### Specification
-
-读取 [specification-and-planning.md](references/specification-and-planning.md) 的 Specification。
-
-调用 `dd-writing-specs` 完成 Requirements、Design、Visual（如适用）和 Test Cases。Gate：产物与自检有效、用户确认，路径、版本、内容指纹和批准依据写入状态；适用的 Delivery 策略满足。Commit 只有在该策略明确要求时才是 Gate。
-
-### Planning
-
-读取 [specification-and-planning.md](references/specification-and-planning.md) 的 Planning。
-
-按 Phase 数量强制拆分档位（`<HARD-GATE>`），使用 [planning.md](references/planning.md) 时显式传 `split_mode` 与 `phase_list`，禁止让 `planning reference` 自行决定拆分。Gate：每个执行包的来源／批准／指纹有效、必需字段和 AC 映射完整、验证与授权边界明确，`phase_plan_paths` 数组与 `split_mode` 一致，适用 Delivery 策略满足。
-
-### Implementation
-
-读取 [implementation-and-verification.md](references/implementation-and-verification.md) 的 Phase Loop、TDD、Local Gate 和 UI Smoke。
-
-按 Phase 顺序执行；每个 Phase 开始前验证执行包新鲜度，并从批准原文反查适用约束。必须完成 TDD、四层验证证据、用户可见证据、本地 Gate 和风险判断。Gate：`completed_phases` 覆盖全部 Phase，状态与当前 diff／提交及证据一致。
-
-### Final Candidate
-
-读取 [implementation-and-verification.md](references/implementation-and-verification.md) 的 Final Candidate。
-
-基于最新 develop 创建准确候选提交，对该 SHA 执行完整远程 CI，通过后才推进同一提交。Gate：`final_candidate_sha` 可验证、`final_ci_passed=true`、目标分支包含同一 SHA。
-
-### Confirmation
-
-向用户展示实现、证据、CI 和已知边界，ASK 继续文档同步或回退到 Intake/Specification/Planning/Implementation/Final Candidate。回退必须更新状态和 `rollback_from`。
-
-### Documentation
-
-读取 [delivery-and-closure.md](references/delivery-and-closure.md) 的 Documentation。
-
-按调用关系、数据流、共享模型和用户流程检查 Requirements、Design、Visual、Test Cases 与代码测试。Gate：文档与已交付行为一致，版本和证据已更新或有明确无需更新结论。
-
-### Delivery
-
-读取 [delivery-and-closure.md](references/delivery-and-closure.md) 的 Delivery。
-
-按项目规则完成 lint、验证、commit、push、CI 和必要同步。Gate：所有必需 Delivery 动作有准确证据；失败项已解决或由用户明确处置。
-
-### Closure
-
-读取 [delivery-and-closure.md](references/delivery-and-closure.md) 的 Closure。
-
-清理前验证 Phase、候选 SHA、完整 CI、目标分支和工作区状态。外部动作前持久化 `in_progress`。活动状态会随 worktree 删除时，先写 Completion Receipt。
-
-选择保留未完成环境时设置 `paused`，不触发最终完成 ASK。真正完成后设置 `status=completed`，再按共享运行时执行 Host Close：Trae 必须 ASK `结束本次任务` / `还有其他任务`；Codex 正常交付。
+- Bootstrap Handoff、Feature state、legacy `current_step` mapping 与恢复：[state-and-handoff.md](references/state-and-handoff.md)；
+- Planning 模板（source_manifest / 任务结构）：[planning.md](references/planning.md)；
+- 来源/执行包/compact verification 合同：[artifact-contract](../dd-workflow-runtime/references/artifact-contract.md)；
+- A/B/C 审查与风险升级：[review-gate](../dd-workflow-runtime/references/review-gate.md)；
+- 测试位置与 CI：[test-location](../dd-workflow-runtime/references/test-location.md) 和 [ci](../dd-workflow-runtime/references/ci.md)。
 
 ## 通用质量 Gate
 
@@ -243,7 +110,6 @@ phase_contract_path: null
 - 每个 AC 映射到计划、测试或明确证据；
 - UI AC 不能只由内部状态、mock、日志、layer count 或组件渲染证明；
 - 自动化不可行时保留手动步骤、证据路径、责任人和风险；
-- 测试位置与证书规则遵循 `dd-workflow-runtime/test-location` 和 `dd-workflow-runtime/ci`；
 - Git 操作遵循 `dd-git-workflow`，不混入无关脏文件。
 
 ## 红线
@@ -258,7 +124,7 @@ phase_contract_path: null
 - Phase ≥ 3 时只用一个总计划文件包含所有 Phase，或使用 planning reference 不传 `split_mode` 与 `phase_list`；
 - 用内部状态宣称 UI 已验证；
 - 完整 CI 没有验证最终候选 SHA 就推进 develop；
-- 候选过期后仍推进；
+- 候选过期或内容变化后仍推进，或 Documentation 在候选冻结后才做；
 - 状态未持久化就跨 Stage；
 - merge、push 或 cleanup 成功前删除唯一状态；
 - Trae 完成后直接结束会话。

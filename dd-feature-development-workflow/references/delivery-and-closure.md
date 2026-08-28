@@ -27,6 +27,18 @@ Gate：文档与已验证行为一致，`current_stage=delivery`。
 
 ## 2. Delivery
 
+### 2.1 exact-SHA invariant
+
+Delivery 只推进同一个 `candidate_sha`。先检查 confirmation、action-specific `delivery_authorization`，并验证：
+
+```text
+review_sha == gap_sha == ci_sha == candidate_sha
+```
+
+四个 SHA 任一不等即 `BLOCKED`，不得 promote/push/merge。候选后任何内容变化返回 Documentation/Final Candidate 重新冻结（AC-09）。内容批准、测试 PASS、Reviewer PASS 均不授权 Git 或外部动作。
+
+### 2.2 动作
+
 先按共享运行时解析 `delivery_policy` 和每类动作的授权；内容批准本身不授权 Git。只执行其中明确要求且获准的动作：
 
 1. 检查工作区和准确 diff；
