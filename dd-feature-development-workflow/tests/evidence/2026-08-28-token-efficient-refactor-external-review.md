@@ -46,8 +46,9 @@
 
 - [x] 修复（含 F-001..F-013）
 - [x] 第二轮送审（修复后）：返回 `REQUEST_CHANGES`（R-001..R-009：2 HIGH、7 MEDIUM）
-- [x] R-001..R-009 本地核对：全部属实，已修复（commit `aad1a20` 后二次修复）
-- [ ] 第三轮送审：二次修复后再次送审，直到 ChatGPT 返回 `CLOSED`
+- [x] R-001..R-009 本地核对：全部属实，已修复（commit `e57350f`）
+- [x] 第三轮送审（尝试）：**BLOCKED_EXTERNAL_USAGE_LIMIT**——ChatGPT/Codex 账号到达使用上限（"You've hit your usage limit"，约 2026-08-28 15:19 后恢复），无法完成本轮外审；不伪造 ACCEPTED
+- [ ] 第三轮送审：使用上限恢复后继续，直到 ChatGPT 返回 `CLOSED`
 
 ## 第二轮 findings 与修复记录
 
