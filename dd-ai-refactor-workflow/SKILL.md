@@ -118,14 +118,14 @@ Gate：
 
 ### 6. CI 验证
 
-每个 Commit 后按 [dd-workflow-runtime/ci](../dd-workflow-runtime/references/ci.md) push 并等待 CI。行为保持由测试证明，不再做 commit 后 LLM 审查：
+每个逻辑批次完成确定性验证；只有 `delivery_authorization` 允许 push 时才 push 并取得同一 SHA 的远端 CI。必需远端 CI 未授权时停在 Delivery 边界，不得擅自 push。行为保持由测试证明，不再做 commit 后 LLM 审查：
 
 1. Characterization Test 在 CI 全绿；
-2. 远端 CI 全绿。
+2. 远端 CI 全绿（同一 SHA）。
 
 覆盖充分性不变量：所有受影响的可观察行为必须映射到 Characterization Test；存在未覆盖路径时先补测试，不得进入重构；重构 Commit 不得同时弱化 characterization oracle；CI 必须在同一 SHA 运行这些测试。
 
-本地测试只可辅助定位，不能替代 CI。CI 失败处置、回滚和覆盖边界见 [verification-and-delivery.md](references/verification-and-delivery.md)。
+本地测试只可辅助定位，不能替代 CI，也不能关闭必需远端 CI Gate。CI 失败处置、回滚和覆盖边界见 [verification-and-delivery.md](references/verification-and-delivery.md)。
 
 ## 硬性刹车点
 
