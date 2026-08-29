@@ -155,16 +155,7 @@ ASK 前先核验文件路径和行号，并附查证摘要；null 必须重问�
 
 ## Host Close
 
-仅 `invocation_mode=standalone` 执行。
-
-Trae：
-
-1. 先写 `status=completed`，必要时写 Completion Receipt；
-2. 禁止直接结束；
-3. 用结构化 ASK，且只提供 `结束本次任务` / `还有其他任务`；
-4. null 重问；“还有其他任务”创建新 workflow；“结束本次任务”后输出最终摘要。
-
-Codex：正常输出最终摘要，除非用户或项目规则要求额外确认。
+仅 `invocation_mode=standalone` 执行：先写 `status=completed`（必要时写 Completion Receipt），再按 [dd-workflow-runtime 宿主结束合同](../dd-workflow-runtime/SKILL.md) 收尾——Trae 结构化 ASK 只提供 `结束本次任务 / 还有其他任务`（null 重问），Codex 正常输出最终摘要。
 
 ## 红线
 

@@ -250,7 +250,7 @@ digraph skill_relation {
 - 文件名：`docs/standards/CODING_STANDARDS.md`、`docs/standards/git-commit-message.md`（必含）；`docs/standards/{语言/测试规则}.md`（可选）
 - 格式：Markdown，层级标题
 - 文档头部：`> 最后更新：YYYY-MM-DD | 版本：vX.Y`
-- 文末：版本记录列表
+- 文末：版本记录（仅保留最新一行：版本号 + 一句话语义变化；更早历史由 Git 承担）
 - 中文标点（，。！？：；），英文术语保持原文
 - 不使用 emoji（除非用户明确要求）
 - 不写具体类名 / 方法签名作为命名示例
@@ -269,6 +269,7 @@ digraph skill_relation {
 - [ ] 验证命令可执行
 - [ ] Greenfield/Brownfield 质量政策与验证命令明确
 - [ ] 审查的「必须修复」项全部处理
+- [ ] 文末版本记录仅保留最新一行（版本号 + 一句话语义变化；docs-governance §9）
 - [ ] 用户通过结构化 ASK 明确确认完成
 
 **任一项失败，修订后重新验证。**

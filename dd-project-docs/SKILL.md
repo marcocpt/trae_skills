@@ -39,6 +39,7 @@ resolved_decisions: []
 2. 规范事实、人审视图与派生材料遵循 [artifact-contract](../dd-workflow-runtime/references/artifact-contract.md)，本 writer 只拥有当前 artifact 的新增事实；
 3. 不重复询问已解决事实，只询问当前 artifact 的 blocker；
 4. 文档层级不得越界：项目合同不写实现细节，Phase Contract 不替代 Feature Requirements/Design；
-5. 写入后按 [review-gate](../dd-workflow-runtime/references/review-gate.md) 自检；
-6. 需要用户裁决时按 [ask](../dd-workflow-runtime/references/ask.md)；
-7. `child` 只返回父工作流，不执行 Host Close。
+5. 文末版本记录只保留最新一行（版本号 + 一句话语义变化），更早历史由 Git 承担；权威定义见 [docs-governance §9](../dd-project-bootstrap-workflow/references/docs-governance.md)；
+6. 写入后按 [review-gate](../dd-workflow-runtime/references/review-gate.md) 自检；
+7. 需要用户裁决时按 [ask](../dd-workflow-runtime/references/ask.md)；
+8. `child` 只返回父工作流，不执行 Host Close。
