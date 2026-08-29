@@ -7,9 +7,7 @@ description: 用户延后工作时使用（"稍后/以后/回头/晚点/先跳�
 
 ## 概述
 
-把跨会话的延后事项持久化到项目根目录的 `docs/AI/later/` 目录，**一项一文件**，不是会话级 TodoWrite。记录前必须查现有条目去重：同一事项修改，独立事项新增。
-
-**核心原则：** 会话内的任务用 TodoWrite；明确延后到未来会话的事项用 LATER。会话结束 TodoWrite 即失效，LATER 跨会话留存。
+把跨会话的延后事项持久化到项目根目录的 `docs/AI/later/` 目录，**一项一文件**，不是会话级 TodoWrite。记录前必须查现有条目去重：同一事项修改，独立事项新增。TodoWrite 与 LATER 的边界见下表；用户说"以后再说"时用 TodoWrite 记录即失败（见红线）。
 
 **为什么一项一文件（2026-08-07 起取代单文件 LATER.md）：** 单文件 + 全局顺序号在多分支并行时必然撞号、乱序、合并冲突；一项一文件 + 日期 slug ID 让任何分支在任何时刻新增条目都零协调、零冲突，单项演化历史可直接 `git log` 追溯。
 
@@ -155,13 +153,11 @@ trigger: 什么事件发生时必须处理本条
 
 **修改方式：** 更新该文件的 frontmatter（如 `trigger`、`target_phase` 变化）与正文对应分节，保持分条结构。不新建文件、不在正文堆叠重复描述。
 
-## 产物生命周期与 INDEX（引用共享合同）
+## 产物生命周期与 INDEX 刷新
 
-- LATER 条目与 INDEX 分别为 `working`/`derived`，详见 [dd-workflow-runtime/artifact-lifecycle](../../dd-workflow-runtime/references/artifact-lifecycle.md) §3。刷新 INDEX 与条目属于同一 change set 是不变量；只有当已获得 Delivery 授权要求 commit 时才要求同一 commit。
+LATER 条目与 INDEX 分别为 `working`/`derived`，详见 [dd-workflow-runtime/artifact-lifecycle](../../dd-workflow-runtime/references/artifact-lifecycle.md) §3。
 
-## INDEX 刷新
-
-- 项目存在 INDEX 生成脚本（如 `Tools/gen_later_index.py`）时：新增/修改/关闭任何条目后必须立即运行脚本重新生成 INDEX.md，刷新与条目属于同一 change set，仅当已获得 Delivery 授权时才要求同一 commit；
+- 项目存在 INDEX 生成脚本（如 `Tools/gen_later_index.py`）时：新增/修改/关闭任何条目后必须立即运行脚本重新生成 INDEX.md，刷新与条目属于同一 change set，仅当已获得 Delivery 授权要求 commit 时才要求同一 commit；
 - 项目无 INDEX 脚本时：只维护条目文件，不手写 INDEX。
 
 ## 完成标记
