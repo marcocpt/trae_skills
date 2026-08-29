@@ -85,7 +85,7 @@ digraph later_flow {
     same [label="同一事项?" shape=diamond];
     modify [label="修改已有条目文件\n正文/frontmatter 合并更新"];
     add [label="新增条目文件\nLATER-YYYYMMDD-slug.md"];
-    index [label="有 INDEX 脚本则运行刷新\n同一 commit 带上 INDEX"];
+    index [label="有 INDEX 脚本则立即刷新\n同一 change set"];
 
     detect -> ls;
     ls -> grep;
