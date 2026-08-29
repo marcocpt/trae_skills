@@ -265,7 +265,7 @@ STATUS: HUMAN_DECISION_REQUIRED
 | "低风险，测试过了我自己关掉"；改完不复审就宣称闭环；把非 CLOSED 回复、TODO/LATER/ACCEPTED_RISK 当作 CLOSED | 生产代码/测试语义修改必须由 ChatGPT 针对性复查返回 CLOSED，且满足 CLOSED 判据四项 |
 | "每个问题都得问用户才稳妥"；缺测试或只缺运行证据就让用户定夺 | 缺测试归 FINDING 并指出补什么测试；缺事实证据归 VERIFICATION_REQUIRED；只有缺正确行为定义才是 HUMAN_DECISION_REQUIRED；能客观判定的归 FINDING 批量处置 |
 | "问题都差不多，一起问了效率高"；一次列出全部 HUMAN_DECISION_REQUIRED 风险点 | HARD-GATE：原子单位=独立决策点，一次一个，一个提问不得捆绑多个独立决策 |
-| "这个 H 其实是 FINDING，我直接重分类"；静默突破 CHANGE_RISK 下限降级 | 任何 F/V/H 重分类与降级必须送 ChatGPT 复核，不得静默更改 |
+| "这个 H 其实是 FINDING，我直接重分类"；静默突破 CHANGE_RISK 下限降级 | 任何 F/V/H 重分类、以及突破 CHANGE_RISK 下限的降级，必须送 ChatGPT 复核，不得静默更改 |
 | "引用有误，这 finding 作废" | 走 DISPUTED：附本地反证送 ChatGPT 复核 |
 | "中风险给个摘要就行"；中高风险复查用"文件清单+摘要"替代真实 diff | MEDIUM/HIGH 必须真实 diff + 当前源码 |
 | "修改 obvious 不用等授权"；"顺手把旁边的问题也修了"；复审发现的新问题不经过分流直接修 | 未经授权不得改任何文件；只改获批事项，不夹带重构；新问题走新分流（新 finding ID + introduced_by） |
