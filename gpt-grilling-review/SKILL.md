@@ -117,11 +117,8 @@ disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING 
 **优先规则**：HUMAN_DECISION_REQUIRED 列举的场景（兼容性/公共 API/安全/fail-open/fail-closed 等）**仅在"正确行为尚未由权威规格确定"时成立**。若明确规格已定行为（如规格写"鉴权失败必须 fail-closed"），即使涉及安全/fail-closed，仍按 FINDING 处理。
 
 ### 分流纪律
-- 不要因"可能有问题"就升级为人工决策；能证明的直接归 FINDING
-- 不要把个人编码偏好升级为人工决策
-- 不要因测试缺失就自动要求人工判断；正确行为明确的，直接指出该补什么测试（归 FINDING）
-- 缺事实证据 → V；缺正确行为定义 → H
-- 优先减少误报
+- 能客观证明的归 FINDING（含"缺测试"：直接指出该补什么测试）；"可能有问题"和个人编码偏好不得升级为人工决策
+- 缺事实证据 → V；缺正确行为定义 → H；优先减少误报
 
 ### 弱模型重分类复核
 弱模型若改变 ChatGPT 建议的 CLASSIFICATION（任何 F/V/H 重分类），**不得静默改分流**，须把反证送 ChatGPT targeted reconsideration。CHANGE_RISK 突破下限降级同样须复核。反向升级（如 F→H）须说明理由。最简单可靠的执行：**任何 F/V/H 重分类均须 ChatGPT 复核**（例如 ChatGPT 判定 FINDING，弱模型不得改成 VERIFICATION_REQUIRED 把应修复问题变成无限待验证）。
@@ -258,54 +255,22 @@ STATUS: HUMAN_DECISION_REQUIRED
 - TODO 项不得立即改；LATER 项不得继续当阻塞项
 - VERIFICATION_REQUIRED 项在取得证据前不得擅自修复
 
-## 基线失败（无本技能时的真实错误）
-
-| 真实失败 | 技能对策 |
-|---|---|
-| 机械接受 ChatGPT 意见（行号/引用错误也被照单执行） | 步骤 3 强制本地核对 |
-| 弱模型修歪→自判低风险→自改测试→测试绿→自宣布 CLOSED | 关闭权规则：生产代码/测试语义修改必须 ChatGPT CLOSED |
-| 把可客观判定的 FINDING 升级为逐条人工裁决 | 风险分流：FINDING 批量处置，仅 HUMAN_DECISION_REQUIRED 逐条裁决 |
-| 弱模型静默重分类 F/V/H 或降级 CHANGE_RISK | 重分类复核（任何 F/V/H 重分类须 ChatGPT 复核）+ DISPUTED 路径 |
-| 弱模型声称"引用有误"让 finding 消失 | DISPUTED 路径：反证送 ChatGPT 复核 |
-| 中高风险只给摘要不给 diff | MEDIUM/HIGH 必须真实 diff + 当前源码 |
-| 改完不复审就宣称闭环 | 风险分级复查 + CLOSED 判据 |
-| 修后测试红，无法区分旧失败还是新回归 | 修改前 baseline |
-| 一次倒出全部 HUMAN_DECISION_REQUIRED 问题 | HARD-GATE 仅对此类，原子单位=独立决策点 |
-| 送审不指定文件清单/部分文件未读却宣称完成 | 输入必须含文件清单 + reviewed/missing 覆盖 |
-| 修改时夹带无关重构 | 修改边界：只改获批事项 |
-| 因测试缺失或只缺运行证据就要求人工决策 | 缺测试归 FINDING；缺证据归 VERIFICATION_REQUIRED |
-
 ## 红线 - 出现即停下纠正
 
-| 借口 | 现实 |
+合并原「基线失败」「红线」「禁止事项」三表；每行一个独立失败模式，语义与正文规则一一对应。
+
+| 借口 / 失败模式 | 现实 |
 |---|---|
-| "ChatGPT 说的肯定对，直接照改" | 引用可能错；先本地核对，再分流（有误走 DISPUTED） |
-| "低风险，测试过了我自己关掉" | 生产代码/测试语义修改必须 ChatGPT CLOSED，弱模型不得自行 CLOSED |
-| "每个问题都得问用户才稳妥" | 能客观判定的归 FINDING 批量处置，只有真正决策项才逐条裁决 |
-| "问题都差不多，一起问了效率高" | HUMAN_DECISION_REQUIRED 原子单位=独立决策点，一次一个 |
-| "这个 H 其实是 FINDING，我直接重分类" | 重分类须送 ChatGPT 复核，不得静默改分流 |
-| "引用有误，这 finding 作废" | 走 DISPUTED，反证送 ChatGPT，不得直接丢弃 |
-| "中风险给个摘要就行" | MEDIUM/HIGH 必须真实 diff + 当前源码 |
-| "修改 obvious 不用等授权" | 未经授权不得改任何文件 |
-| "复审太慢，改得对就行" | 必须满足 CLOSED 判据四项 |
-| "顺手把旁边的问题也修了" | 夹带 = 边界失控，新问题走新分流 |
-| "缺测试/缺证据，让用户定夺吧" | 缺测试归 FINDING 指出补测试；缺证据归 VERIFICATION_REQUIRED |
-
-## 禁止事项
-
-- 弱模型自行 CLOSED 生产代码/测试语义修改（必须 ChatGPT 针对性复查返回 CLOSED）
-- 把可客观判定的问题（FINDING）升级为 HUMAN_DECISION_REQUIRED 逐条裁决
-- 因测试缺失或只缺运行证据就要求人工决策（应归 FINDING 指出补测试，或 VERIFICATION_REQUIRED）
-- 静默重分类 F/V/H 或突破 CHANGE_RISK 下限降级（任何 F/V/H 重分类须送 ChatGPT 复核）
-- 静默否定 ChatGPT finding（须走 DISPUTED）
-- HUMAN_DECISION_REQUIRED 项未经人工定方案就由弱模型直接修掉
-- 中高风险复查用"文件清单+摘要"替代真实 diff
-- 复查模板不提供授权范围/裁决记录（导致"未授权"无法判断）
-- 一次列出全部 HUMAN_DECISION_REQUIRED 风险点；一个提问捆绑多个独立决策
-- HUMAN_DECISION_REQUIRED 不给技术分析和可选方案，只写"请人工确认"
-- 未核对 ChatGPT 引用就展示或执行其意见
-- 未指定文件清单就送审；把代码粘贴进 content（ChatGPT 自行读取）；部分文件未读却宣称范围审核完成
-- 修改后不送复查就宣称 finding CLOSED；把非 CLOSED 回复当作 CLOSED；TODO/LATER/ACCEPTED_RISK 当作 CLOSED
-- 修改前不记 baseline；修改/覆盖用户已有变更
-- 复审发现的新问题不经过分流直接修
-- 复审 content 透漏 MCP/浏览器/插件等底层实现细节（须明确用 Tunnel 工具按 `work/<相对路径>` repo 名读取，但不得写绝对路径，保持业务视角）
+| "ChatGPT 说的肯定对，直接照改"；未核对引用就展示或执行其意见 | 引用可能错；先本地核对，再分流；引用有误走 DISPUTED，不得静默丢弃或作废 |
+| "低风险，测试过了我自己关掉"；改完不复审就宣称闭环；把非 CLOSED 回复、TODO/LATER/ACCEPTED_RISK 当作 CLOSED | 生产代码/测试语义修改必须由 ChatGPT 针对性复查返回 CLOSED，且满足 CLOSED 判据四项 |
+| "每个问题都得问用户才稳妥"；缺测试或只缺运行证据就让用户定夺 | 缺测试归 FINDING 并指出补什么测试；缺事实证据归 VERIFICATION_REQUIRED；只有缺正确行为定义才是 HUMAN_DECISION_REQUIRED；能客观判定的归 FINDING 批量处置 |
+| "问题都差不多，一起问了效率高"；一次列出全部 HUMAN_DECISION_REQUIRED 风险点 | HARD-GATE：原子单位=独立决策点，一次一个，一个提问不得捆绑多个独立决策 |
+| "这个 H 其实是 FINDING，我直接重分类"；静默突破 CHANGE_RISK 下限降级 | 任何 F/V/H 重分类与降级必须送 ChatGPT 复核，不得静默更改 |
+| "引用有误，这 finding 作废" | 走 DISPUTED：附本地反证送 ChatGPT 复核 |
+| "中风险给个摘要就行"；中高风险复查用"文件清单+摘要"替代真实 diff | MEDIUM/HIGH 必须真实 diff + 当前源码 |
+| "修改 obvious 不用等授权"；"顺手把旁边的问题也修了"；复审发现的新问题不经过分流直接修 | 未经授权不得改任何文件；只改获批事项，不夹带重构；新问题走新分流（新 finding ID + introduced_by） |
+| 修改前不记 baseline；修改/覆盖用户已有变更 | 先记录 HEAD/dirty tree/测试基线/已知失败；禁止覆盖用户已有变更 |
+| 送审不指定文件清单；部分文件未读却宣称范围审核完成 | 输入必须含文件清单 + REVIEWED/UNREADABLE 覆盖 |
+| 把代码粘贴进 content；复审 content 透露 MCP/浏览器/插件等底层实现细节或绝对路径 | ChatGPT 经 Tunnel 按 `work/<相对路径>` repo 名自行读取；content 只写业务视角，禁止绝对路径 |
+| HUMAN_DECISION_REQUIRED 不给技术分析和可选方案，只写"请人工确认"；未经人工定方案就由弱模型直接修掉 | 逐条裁决前必须先给技术分析 + 可选方案（A/B/C），裁决后按获批方案实现 |
+| 复查模板缺授权范围/裁决记录/baseline | 针对性复查必须提供完整上下文，否则"未授权"无法判断 |
