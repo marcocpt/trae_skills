@@ -72,15 +72,7 @@ TODO 状态与验证摘要、逐批验证摘要属于 `working`/`evidence`，LAT
 
 **强制规则：** 审核中发现、但后续才实现/延后/暂缓的事项，一律必须记入 LATER 持久化，避免遗忘。不得只在会话里口头延后或停留在记忆里；不得因为"不主动建文档"而跳过写入。
 
-路径固定为项目根 `docs/AI/later/`（一项一文件）。调用 [dd-later-tracking](../../dd-later-tracking/SKILL.md)：
-
-1. Grep `docs/AI/later/` 中现有条目的 title、tags、trigger 与正文关键词，找出可能重复项；
-2. 语义复核（必要时子代理精判）；
-3. 重复则合并更新已有条目文件，不新建；相关但独立则新增并在双方 frontmatter `related` 互链；
-4. 新增：有 `docs/AI/later/_TEMPLATE.md` 则复制模板；文件名为权威 ID `LATER-<YYYYMMDD>-<slug>.md`（无全局顺序号）；开放条目 frontmatter 必填 `id`、`title`、`status`、`created`、`source`、`target_phase`、`trigger`；
-5. 项目存在 INDEX 生成脚本（如 `Tools/gen_later_index.py`）时，刷新 INDEX 与条目属于同一 change set，仅当已获得 Delivery 授权时才要求同一 commit；未获授权时完成文件系统侧的同一 change set 即可。
-
-正文分节、分条、硬换行；title 保持一句话。LATER 条目记录现状、延后理由、触发条件与关闭所需证据，但不扩写成方案文档。
+路径固定为项目根 `docs/AI/later/`（一项一文件）。LATER 的去重、条目创建/更新（含模板、文件名、frontmatter 必填字段、正文分节要求）、INDEX 刷新及 Delivery 交付边界统一按 [dd-later-tracking](../../dd-later-tracking/SKILL.md) 执行，不在此复述。LATER 条目记录现状、延后理由、触发条件与关闭所需证据，但不扩写成方案文档。
 
 ## 收尾分组
 

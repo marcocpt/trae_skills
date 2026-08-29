@@ -100,7 +100,7 @@ TODO 使用 Logseq 兼容的 Markdown task：
 - 模式 B 验证过代码时必须有推荐修复文件与理由；
 - 代码位置、HTML 预览只在真实存在时写；
 - 待办不写 `修复SHA`；标记 `[x]` 时最后追加 `修复SHA:: <短SHA>`；
-  - LATER 通过 [dd-later-tracking](../dd-later-tracking/SKILL.md) 去重后写入 `docs/AI/later/`（一项一文件，frontmatter + 分节正文）；项目有 INDEX 生成脚本时，刷新 INDEX 与条目属于同一 change set，仅当获得 Delivery 授权要求 commit 时才要求同一 commit。
+  - LATER 通过 [dd-later-tracking](../dd-later-tracking/SKILL.md) 去重后写入 `docs/AI/later/`（一项一文件，frontmatter + 分节正文）；INDEX 刷新规则遵循该 Skill，不在此重复。
 
 完整 schema、去重、并行分组见 [todo-later-and-batch-repair.md](references/todo-later-and-batch-repair.md)。
 
