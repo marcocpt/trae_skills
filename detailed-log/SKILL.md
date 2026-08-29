@@ -69,39 +69,15 @@ description: "Adds detailed debug logs with user-specified feature prefix (e.g. 
 5. **状态变更**：记录变更前后的值
 6. **循环迭代**：记录迭代次数和当前项（避免在大量循环中过度打日志）
 
-#### 各语言示例
+#### 语言示例（Swift）
 
-**Swift:**
 ```swift
 print("[F1.10] DEBUG | loadData() | 开始加载 | userId=\(userId)")
 print("[F1.10] INFO  | loadData() | 加载成功 | count=\(items.count)")
 print("[F1.10] ERROR | loadData() | 加载失败 | error=\(error.localizedDescription)")
 ```
 
-**TypeScript/JavaScript:**
-```typescript
-console.log(`[F1.10] DEBUG | fetchData() | 开始请求 | url=${url}`)
-console.log(`[F1.10] INFO  | fetchData() | 请求成功 | status=${res.status}`)
-console.error(`[F1.10] ERROR | fetchData() | 请求失败 | error=${err.message}`)
-```
-
-**Python:**
-```python
-import logging
-logger = logging.getLogger(__name__)
-logger.debug("[F1.10] process_data() | 开始处理 | input_size=%d", len(data))
-logger.info("[F1.10] process_data() | 处理完成 | output_size=%d", len(result))
-logger.error("[F1.10] process_data() | 处理失败 | error=%s", str(e))
-```
-
-**Kotlin/Java:**
-```kotlin
-Log.d("F1.10", "loadData() | 开始加载 | userId=$userId")
-Log.i("F1.10", "loadData() | 加载成功 | count=${items.size}")
-Log.e("F1.10", "loadData() | 加载失败 | error=${e.message}")
-```
-
-> 以上示例仅供参考。如果项目 `coding_standards.md` 中指定了日志工具或格式，优先使用项目规范。
+其他语言按同一格式用项目现有日志工具等价实现（一个优秀示例胜过多个平庸的；项目规范优先）。
 
 ### 5. 自动提交 Git
 
