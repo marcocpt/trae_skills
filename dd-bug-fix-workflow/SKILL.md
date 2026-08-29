@@ -42,14 +42,14 @@ delivery_policy: project-rules
 
 ## 核心原则
 
-1. Restate the exact symptom and expected behavior；
-2. No root-cause evidence, no fix proposal；
-3. Reproduce before repair；
-4. One hypothesis and one variable at a time；
-5. Preserve old behavior unless approved otherwise；
-6. User-visible fixes require real-path evidence；
-7. Persist before every external transition；
-8. Trae completion requires a final ASK。
+1. 先复述确切症状与期望行为；
+2. 没有根因证据，不提出修复方案；
+3. 先复现，再修复；
+4. 一次只验证一个假设、一个变量；
+5. 未经批准不改变既有行为；
+6. 用户可见修复必须有真实路径证据；
+7. 每次外部转换前先持久化状态；
+8. Trae 完成前必须做最终 ASK。
 
 ## Stage Graph
 
@@ -90,39 +90,7 @@ User Verification
 
 ## Bug State
 
-除运行时通用字段外记录：
-
-```yaml
-bug_id: ""
-symptom: ""
-reproduction: []
-expected_behavior: ""
-log_sources: []
-debug_log_path: null
-failing_test: null
-root_cause: null
-fix_branch: ""
-fix_commits: []
-ci_runs: []
-user_verified: false
-documentation_paths: []
-merge_commit: null
-```
-
-旧状态中的 `current_step` 映射：
-
-```text
-0 → intake
-1 → environment
-2 → diagnosis-and-repair
-3 → sync-and-ci
-4 → user-verification
-5 → documentation
-6 → delivery
-7 → integration-and-closure
-```
-
-字段冲突时先验证日志、测试、提交、分支、CI 和 merge 证据，再修正状态。状态缺失时至少比较 fix 分支与 base、查询提交/CI/merge；已有修复 commit 时禁止默认重做 TDD。
+除运行时通用字段外，Bug 工作流记录领域增量状态：症状与期望行为、复现步骤、日志来源、调试日志路径、失败测试、根因、修复提交、CI 运行、用户验证结论、文档路径、merge commit。Bug 领域增量字段 schema、旧状态 `current_step` 映射与字段冲突/状态缺失的恢复规则见 [state.md](references/state.md)，状态在每个 Stage Gate 通过后原子写入。
 
 ## Stage 路由
 
@@ -176,7 +144,7 @@ merge_commit: null
 
 合并前写 `in_progress`，只在记录的主仓库路径操作；merge 成功后执行合并后 CI。清理会删除活动状态时先写 Completion Receipt，再删除明确的 worktree/分支。
 
-选择暂停时设置 `paused`，不触发完成 ASK。真正完成后设置 `status=completed`，再按共享运行时执行 Host Close：Trae 必须 ASK `结束本次任务` / `还有其他任务`；Codex 正常交付。
+选择暂停时设置 `paused`，不触发完成 ASK。真正完成后设置 `status=completed`，仅 standalone 会话按 [dd-workflow-runtime 宿主结束合同](../dd-workflow-runtime/SKILL.md) 收尾：Trae 结构化 ASK `结束本次任务 / 还有其他任务`（null 重问），Codex 正常交付最终摘要。
 
 ## 通用质量 Gate
 

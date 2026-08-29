@@ -172,22 +172,13 @@ Delivery（按策略）→ Cleanup → Return to parent / Host Close
 4. 确认 blocking issue 为零；
 5. 原子持久化最终状态。
 
-版本、内容指纹和批准依据负责内容追溯；它们不授权 Git。只有用户当前明确授权，或工作流开始时已明确采用的项目交付策略，才执行 Stage／Commit／Push。未要求记 `not-required`，明确禁止记 `not-authorized`；不得在本工作流中擅自 reset、force push 或破坏父工作流提交。
+版本、内容指纹和批准依据负责内容追溯，它们不授权 Git；Git 动作的授权边界遵循 [dd-workflow-runtime 的 Workflow Gate 与 Delivery Gate](../dd-workflow-runtime/SKILL.md)（未要求记 `not-required`，明确禁止记 `not-authorized`）。本工作流不得擅自 reset、force push 或破坏父工作流提交。
 
 `child` 将结果返回 Feature workflow；`standalone` 进入 Host Close。
 
 ## Host Close
 
-仅 `invocation_mode=standalone` 执行。
-
-Trae：
-
-1. ASK 前先持久化 `status=completed`，必要时写 Completion Receipt；
-2. 禁止直接结束；
-3. 结构化 ASK 只提供 `结束本次任务` / `还有其他任务`；
-4. null 重问；“还有其他任务”新建 workflow；“结束本次任务”后输出最终摘要。
-
-Codex：正常交付最终摘要，除非用户或项目规则要求额外确认。
+仅 `invocation_mode=standalone` 执行：先持久化 `status=completed`（必要时写 Completion Receipt），再按 [dd-workflow-runtime 宿主结束合同](../dd-workflow-runtime/SKILL.md) 收尾——Trae 结构化 ASK 只提供 `结束本次任务 / 还有其他任务`（null 重问），Codex 正常交付最终摘要。
 
 ## 红线
 

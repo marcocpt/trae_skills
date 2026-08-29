@@ -388,7 +388,7 @@ digraph doc_layers {
 - FR 编号：FR-001 起
 - AC 编号：AC-1 起
 - 文档头部：`> 最后更新：YYYY-MM-DD | 版本：vX.Y`
-- 文末：版本记录列表
+- 文末：版本记录（仅保留最新一行：版本号 + 一句话语义变化；更早历史由 Git 承担，权威定义见 [docs-governance §9](../../dd-project-bootstrap-workflow/references/docs-governance.md)）
 - 中文标点（，。！？：；），英文术语保持原文
 - 不使用 emoji（除非用户明确要求）
 

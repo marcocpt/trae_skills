@@ -111,11 +111,6 @@ next_safe_action: resume integration decision
 
 ## 5. Host Close
 
-真正完成并持久化 completed 后遵循 `dd-workflow-runtime`：
-
-- Trae 必须 ASK，且只提供 `结束本次任务` / `还有其他任务`；
-- “还有其他任务”创建新的 `workflow_id`，从新 Intake/Preflight 开始；
-- “结束本次任务”后输出最终摘要；
-- Codex 直接输出最终摘要。
+真正完成并持久化 completed 后，Host Close 协议以 [dd-workflow-runtime 宿主结束合同](../../dd-workflow-runtime/SKILL.md) 为唯一属主，不在此复述。
 
 集成选择与 Host Close 不得合并。前者决定修复是否交付，后者只决定 Trae 会话是否继续。
