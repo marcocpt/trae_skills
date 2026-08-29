@@ -269,6 +269,7 @@ digraph skill_relation {
 - [ ] 验证命令可执行
 - [ ] Greenfield/Brownfield 质量政策与验证命令明确
 - [ ] 审查的「必须修复」项全部处理
+- [ ] 文末版本记录仅保留最新一行（版本号 + 一句话语义变化；docs-governance §9）
 - [ ] 用户通过结构化 ASK 明确确认完成
 
 **任一项失败，修订后重新验证。**
