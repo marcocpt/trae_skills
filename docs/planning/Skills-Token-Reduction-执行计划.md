@@ -50,3 +50,19 @@ commit e0aeb7d）为形态样板。所有省 token 结论只报告 `wc -c` 实�
 ## 度量
 
 每文件记录修改前后 `wc -lc`；最终汇总报告只陈述实测数字，不做无测量声明。
+
+## 完成记录（2026-08-29）
+
+三批全部完成并经 ChatGPT 审核闭环（会话 6a921ecb-77f0-83e9-bfb5-e91806f8f994，最终 STATUS: PASS）。
+
+入口文件（16 个 SKILL.md）合计 163394 → 153742 字节（-9652，-5.9%）；reference 侧另减
+runtime-contract.md -584、todo-later-and-batch-repair.md -313；bug-fix 新增 references/state.md
+（+1090，为主文件下沉内容）。逐文件实测见各 commit message。
+
+- 未修改 4 个：dd-feature-development-workflow（样板）、dd-git-workflow、workflow-runner、
+  mcp-builder（操作性/参考性正文，无重复属主，ChatGPT 复核认可）；
+- 计划外追加：版本记录规则归属（docs-governance §9 权威定义 + 各 writer 一句话，截断式，
+  用户裁决），批次 1 完成；
+- 处置 finding：BEBE-001~004、RB-001~002、GPTREV-001、XCTEST-001、LATERDOC-001~002、
+  WSKILL-001，全部 FIXED 后复审 PASS；
+- 合同测试 9 个文件全程保持 OK；git diff --check 干净。
