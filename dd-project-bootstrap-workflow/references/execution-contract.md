@@ -1,6 +1,6 @@
 # Bootstrap Execution Contract
 
-按需读取本文件。首次触发读取 Preflight、State 和 Node Contract；进入 Handoff 时再读取 Handoff 与 Host Close。
+按需读取本文件。首次触发读取 Preflight、State 和 Node Contract；进入 Handoff 时再读取 Handoff；Host Close 直接按 dd-workflow-runtime 宿主结束合同执行。
 
 ## 1. Preflight
 
@@ -269,17 +269,4 @@ phase_contract_path: null
 
 ## 10. Host Close
 
-询问遵循 [dd-workflow-runtime/ask](../../dd-workflow-runtime/references/ask.md)。
-
-Trae：
-
-1. Exit Gate 与 Handoff 完成后禁止直接结束；
-2. ASK `结束本次任务` / `还有其他任务`；
-3. “还有其他任务”继续接收；
-4. ASK 前先持久化 completed，必要时写 Completion Receipt；
-5. “结束本次任务”后输出最终摘要。
-
-Codex：
-
-- 正常交付已完成结果；
-- 只有用户或项目规则要求时才追加结束确认。
+仅 `invocation_mode=standalone` 执行：Exit Gate 与 Handoff 完成后先原子持久化 `status=completed`（必要时写 Completion Receipt），再按 [dd-workflow-runtime 宿主结束合同](../../dd-workflow-runtime/SKILL.md) 收尾；询问模板遵循 [dd-workflow-runtime/ask](../../dd-workflow-runtime/references/ask.md)。

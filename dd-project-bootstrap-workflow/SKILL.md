@@ -20,14 +20,14 @@ description: 当需要从零创建 Greenfield 项目、为 Brownfield 项目重�
 
 ## 核心原则
 
-1. Flexible entry, strict exit；
-2. Brownfield requires Baseline；
-3. One fact, one SSOT；
-4. Workflow orchestrates; child skills author；
-5. Resolved facts are inherited, never re-asked；
-6. Workflow Gate is not Git commit；
-7. Review semantics are fixed; execution cost follows risk；
-8. Trae completion requires an explicit final ASK。
+1. 入口灵活，出口严格；
+2. Brownfield 必须先有 Baseline；
+3. 一条事实只有一个 SSOT；
+4. 工作流只编排，子 Skill 负责撰写；
+5. 已解决事实只继承，不重问；
+6. Workflow Gate 不是 Git commit；
+7. 审查语义固定，执行成本随风险调整；
+8. Trae 完成前必须显式最终 ASK。
 
 ## 首步：Preflight
 
@@ -209,23 +209,7 @@ Git status、lint、test、commit、push 和 PR 属于 Delivery Gate，遵循用
 
 ## Handoff
 
-Handoff 读取 [execution-contract.md](references/execution-contract.md) 的 Handoff 章节，统一交给 `dd-feature-development-workflow`。
-
-必须包含：
-
-- Goal、Scope、Project Mode；
-- Selected Feature/Phase；
-- Handoff Version、Bootstrap State 和 Worktree 路径；
-- Required Reading、Relevant Files；
-- Constraints；
-- Requirements Seed、Acceptance Criteria；
-- Verification、Out of Scope；
-- Resolved Decisions、Open Non-blocking Items；
-- Brownfield Baseline 和 approved Phase Contract 路径。
-
-写入 state 后设置 `status=handoff-ready`。下游验证并确认接收后设置 `completed`。
-
-Feature workflow 是唯一 Handoff 出口。Greenfield 不得绕过它直达 `dd-writing-specs`；规格 writer 由 Feature workflow 在消费 Requirements Seed 后调用。
+Handoff 的 payload schema、Greenfield/Brownfield 携带要求、写入 `status=handoff-ready` 与下游确认 `completed` 的语义，统一以 [execution-contract.md](references/execution-contract.md) 的 Handoff 章节为准，统一交给 `dd-feature-development-workflow`。Feature workflow 是唯一 Handoff 出口，Greenfield 不得绕过它直达 `dd-writing-specs`；规格 writer 由 Feature workflow 在消费 Requirements Seed 后调用。
 
 ## Exit Gate
 
@@ -247,20 +231,7 @@ Brownfield：
 
 ## 宿主结束合同
 
-遵循 [dd-workflow-runtime/ask](../dd-workflow-runtime/references/ask.md)。
-
-仅 `invocation_mode=standalone` 执行 Host Close。Trae：
-
-- Exit Gate 与 Handoff 完成后禁止直接结束；
-- 先原子持久化 `status=completed`，必要时写 Completion Receipt；
-- 必须 ASK `结束本次任务` / `还有其他任务`；
-- 选择“还有其他任务”时继续；
-- 选择“结束本次任务”后输出最终摘要。
-
-Codex：
-
-- 正常交付完成结果；
-- 只有用户或项目规则要求时才追加结束确认。
+仅 `invocation_mode=standalone` 执行：Exit Gate 与 Handoff 完成后先原子持久化 `status=completed`（必要时写 Completion Receipt），再按 [dd-workflow-runtime 宿主结束合同](../dd-workflow-runtime/SKILL.md) 收尾——Trae 结构化 ASK `结束本次任务 / 还有其他任务`（null 重问），Codex 正常交付完成结果。询问与收尾模板遵循 [dd-workflow-runtime/ask](../dd-workflow-runtime/references/ask.md)。
 
 ## References
 
