@@ -7,17 +7,28 @@ description: Use when 用户要求 ChatGPT 审核指定文件/指定仓库、让
 
 ## 目标
 
-角色反转的审核闭环：**ChatGPT（强模型）是主审与最终关闭人**，**本地 agent（弱模型）是执行者与核对者**，**用户是最终裁决人**。依据 [classification-policy.md](references/classification-policy.md) 的人工判断升级规则，对核对属实的风险点做三类分流，**仅 HUMAN_DECISION_REQUIRED 逐条裁决**。修复采用三个独立字段（SEVERITY / CLASSIFICATION / CHANGE_RISK）：**凡 ChatGPT 提出的 finding 修改了生产代码或测试语义，弱模型不得自行 CLOSED，必须由 ChatGPT 针对性复查（原 finding + 真实 diff + 授权范围 + 验证结果）返回 CLOSED 才闭环**；纯拼写/格式可本地验证关闭。
+角色反转的审核闭环：**ChatGPT（强模型）是主审与最终关闭人**，**本地 agent（弱模型）是执行者与核对者**，**用户是最终裁决人**。依据 [classification-policy.md](references/classification-policy.md) 的人工判断升级规则，对核对属实的风险点做三类分流，**仅 HUMAN_DECISION_REQUIRED 逐条裁决**。用户可一次启用本 skill 的自动化处置约定，减少已核实 FINDING 的重复确认；该约定不扩大文件、真实数据或交付动作的授权范围。修复采用三个独立字段（SEVERITY / CLASSIFICATION / CHANGE_RISK）：**凡 ChatGPT 提出的 finding 修改了生产代码或测试语义，弱模型不得自行 CLOSED，必须由 ChatGPT 针对性复查（原 finding + 真实 diff + 授权范围 + 验证结果）返回 CLOSED 才闭环**；纯拼写/格式可本地验证关闭。
 
 ## 角色分工
 
 | 角色 | 职责 | 禁止 |
 |---|---|---|
 | ChatGPT（强模型/主审） | 首审输出 finding + SEVERITY + 建议分流；针对性复查并给出 STATUS | 不得只凭弱模型摘要 CLOSED |
-| 本地 agent（弱模型，执行+核对） | 送审、核对引用、按规则分流、执行获批修改、按风险分级送复查 | 不得机械接受意见；不得静默重分类 F/V/H 或降级 CHANGE_RISK；不得自行 CLOSED 生产代码/测试语义修改；不得未经授权修改；不得覆盖用户已有变更 |
-| 用户（裁决人） | 对 HUMAN_DECISION_REQUIRED 逐条裁决；对 FINDING 批量授权；对 VERIFICATION_REQUIRED 确认取证方式 | — |
+| 本地 agent（弱模型，执行+核对） | 送审、核对引用、按规则分流、按已启用的自动化策略执行范围内修改、按风险分级送复查 | 不得机械接受意见；不得静默重分类 F/V/H 或降级 CHANGE_RISK；不得自行 CLOSED 生产代码/测试语义修改；不得越过自动化策略边界；不得覆盖用户已有变更 |
+| 用户（裁决人） | 对 HUMAN_DECISION_REQUIRED 逐条裁决；可一次启用或覆盖 FINDING 自动处置策略；对 VERIFICATION_REQUIRED 确认需要外部/真实环境的取证方式 | — |
 
 **违反规则的字面意思就是违反规则的精神。**
+
+## 自动化处置约定
+
+用户明确表示“已核实的 FINDING 默认立即修复，只有 HUMAN_DECISION_REQUIRED、范围/授权不明、真实用户数据或不可逆外部操作才暂停”后，本约定在当前工作流内生效：
+
+- 本地核对引用属实、分类为 `FINDING`、修改范围清楚且不触发暂停条件时，直接执行最小修复，不再追加批量确认；
+- `VERIFICATION_REQUIRED` 只执行范围内、可恢复且不接触真实用户数据的取证；需要真实 App/UI、CI、外部系统或用户操作时登记并暂停，不把缺证据改成代码修复；
+- `HUMAN_DECISION_REQUIRED` 仍遵循 HARD-GATE，逐个请求用户裁决；
+- 用户当前消息中的“只审核/先不改/加入 TODO/LATER/不采纳”覆盖自动化约定；
+- 自动化约定不包含 commit、push、merge、PR、deploy、生产配置、真实用户数据或其他外部状态变更，这些仍需单独授权；
+- 凡生产代码或测试语义发生修改，仍须由 ChatGPT 按风险等级复审并返回 `STATUS: CLOSED`，本地 agent 不得自行关闭。
 
 ## 三个独立字段
 
@@ -231,11 +242,9 @@ STATUS: HUMAN_DECISION_REQUIRED
 ## 批量 finding 处置（FINDING 类）
 
 - 把所有 FINDING 类风险点合并展示（遵循「风险点展示格式」）
-- 一次性向用户确认处置（不逐条提问）：
-  - 全部立即修复
-  - 全部加入 TODO
-  - 按子集拆分（用户指定哪几条立即修复、哪几条加入 TODO）
-- 用户授权后执行修复；未经授权不得改任何文件
+- 若已启用「自动化处置约定」，对本轮已核实且范围明确的 FINDING 直接执行最小修复，不再询问；超出约定边界的 finding 单独暂停
+- 未启用自动化约定时，才一次性向用户确认处置（不逐条提问）：全部立即修复、全部加入 TODO、或按子集拆分
+- 修复前仍记录 baseline，保留用户已有变更；修复后评估 CHANGE_RISK 并按风险等级送 ChatGPT 针对性复查
 - 修复完成后评估 CHANGE_RISK，按「修复后复查（按风险分级）」处置
 
 ## 逐条裁决提问要求（仅 HUMAN_DECISION_REQUIRED）
@@ -248,8 +257,8 @@ STATUS: HUMAN_DECISION_REQUIRED
 
 ## 修改边界
 
-- 未经用户授权，不得修改任何文件；不得顺手修复相邻问题
-- FINDING 类经一次性授权后，只改授权范围内事项，不夹带重构；改后重新读取文件核对
+- 未经用户授权或未启用自动化处置约定，不得修改任何文件；不得顺手修复相邻问题
+- FINDING 类经一次性授权或自动化约定覆盖后，只改核实且授权范围内事项，不夹带重构；改后重新读取文件核对
 - HUMAN_DECISION_REQUIRED 类经逐条裁决后，只改当前获批事项
 - 修改前必须记录 baseline（HEAD/dirty tree/测试基线/已知失败）；**禁止修改/覆盖用户已有变更**
 - TODO 项不得立即改；LATER 项不得继续当阻塞项
