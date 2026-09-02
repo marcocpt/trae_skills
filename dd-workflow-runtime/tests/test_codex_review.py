@@ -38,8 +38,8 @@ def _valid_result(status="FINDINGS", **overrides):
         "findings": [{
             "id": "RV-001",
             "severity": "HIGH",
-            "classification": "behavioral-correctness",
-            "change_risk": "behavioral",
+            "classification": "FINDING",
+            "change_risk": "MEDIUM",
             "location": "review.py:2-3",
             "evidence": "silent zero divisor",
             "required_fix": "raise ZeroDivisionError"

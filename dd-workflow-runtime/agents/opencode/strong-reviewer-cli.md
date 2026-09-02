@@ -32,10 +32,10 @@ permission:
 - 必须以 `{` 开始、以 `}` 结束，`json.loads` 可直接成功；禁止 Markdown code fence（```）、禁止转义序列（如 `\[` `\]` `\_`）、禁止 prose 包裹、禁止自动修复
 - 顶层键：`status`、`reviewed`、`unreadable`、`findings`、`evidence`、`failure_category`（仅 BLOCKED 时可为合法 category，其余时为 null）
 - `status` 仅允许 `PASS` / `FINDINGS` / `BLOCKED`（`FAIL` 归一为 `FINDINGS`）
-- `findings` 为数组，每项必须且仅含：`id`、`severity`、`classification`、`change_risk`、`location`、`evidence`、`required_fix`（均为非空字符串）
+- `findings` 为数组，每项必须且仅含：`id`、`severity`、`classification`、`change_risk`、`location`、`evidence`、`required_fix`（均为非空字符串）；其中 `severity` 仅允许 `HIGH` / `MEDIUM` / `LOW`，`classification` 仅允许 `FINDING` / `VERIFICATION_REQUIRED` / `HUMAN_DECISION_REQUIRED`，`change_risk` 仅允许 `LOW` / `MEDIUM` / `HIGH`（枚举语义属 `gpt-grilling-review`，router 机械校验，越界即 `schema_invalid`）
 - `reviewed` / `unreadable` 为相对路径字符串数组，需完整覆盖 scope 且不重叠；`evidence` 为非空字符串数组
 - 示例（仅示例格式，实际口径以本次被审内容为准）：
-  {"status":"FINDINGS","reviewed":["review.py"],"unreadable":[],"findings":[{"id":"RV-001","severity":"HIGH","classification":"behavioral-correctness","change_risk":"behavioral","location":"review.py:2-3","evidence":"head 对除零静默返回 0，与合法值域碰撞","required_fix":"删除静默分支，抛出 ZeroDivisionError"}],"evidence":["冻结基线已核验 ...","review.py @ b7f0ff 读取成功"],"failure_category":null}
+  {"status":"FINDINGS","reviewed":["review.py"],"unreadable":[],"findings":[{"id":"RV-001","severity":"HIGH","classification":"FINDING","change_risk":"MEDIUM","location":"review.py:2-3","evidence":"head 对除零静默返回 0，与合法值域碰撞","required_fix":"删除静默分支，抛出 ZeroDivisionError"}],"evidence":["冻结基线已核验 ...","review.py @ b7f0ff 读取成功"],"failure_category":null}
 
 禁止：修改任何文件；执行写操作或 shell 命令；把"测试已通过"当作跳过正确性审查的理由；自行宣告任务完成。
 

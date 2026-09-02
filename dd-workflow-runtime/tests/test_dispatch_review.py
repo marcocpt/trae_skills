@@ -234,7 +234,7 @@ class ReviewRouterTests(unittest.TestCase):
             "id": "RV-001",
             "severity": "HIGH",
             "classification": "FINDING",
-            "change_risk": "behavioral",
+            "change_risk": "MEDIUM",
             "location": "review.md:1",
             "evidence": "fixture finding",
             "required_fix": "repair the target",
@@ -257,6 +257,26 @@ class ReviewRouterTests(unittest.TestCase):
                     result["readonly_confirmation"],
                     {"confirmed": True, "evidence": "router-validated:mcp-review:snapshot-send-only"},
                 )
+
+    def test_non_canonical_finding_enum_blocks_instead_of_passing(self) -> None:
+        # MB-GRILL-019：change_risk="behavioral" 不是 canonical 枚举值，
+        # 归一化入口必须判 schema_invalid 并 fail-closed，不得当作 FINDINGS 放行。
+        finding = {
+            "id": "RV-001",
+            "severity": "HIGH",
+            "classification": "FINDING",
+            "change_risk": "behavioral",
+            "location": "review.md:1",
+            "evidence": "fixture finding",
+            "required_fix": "repair the target",
+        }
+        request = self.request()
+        runner = BackendScriptRunner(
+            {"mcp-review": self.result("mcp-review", request, "FINDINGS", findings=[finding])}
+        )
+        result = self.dispatch(request, runner)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["failure_category"], "schema_invalid")
 
     def test_mcp_unavailable_falls_back_to_codex(self) -> None:
         request = self.request()
@@ -419,7 +439,7 @@ class ReviewRouterTests(unittest.TestCase):
             "id": "RV-001",
             "severity": "HIGH",
             "classification": "FINDING",
-            "change_risk": "behavioral",
+            "change_risk": "MEDIUM",
             "location": "review.md:1",
             "evidence": "fixture finding",
             "required_fix": "repair the target",
@@ -558,7 +578,7 @@ class ReviewRouterTests(unittest.TestCase):
             "id": "RV-001",
             "severity": "HIGH",
             "classification": "FINDING",
-            "change_risk": "behavioral",
+            "change_risk": "MEDIUM",
             "location": "review.md:1",
             "evidence": "fixture finding",
             "required_fix": "repair the target",
@@ -596,7 +616,7 @@ class ReviewRouterTests(unittest.TestCase):
                             "id": "RV-001",
                             "severity": "HIGH",
                             "classification": "FINDING",
-                            "change_risk": "behavioral",
+                            "change_risk": "MEDIUM",
                             "location": "review.md:1",
                             "evidence": "fixture finding",
                             "required_fix": "repair the target",
@@ -766,6 +786,65 @@ class RoutingConfigTests(unittest.TestCase):
         registry["backends"]["mcp-review"]["forbid_args"] = ["--auto"]
         errors = ROUTER.validate_registry_policy(registry, policy)
         self.assertTrue(any("forbidden argument" in error for error in errors))
+
+
+class FindingEnumContractTests(unittest.TestCase):
+    """MB-GRILL-019：finding 三字段必须是 grilling canonical 枚举。
+
+    合同变化说明：旧断言只要求 severity/classification/change_risk 是非空字符串，
+    于是 provider 可以输出 `classification=behavioral-correctness`、
+    `change_risk=behavioral` 这类 runtime 私有取值；这类 finding 能通过 runtime
+    校验，却无法进入 gpt-grilling-review 的 F/V/H 分流状态机。新合同要求三个字段
+    必须落在 gpt-grilling-review 拥有的 canonical 枚举内，从而保留原合同保护目的
+    （finding 可被机械分流），只是把校验强度从"存在"升级为"语义合法"。
+    """
+
+    def _finding(self, **overrides: Any) -> Dict[str, Any]:
+        finding = {
+            "id": "RV-001",
+            "severity": "HIGH",
+            "classification": "FINDING",
+            "change_risk": "MEDIUM",
+            "location": "review.md:1",
+            "evidence": "fixture",
+            "required_fix": "repair",
+        }
+        finding.update(overrides)
+        return finding
+
+    def _assert_rejected(self, field: str, value: str) -> None:
+        with self.subTest(field=field, value=value):
+            with self.assertRaises(ROUTER.TerminalReviewFailure) as ctx:
+                ROUTER._validate_finding(self._finding(**{field: value}))
+            self.assertEqual(ctx.exception.category, "schema_invalid")
+
+    def test_non_canonical_classification_is_rejected(self) -> None:
+        self._assert_rejected("classification", "behavioral-correctness")
+
+    def test_non_canonical_change_risk_is_rejected(self) -> None:
+        self._assert_rejected("change_risk", "behavioral")
+
+    def test_non_canonical_severity_is_rejected(self) -> None:
+        self._assert_rejected("severity", "CRITICAL")
+
+    def test_lowercase_enum_value_is_rejected(self) -> None:
+        self._assert_rejected("classification", "finding")
+
+    def test_all_canonical_enum_values_are_accepted(self) -> None:
+        for severity in ROUTER.SEVERITY_VALUES:
+            for classification in ROUTER.CLASSIFICATION_VALUES:
+                for change_risk in ROUTER.CHANGE_RISK_VALUES:
+                    with self.subTest(severity=severity, classification=classification, change_risk=change_risk):
+                        validated = ROUTER._validate_finding(
+                            self._finding(
+                                severity=severity,
+                                classification=classification,
+                                change_risk=change_risk,
+                            )
+                        )
+                        self.assertEqual(validated["severity"], severity)
+                        self.assertEqual(validated["classification"], classification)
+                        self.assertEqual(validated["change_risk"], change_risk)
 
 
 if __name__ == "__main__":

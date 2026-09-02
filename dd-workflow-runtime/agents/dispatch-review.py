@@ -28,6 +28,17 @@ REQUEST_SCHEMA = "dd-review-request/1"
 CONFIG_SCHEMA = "dd-review-backends/1"
 POLICY_SCHEMA = "dd-routing-policy/1"
 MCP_READONLY_MODE = "snapshot-send-only"
+# Finding vocabulary owned by gpt-grilling-review (CON-002).  The router only
+# enforces it mechanically so a normalized dd-review-result/1 finding can enter
+# the grilling F/V/H triage state machine without re-interpretation.
+SEVERITY_VALUES = ("HIGH", "MEDIUM", "LOW")
+CLASSIFICATION_VALUES = ("FINDING", "VERIFICATION_REQUIRED", "HUMAN_DECISION_REQUIRED")
+CHANGE_RISK_VALUES = ("LOW", "MEDIUM", "HIGH")
+FINDING_ENUM_FIELDS = (
+    ("severity", SEVERITY_VALUES),
+    ("classification", CLASSIFICATION_VALUES),
+    ("change_risk", CHANGE_RISK_VALUES),
+)
 ALLOWED_BACKEND_TYPES = {"mcp", "cli", "native"}
 ALLOWED_EXECUTIONS = {"external", "native-agent"}
 FALLBACK_CATEGORIES = {
@@ -658,6 +669,13 @@ def _validate_finding(finding: Any) -> Dict[str, Any]:
     required = ("id", "severity", "classification", "change_risk", "location", "evidence", "required_fix")
     if any(not isinstance(finding.get(key), str) or not finding[key] for key in required):
         raise TerminalReviewFailure("schema_invalid", "finding is missing a required field")
+    for field, allowed in FINDING_ENUM_FIELDS:
+        value = finding[field]
+        if value not in allowed:
+            raise TerminalReviewFailure(
+                "schema_invalid",
+                f"finding.{field}: must be one of {list(allowed)}, got {value!r}",
+            )
     return {key: finding[key] for key in required}
 
 
