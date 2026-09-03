@@ -1,13 +1,13 @@
 # 多后端强审 Grilling 闭环：需求与草案设计
 
-> 起草：2026-09-02 | 版本：v0.7-DRAFT（已按六轮 ChatGPT 复核 + 两次轻量 targeted 复核、真机实测、本地审核意见补登与本地核对修订；第六轮 PASS；§11.7 基线模型经用户裁决为方案 A，落点已经 §11.9 轻量复核 CLOSED）
+> 起草：2026-09-02 | 版本：v0.9-DRAFT（六轮 ChatGPT 复核 + 四次 targeted 复核；第七轮针对 020/021 落地返回 REOPEN：021 CLOSED、020 修复不完整、新增 028；v0.9 处置 028 与 020 过渡态，待复核确认）
 > 适用范围：让 `gpt-grilling-review` 的强审闭环支持多个复审后端可选，而不复制 finding 生命周期与关闭权规则。
 > 修订说明：
 > - v0.1 复核返回 14 个 finding（8 HIGH / 5 MEDIUM / 1 LOW）；3 条架构项经用户裁决落地（DEC-MB-01~03），11 条 FINDING 在 v0.2 处置，并回填真机实测。
 > - v0.2 复审返回 `STATUS: REOPEN`——5 条原 finding 未真正解决（001 / 004 / 008 / 011 / 012），另新增 4 个 finding（015、016 HIGH；017、018 MEDIUM）。v0.3 处置全部 9 项。
 > - v0.3 复审：上述 9 项全部 CLOSED，但暴露 2 个跨属主接口缺口（新增 MB-GRILL-019 HIGH、020 MEDIUM）与 2 处文案歧义。本版 v0.4 新增 FR-MB-017 / FR-MB-018，补齐 §7.2 的 runtime 改动项，并修正两处措辞。
 > - v0.4 之后补登 v0.1 阶段的本地审核意见（MB-REVIEW-001~013）：该命名空间**此前从未进入任何复核台账**，v0.2~v0.4 只处置了 MB-GRILL 命名空间，属静默遗漏。逐条核对后：10 条已在 v0.2~v0.4 落地，3 条（005 / 011 / 012）未处置。本版 v0.5 新增 FR-MB-019 / FR-MB-020、改写 NFR-MB-001、§10 补 2 条红线，并在 §11.5 登记核对结论与新增阻塞项。
-> - 版本状态：v0.7-DRAFT。v0.6 已过第六轮复审（PASS，零新 finding，见 §11.8）；v0.7 仅落地 §11.7 的用户裁决（方案 A：每轮先 commit，FR-MB-019 第 2/6 条、FR-MB-020 第 2 条、§11.7/§11.8 台账同步），落点已经 §11.9 轻量复核 `CLOSED`，**未新增 runtime 修改**。当前 worktree 另含 6 个 runtime 文件的**未提交**改动（MB-GRILL-019 落地，已由主审 CLOSED、尚未 commit，见 §11.6）——两者须分开表述，不得混同。**批准仍阻塞于**：MB-GRILL-020 / 021 runtime 落地、commit 单独授权。
+> - 版本状态：v0.9-DRAFT。v0.6 第六轮 PASS（§11.8）；v0.7 方案 A 落地 CLOSED（§11.9）；v0.8 落地 021/020（§11.10）经**第七轮 targeted 复核返回 `REOPEN`**：MB-GRILL-021 CLOSED、MB-GRILL-020 修复不完整（chatgpt-tunnel 不满足 FR-MB-001 三项资格即入序列，validator 无资格校验）、**新增 MB-GRILL-028**（router_selectable: false 对 external 无通用禁令，introduced_by=021）。v0.9 处置经**第八轮确认（§11.12）**：**MB-GRILL-028 CLOSED、MB-GRILL-021 维持 CLOSED、MB-GRILL-020 维持 REOPEN（空序列过渡态合规，无额外缺口）**，零新 finding。MB-GRILL-019 与文档已 commit（`ec8844f` / `f6a8f11`）并推送；028 修复与 020 过渡态经主审确认后 commit。**批准仍阻塞于**：MB-GRILL-020 完全闭合（FR-MB-015/016 runtime 会话标识合同 + adapter initial/resume 形态 + 续接形态只读取证）与 §8 两处 VERIFICATION_REQUIRED 取证。
 > - v0.5 第五轮复审返回 `STATUS: REOPEN`：1 HIGH（022，§0 表述与 worktree 状态矛盾）+ 4 MEDIUM。v0.6 处置全部 5 项；**本地核对另发现 2 项主审未识别的问题**（027 HIGH / 024 补充）：runtime 已存在 `_verify_frozen_baseline` 与 `baseline_mismatch`（`dispatch-review.py:567`），FR-MB-019 的"现状无此机制"陈述有误、新造的 `baseline_drift` 与既有状态名冲突、且既有机制要求工作树干净与 grilling 多轮语义冲突；FR-MB-020 的阻塞状态清单漏列 12 个 runtime 既有 `failure_category`。详见 §11.7。
 
 ---
@@ -426,8 +426,8 @@ v0.4 相对 v0.3 的改动已逐项覆盖第三轮主审给出的最小修改集
 | ID | 缺口 | 需要改动的文件 | 性质 |
 |---|---|---|---|
 | MB-GRILL-019 | **已 CLOSED**（第五轮，2026-09-02，见 §11.6）——~~finding 三字段未做枚举校验~~。实现在 worktree 分支 `fix/mb-grill-019-finding-enum`，**尚未 commit** | 已完成：`dispatch-review.py` 的 `_validate_finding`、两个 reviewer 合同示例、新增合同测试、两个 adapter fixture canonical 化 | 生产代码 + 测试语义 |
-| MB-GRILL-020 | 无 stateful grilling 候选序列 | `routing-policy.yaml` 增加独立 stateful 序列（含 validator 与测试），不得影响 `strong-reviewer` 单跳链与 `max_hops=1` | 配置 + 代码 + 测试 |
-| MB-GRILL-021 | 默认后端 `chatgpt-tunnel` 不在 registry | 二选一：registry 增加该条目；或本文档把它标为 planned backend、不作为当前可选后端 | 跨 skill 范围决策 |
+| MB-GRILL-020 | **已落地（v0.8，未 commit）**——`routing-policy.yaml` 新增 `stateful_roles.strong-reviewer-stateful`（成员见 §11.10），validator 与测试同步；不影响 `strong-reviewer` 单跳链与 `max_hops=1` | 已完成 | 配置 + 代码 + 测试 |
+| MB-GRILL-021 | **已落地（v0.8，未 commit）**——裁决为 registry 增加条目：`review-backends.yaml` 收编 `chatgpt-tunnel`（`router_selectable: false`，`tunnel-self-read-only`） | 已完成 | 跨 skill 范围决策 |
 
 **VERIFICATION_REQUIRED（取证类，非批准阻塞，但阻塞对应后端启用）**
 
@@ -570,3 +570,61 @@ FR-MB-019 采用哪种基线模型：
 | §11.7 / §11.8 | 通过。裁决记录未把"用户裁决"伪装成 runtime 已实现；阻塞表无遗漏 |
 | 交叉检查 | FR-MB-011（句柄=reviewer 连续性，candidate=内容版本，两维度不混）、FR-MB-009（未引入"靠 git commit 恢复 workflow 状态"的错误语义）、FR-MB-007（fail-closed 不降级）、FR-MB-012（baseline evidence 与 capability evidence 分离保持）均无冲突 |
 | 覆盖 | REVIEWED: 本文档；UNREADABLE: 无 |
+
+### 11.10 MB-GRILL-021 / MB-GRILL-020 runtime 落地（2026-09-03；复核结论见 §11.11 / §11.12）
+
+**021——registry 收编 `chatgpt-tunnel`（`review-backends.yaml`）**
+
+- 新条目：`type: mcp`、`execution: external`、`router_selectable: false`、`readonly_mode: tunnel-self-read-only`、`capabilities: [strong-review]`、result_schema 不变；注释写明 Tunnel 自读模型与 transport 合同属主（`gpt-grilling-review/references/transport.md`）。
+- `tunnel-self-read-only` 为 registry 新定义的只读模式类别（属 runtime 拥有），语义 = "审核方经授权 Tunnel 按 `work/<相对路径>` repo 名自读；本地不发送绝对路径与文件内容"——与 `snapshot-send-only`（本地发快照）是两个类别，对应 FR-MB-004 表格两行。
+- **校验器配套改动（`dispatch-review.py`）**：
+  1. 新增 `KNOWN_READONLY_MODES` 白名单（5 值：snapshot-send-only / tunnel-self-read-only / codex-read-only-transport / agent-read-only-contract / codex-route-guard），所有 backend 的 `readonly_mode` 必须属于该集合；
+  2. 原"MCP 必须 snapshot-send-only"硬校验**收窄**为仅约束 `router_selectable` 非 false 的 MCP backend——grilling-only MCP 后端按 DEC-MB-02 走 Tunnel 自读，豁免但仍在白名单内；
+  3. 新增 `GRILLING_ONLY_BACKENDS = {chatgpt-tunnel}`，机械禁止其进入任何 Router 单跳链（FR-MB-018 第 3 条落地）。
+
+**020——stateful 候选序列（`routing-policy.yaml`）**
+
+- 新增顶层 `stateful_roles.strong-reviewer-stateful`：`capability: strong-review`、`backends: [chatgpt-tunnel]`、`fallback_on` 仅含 5 个可用性类（与 FR-MB-007 一致：FINDINGS / schema 非法 / 基线漂移等一律不降级）。
+- 该 key 由 **grilling 消费**（PRE_INITIAL_REVIEW 降级顺序），Router 派发循环不读取；成员允许 `router_selectable: false` 的 grilling-only backend。
+- **成员现状与理由**：仅 `chatgpt-tunnel`。`opencode-cli` / `codex-cli` 的**续接形态**只读证据未取得（§8 #1/#2，VERIFICATION_REQUIRED），按 FR-MB-004 第 3 条 fail-closed 暂不加入；`mcp-review` 无续接能力；native 后端需宿主接管不适用。取证后可依序加入。
+- **校验器新增 `stateful_roles` 规则**：成员必须存在于 registry；`router_selectable: false` 且非 grilling-only 的成员（如 native）拒绝；`fallback_on` 类别合法性；key 可选、存在则必须非空。
+
+**验证**
+
+| 项 | 结果 |
+|---|---|
+| 全量 `test_*.py` | **178 项通过**（170 → 178，+8 项 021/020 合同测试：白名单拒绝未知 mode、router-selectable MCP 保持 snapshot 硬校验、grilling-only 禁入单跳链、stateful 成员/引用/fallback 校验、checked-in 文件含 tunnel 与 stateful 序列） |
+| `validate-review-routing.py` | OK：**6 backends / 1 roles** |
+| `validate-bindings.py` | OK（6 宿主 / 7 角色） |
+| 测试 fixture 同步 | `_backend()` readonly_mode 按类型对齐真实合同值（原 `"test-readonly"` 不在新白名单内，属预期收紧） |
+
+**待办**：主审 targeted 复核（见 §11.10 送审）；复核 CLOSED 后 commit。
+
+### 11.11 第七轮：020/021 落地 targeted 复查返回 REOPEN 与 v0.9 处置（2026-09-03）
+
+**第七轮主审结论（同会话 targeted）**：`STATUS: REOPEN`——MB-GRILL-021 **CLOSED**；MB-GRILL-020 修复不完整；**新增 MB-GRILL-028**（MEDIUM / FINDING，`introduced_by=MB-GRILL-021`）。三项事实断言已经本地逐条核实**属实**：`review_session_handle` 在 dd-workflow-runtime 零命中；`conversation_id` 仅存在于 registry 注释与 mcp-review adapter 内部；stateful validator 不校验成员资格（连 `role_spec.capability` 与 backend `capabilities` 的对照都没有）。
+
+| finding | 结论 | 要点 |
+|---|---|---|
+| MB-GRILL-021 | `CLOSED` | registry 收编成立；单跳链未变；GRILLING_ONLY 禁令有效 |
+| MB-GRILL-020 | `REOPEN`（原问题未完全解决） | chatgpt-tunnel 被放入 stateful 序列，但它**不满足 FR-MB-001 三项资格**（runtime-owned 会话标识合同未落、adapter resume 形态未在 runtime 定义、续接形态无 backend-bound 只读证据）——按 FR-MB-018"只允许包含满足资格的成员"，放进去本身就是违规。已知缺口定级为**明确实现缺口**（非 VERIFICATION_REQUIRED，因为合同"不存在"是机械可确认的事实） |
+| MB-GRILL-028 | `OPEN`（新增） | `router_selectable: false` 未实现为通用 Router 禁令：roles validator 只拒 GRILLING_ONLY、派发层只对 native-agent 检查——未来的 external false 后端可穿透 snapshot 豁免被单跳派发 |
+
+**v0.9 处置（本轮）**
+
+1. **MB-GRILL-028 已修（双禁令）**：①校验层——Router 单跳链 candidate（除 `host-native` 占位）一律拒绝 `router_selectable: false`（含外部类型）；②派发层——`_check_backend_eligibility` 对非 native 的 `router_selectable: false` 统一 fail-closed（native 保留专用 handoff 信息）。测试：新增"校验层拒绝 future external false 成员"与"派发层拒绝"两项。
+2. **MB-GRILL-020 退到诚实过渡态**：`stateful_roles.strong-reviewer-stateful.backends: []`——FR-MB-016 会话标识合同与续接形态只读证据落地前，**没有任何 backend 满足三项资格**，空序列是唯一诚实的声明；validator 允许空序列（含注释），grilling 读到空序列必须按 `backend_unavailable` 阻塞（FR-MB-018 第 4 条预设的合规过渡）。**不虚构资格字段**——没实现的合同不标 true。
+3. 测试：178 → **181 项通过**（+3：空序列过渡态、校验层通用禁令、派发层防御禁令）；validator 6 backends / 1 roles 不变。
+
+**020 完全闭合的前置（超出本轮，待排期）**：FR-MB-015/016 的 runtime 会话标识合同落地（字段放 `dd-review-result/1` 还是 envelope 由 runtime schema 属主决定）+ adapter `initial`/`resume` 形态定义 + 续接形态 backend-bound 只读取证 → 之后 chatgpt-tunnel（及取证后的 opencode-cli / codex-cli）才可依资格进入序列，validator 按合同字段机械校验。
+
+### 11.12 第八轮：v0.9 处置的确认性 targeted 复核（2026-09-03）
+
+**主审结论：`STATUS: REOPEN`（仅因 020 前置未落地）——MB-GRILL-028 `CLOSED`；MB-GRILL-021 维持 `CLOSED`；MB-GRILL-020 维持 `REOPEN` 但**当前过渡态合规、不存在额外修复缺口**；零新 finding（无需 MB-GRILL-029）。**
+
+| 项 | 结论 | 主审核对 |
+|---|---|---|
+| MB-GRILL-028 | `CLOSED` | 双禁令核对成立：校验层（`dispatch-review.py` roles 检查对所有直接 candidate 拒 `router_selectable: false`，除 host-native 占位）+ 派发防御层（`_check_backend_eligibility` external false → `capability_unavailable`，native 保留 handoff 专用语义）；两项新测试分别杀中两层 |
+| MB-GRILL-021 | 维持 `CLOSED` | — |
+| MB-GRILL-020 | 维持 `REOPEN`（过渡态合规） | 空序列不再错误宣称 chatgpt-tunnel 具备资格、不伪造 resume / session identity 能力字段、不影响 Router 单跳链与 `max_hops=1`、validator 有测试覆盖过渡态；最终关闭等待 FR-MB-015 / FR-MB-016 合同与续接只读取证落地 |
+| 覆盖 | — | 主审核对了源码与新增 3 项测试，与本轮 181 tests OK + validator OK 口径一致 |
