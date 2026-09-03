@@ -1,6 +1,6 @@
 # 多后端强审 Grilling 闭环：需求与草案设计
 
-> 起草：2026-09-02 | 版本：v0.9-DRAFT（六轮 ChatGPT 复核 + 四次 targeted 复核；第七轮针对 020/021 落地返回 REOPEN：021 CLOSED、020 修复不完整、新增 028；v0.9 处置 028 与 020 过渡态，待复核确认）
+> 起草：2026-09-02 | 版本：v0.13-DRAFT（六轮 ChatGPT 复核 + 八次 targeted 复核；029~033 全部 CLOSED 并已 commit，见 §11.13；剩余：020 完全闭合需 adapter resume 子形态 + codex 续接只读取证）
 > 适用范围：让 `gpt-grilling-review` 的强审闭环支持多个复审后端可选，而不复制 finding 生命周期与关闭权规则。
 > 修订说明：
 > - v0.1 复核返回 14 个 finding（8 HIGH / 5 MEDIUM / 1 LOW）；3 条架构项经用户裁决落地（DEC-MB-01~03），11 条 FINDING 在 v0.2 处置，并回填真机实测。
@@ -633,3 +633,54 @@ FR-MB-019 采用哪种基线模型：
 | MB-GRILL-021 | 维持 `CLOSED` | — |
 | MB-GRILL-020 | 维持 `REOPEN`（过渡态合规） | 空序列不再错误宣称 chatgpt-tunnel 具备资格、不伪造 resume / session identity 能力字段、不影响 Router 单跳链与 `max_hops=1`、validator 有测试覆盖过渡态；最终关闭等待 FR-MB-015 / FR-MB-016 合同与续接只读取证落地 |
 | 覆盖 | — | 主审核对了源码与新增 3 项测试，与本轮 181 tests OK + validator OK 口径一致 |
+
+### 11.13 FR-MB-015 / FR-MB-016 runtime 合同落地与测试补齐（2026-09-03；第九轮 REOPEN → 029~032 已 CLOSED；第十轮新增 033，已处置待确认）
+
+**第十轮 targeted 复核：`STATUS: REOPEN`——029 / 030 / 031 / 032 全部 `CLOSED`，但新增 1 项**：
+
+| ID | 级别 | 问题 | 处置 |
+|---|---|---|---|
+| MB-GRILL-033 | MEDIUM（`introduced_by=MB-GRILL-030`） | 显式 continuation 的 session capability 未在派发前校验：原逻辑只对 `resume` 要求 `session_identity`，显式 `initial` 即使 backend 无该合同也先跑完真实审核，才在结果层 `session_resume_mismatch` | `_check_backend_eligibility` 改为**任何显式 continuation（initial 或 resume）都要求 canonical `session_identity` 合同**，fail-fast（`capability_unavailable`、adapter 不执行）；legacy 无 continuation 仍完全兼容 |
+
+边界保持不变：无 `continuation` → legacy 单跳兼容；explicit initial → 必须有 session 合同；resume → 同样必须有。
+
+**033 的两个 full-dispatch 测试**（主审指定）：①无合同 backend + 显式 initial → `runner.calls == []`；②有 canonical 合同 backend + 显式 initial → continuation 传入 runner、返回 initial session 后 `verified=true`。**负向验证已完成**：把校验临时换回"只查 resume"的旧逻辑，杀手测试立即变红，对照测试两种逻辑下均通过。
+
+**第十轮复核：033 修复不完整（不建新 ID）→ 已补修**
+
+主审指出 033 的原修复只检查“`session_identity` 是 dict”，而 registry 的 canonical 校验（`field == "session"`、owner 非空）原仅挂在“声明 resume”分支——于是 **initial-only backend 声明 malformed `session_identity` 时，registry 不校验、派发层误判“合同存在”**，explicit initial 仍会真跑。
+
+补修：registry 规则拆成两条——①`resume ∈ invocation_forms` ⇒ `session_identity` **必须存在**；②**只要 `session_identity` 被声明（无论是否声明 resume）**，即机械校验 `field == SESSION_IDENTITY_FIELD` 且 owner 非空。legacy 边界不变（无 continuation、无 session_identity 的 backend 继续合法）。
+
+**派发层未加冗余校验（有依据）**：先查证 `dispatch_review()` 在入口即执行 `validate_registry_policy`（`dispatch-review.py:1146`），配置错误会先返回 `BLOCKED / configuration_invalid`，因此 registry 修复是真实防线；按最小修复纪律不加第二处。
+
+**杀手测试**：`test_initial_only_backend_with_malformed_session_identity_rejected`（initial-only + `field=wrong_field, owner=""` → 拒绝）＋对照 `test_initial_only_backend_with_canonical_session_identity_accepted`。**负向验证**：同一 malformed 配置在旧逻辑下被放行、新逻辑下被拒（field 与 owner 各一项报错），canonical 配置两种逻辑下均通过。
+
+**033 状态**：`CLOSED`（第十一轮确认）。主审同时认可"不在派发层重复 canonical 校验"的判断——`dispatch_review()` 在任何 candidate selection 与 adapter 执行之前先跑 registry validator，生产路径上已是有效且先行的机械防线。**029~033 一并闭环，已 commit 并推送。**
+
+**分工说明（如实）**：`dispatch-review.py` 的合同实现（+111 行）由并行会话完成、未提交；本会话盘点发现**零测试覆盖、registry 无任何 backend 声明、文档缺台账**，遂按"补齐后整体送主审"先例补测试与台账，并接手处置 029~033。
+
+**第九轮 targeted 复核：`STATUS: REOPEN`——4 个新 finding，全部属实并已处置（第十轮确认 CLOSED）**：
+
+| ID | 级别 | 问题 | 处置 |
+|---|---|---|---|
+| MB-GRILL-029 | HIGH | resume 请求没跨过 adapter 边界：`adapter_request` 不含 `continuation`，且派发前不检查 backend 是否声明对应 invocation form——真实链路上 resume 无法驱动 | ①`adapter_request` 携带经校验的 `continuation`（deepcopy）；②`_check_backend_eligibility` 新增：请求 form 必须 ∈ `backend.invocation_forms`，`resume` 还须有 `session_identity` 合同；③新增 full-dispatch 测试断言 runner 实际收到 `continuation`，以及未声明 form 的 backend 被拒（`runner.calls == []`） |
+| MB-GRILL-030 | HIGH | 显式 `initial` 不强制返回 session identity（测试反而固化了该错误语义）→ 首轮后无 handle 可续接，闭环断裂 | 显式 `continuation.form == "initial"` 时必须返回 `session{form: "initial", handle 非空}` 并 `verified=true`，否则 `session_resume_mismatch`；**无 continuation 的 legacy 调用保持兼容**（允许无 session） |
+| MB-GRILL-031 | MEDIUM | ①registry 对"声明 resume 但完全缺失 session_identity"不报错（与本台账旧文自述"必填"矛盾）；②`session_identity.field` 可任意声明但运行时硬编码 `raw.get("session")`——假合同 | registry 层收紧：`resume ∈ invocation_forms ⇒ session_identity` 必填且完整；`field` 固定为 canonical 值 `"session"`（新增 `SESSION_IDENTITY_FIELD` 常量），自由命名不再合法。采纳主审"后者更简单"方案 |
+| MB-GRILL-032 | MEDIUM | 本会话两个 request 校验测试**误绿**：`_request()` fixture 缺 `host`/`repo`/`context`，先因 host 缺失报 schema_invalid，根本没走到 continuation 校验 | fixture 补全为完整合法 request；两个测试改为精确断言错误文本含 `continuation.handle` / `continuation.form` |
+
+主审同时确认正确的部分：`session_resume_mismatch` 命名空间隔离（transport 状态、不进 finding 生命周期、不参与 fallback）、legacy 兼容、16 项测试"不是空转"。
+
+**落地的合同（3 层）**
+
+| 层 | 内容 | 位置 |
+|---|---|---|
+| registry 声明 | `invocation_forms`（默认 `["initial"]`、必须含 `initial`）＋ 声明 `resume` 时 `session_identity.{field, owner}` **必填**且 `field` 固定为 `"session"`（`SESSION_IDENTITY_FIELD`） | `review-backends.yaml`（本次无 backend 声明，见下） |
+| stateful 资格 | 序列成员必须同时满足：声明 `resume` 形态（FR-MB-015）＋ 有 `session_identity` 合同（FR-MB-016）＋ `continuation_readonly_evidence: true`（FR-MB-004.3） | `validate_registry_policy` 的 `stateful_roles` 段 |
+| 派发与运行时比对 | 请求 form ∈ backend 声明（MB-GRILL-029）＋ **任何显式 continuation 都要求 canonical `session_identity` 合同**（MB-GRILL-033，fail-fast）；`continuation` 注入 adapter；`request.continuation` ↔ `result.session` 机械比对（resume：form+handle 精确匹配；显式 initial：必须返回 initial 身份），一致则 `session.verified = true`，否则 `session_resume_mismatch` | `_check_backend_eligibility` / `dispatch_review(adapter_request)`（continuation 注入点） / `_normalize_result` |
+
+**关键纪律**：`session_resume_mismatch` 属 transport/runtime 状态，按 FR-MB-020 不得被赋三字段、不得进入 finding 生命周期。续接会话"必须被证明，不能被假设"（FR-MB-003.2）——退出码与 adapter 自报都不算证据。
+
+**为什么不声明任何 backend**：目前无 backend 同时具备 resume 证据与 adapter resume 子形态；按 MB-GRILL-020 教训（不得虚构资格），registry 保持不声明、序列保持空过渡态。
+
+**验证**：**207 tests OK**（197 → 203 → 205 → 207；033 补修新增 2 项，均通过负向验证）；`validate-review-routing.py` 6 backends / 1 roles OK；`validate-bindings.py` OK。
