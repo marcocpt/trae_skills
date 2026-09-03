@@ -339,9 +339,13 @@ gpt-grilling-review
    - 待取证：`-c sandbox="read-only"` 的有效性。写入对照探测中，对照组（`--sandbox danger-full-access`）同样被 `sandbox-exec: sandbox_apply: Operation not permitted` 拦下，**当前环境无法区分两者**，故该开关有效性未证实。在取证前 `codex-cli` 的续接形态不可用。
    - 取证要求：必须在非嵌套沙箱环境（如 CI 或独立终端）做**行为正负对照**——正、负两组**都使用 resume 调用形态、只改变 sandbox 配置值**，不得把 `initial --sandbox` 与 `resume -c sandbox=` 两种形态混进同一对照；同时检查文件内容 / hash、文件列表与 Git 状态。配置解析或回读只能作辅助证据，**不能单独证明沙箱真正阻止写入**。
    - 结论边界：Codex 的 `initial` 形态可沿用既有 backend-bound 只读证据；`resume` 是新调用形态，在取得上述对照证据前**不得复用旧证据、不得启用**。
-2. **OpenCode 会话续接身份：已证实；grilling 续接只读资格：待取证**
+2. **OpenCode 会话续接身份与权限合同连续性：CLOSED（2026-09-03，主审终确认）**
    - 已实测（2026-09-02，opencode 1.18.25）：`opencode run --format json` 输出 `sessionID`；`opencode run --session <sessionID> --format json` **续接有效**（恢复首轮埋点 4826，sessionID 一致）。
-   - 残留待取证：`--session` 续接时 `strong-reviewer-cli` 的权限合同是否连续保留（本次未加载该 agent）。**因此本项只关闭"会话身份与上下文连续性"，不关闭 grilling 的 `opencode-cli` 续接只读资格**；在该续接形态的只读证据取得前，按 FR-MB-004 第 3 条同样 fail-closed。
+   - 第一轮取证（2026-09-03）：同 agent、只差 `--session` 的写探测——write 工具在两轮中均不存在于可用工具集（agent 自报）；主审核实为 `VERIFICATION_REQUIRED`：**agent 自述不构成引擎级证据**（无 tool schema、无拒绝事件、无成功 read 事件），evidence 中 "engine-enforced" 标注被点名为过度断言并已修正。
+   - 第二轮补证（2026-09-03，按主审最小补证方案）：initial 与 resume 各执行一次真实 read——**两轮均产生事件级 `tool_use: read, state.status=completed`**，输出与本地独立核对一致（`# AGENTS.md`）；resume 轮 sessionID 与首轮一致（`ses_f9af604f…`）且准确复述上轮探测编号（`MB-OC-C0903`）；全程无写工具暴露。
+   - **主审终确认（STATUS: CLOSED）**，边界声明（原文引用）：
+     > 真机取证确认，在 `opencode-cli` + `strong-reviewer-cli`、OpenCode **1.18.25**、调用形态 `opencode run --session <sessionID> --agent strong-reviewer-cli --format json` 下，initial 与 resume 两轮保持同一 `sessionID`，且两轮均产生实际 `read` tool event 并以 `state.status=completed` 成功读取同一 repo 文件，证明 allow-side 只读工具能力在 resume 形态连续；write 能力在两轮均未暴露，但该部分证据等级为 agent-self-reported-consistent，而非 engine-denial-event-backed。该结论**仅覆盖上述 backend / agent / OpenCode 版本 / resume 调用形态，不外推到其他 agent、版本、backend 或调用形态**。
+   - 证据：`dd-workflow-runtime/tests/evidence/opencode-resume-readonly-evidence.yaml`（4 份原始事件流）。
 3. **只读证据覆盖面**：任何新增调用形态（尤其是带会话标识的续接形态）是否仍被现有 backend-bound 只读证据覆盖？未被覆盖的调用形态须重新取证，不得沿用。
 4. **后端选择策略归属**：已裁决——grilling 不另设独立 backend-selection policy，候选顺序与降级分类引用 `routing-policy.yaml`。
 
@@ -354,7 +358,8 @@ gpt-grilling-review
 | Codex 非交互续接 | 通过（句柄 `01a05fd7-…`，恢复埋点 7391） |
 | Codex `resume` 不接受 `--sandbox` | 复现（`unexpected argument '--sandbox' found`） |
 | Codex 只读开关有效性 | **未证实**（对照组同样被拦，证据不足） |
-| OpenCode `--session` 续接身份 | 通过（句柄 `ses_fa028e8e5ffe…`，恢复埋点 4826）；**续接形态的只读资格仍待取证** |
+| OpenCode `--session` 续接身份 | 通过（句柄 `ses_fa028e8e5ffe…`，恢复埋点 4826）；只读资格见下行 |
+| OpenCode 续接形态权限合同连续性（2026-09-03，两轮取证） | **CLOSED**：第一轮 write 侧 agent 自述被判不足（"engine-enforced" 过度断言被点名修正）；第二轮按最小补证方案补齐**事件级正向 read**（initial/resume 均 `read completed`）、sessionID 连续、编号复述准确——主审终确认，引用边界限定 opencode-cli + strong-reviewer-cli + 1.18.25 + resume 形态 |
 
 ## 10. 风险与红线
 
@@ -432,7 +437,7 @@ v0.4 相对 v0.3 的改动已逐项覆盖第三轮主审给出的最小修改集
 **VERIFICATION_REQUIRED（取证类，非批准阻塞，但阻塞对应后端启用）**
 
 - Codex 续接形态的只读开关有效性（第 8 节 #1）：需非嵌套沙箱环境做行为正负对照，本机沙箱内无法完成。
-- OpenCode 续接形态下 `strong-reviewer-cli` 权限合同连续性（第 8 节 #2）。
+- ~~OpenCode 续接形态下 `strong-reviewer-cli` 权限合同连续性（第 8 节 #2）~~：**CLOSED**（2026-09-03，两轮取证 + 主审终确认；证据 `opencode-resume-readonly-evidence.yaml`，引用边界限定 opencode-cli + strong-reviewer-cli + opencode 1.18.25 + resume 调用形态）。
 
 **纪律**
 
