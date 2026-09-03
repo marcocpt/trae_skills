@@ -1,6 +1,6 @@
 # 多后端强审 Grilling 闭环：需求与草案设计
 
-> 起草：2026-09-02 | 版本：v0.14-DRAFT（六轮 ChatGPT 复核 + 九次 targeted 复核；MB-GRILL-001~033 **全部 CLOSED**，见 §11.1~§11.14；剩余：codex-cli 续接形态只读取证 VERIFICATION_REQUIRED、chatgpt-tunnel 跨 owner 会话合同待裁决）
+> 起草：2026-09-02 | 版本：v0.15-DRAFT（六轮 ChatGPT 复核 + 九次 targeted 复核；MB-GRILL-001~033 **全部 CLOSED**；DEC-MB-04 双层架构裁决落定；剩余：分支并入 develop）
 > 适用范围：让 `gpt-grilling-review` 的强审闭环支持多个复审后端可选，而不复制 finding 生命周期与关闭权规则。
 > 修订说明：
 > - v0.1 复核返回 14 个 finding（8 HIGH / 5 MEDIUM / 1 LOW）；3 条架构项经用户裁决落地（DEC-MB-01~03），11 条 FINDING 在 v0.2 处置，并回填真机实测。
@@ -19,6 +19,7 @@
 | DEC-MB-01 | **续接能力由 canonical adapter 提供**：扩展 `codex-review` / `opencode-review`（及 ChatGPT 通道）使其具备 `initial` 与 `resume` 两种调用形态；grilling 只编排轮次，不自行拼装 provider 命令行 | FR-MB-015、§7.1 |
 | DEC-MB-02 | **两个 ChatGPT 通道拆名各归其位**：grilling 使用 `chatgpt-tunnel`（审核方经 Tunnel 自读 + 多轮续接），Router 单跳使用 `mcp-review`（快照发送、无读取能力）。行为不变，只对齐名字与事实 | FR-MB-001、FR-MB-004、FR-MB-005 |
 | DEC-MB-03 | **结果合同双层分离**：后端一轮只返回 `dd-review-result/1`；grilling 在其上定义从属的 closure 合同，并写死转换规则；关闭权仍归 grilling | FR-MB-013 |
+| DEC-MB-04 | **传输双层架构（2026-09-03 用户裁决）**：`chatgpt-tunnel` 归 grilling 传输层（`gpt-grilling-review/references/transport.md`）直连自管——会话身份（`conversation_id`）与 Tunnel 只读规则均属 transport 合同；runtime registry 名册只登记 **Router 可程序化派发**的后端。**`chatgpt-tunnel` 不入 registry stateful 名册**，不需要 registry 侧 continuation 只读取证；将来若让多轮候选顺序改由 registry 消费，再按届时形态补建档（DEC-MB-04 不排斥该演进） | FR-MB-018、§11.14 |
 
 ---
 
@@ -709,4 +710,8 @@ FR-MB-019 采用哪种基线模型：
 | MB-GRILL-022~026 / 029~033 | CLOSED |
 | **全部** | **CLOSED** |
 
-**剩余（非 finding，VERIFICATION_REQUIRED / 待裁决）**：codex-cli 续接形态只读开关有效性（§8 #1，需非嵌套沙箱行为正负对照）；chatgpt-tunnel 会话合同的 runtime 声明方式（跨 owner：transport 属 grilling skill、registry 属 runtime，待用户裁决后它方可具备 stateful 资格）；分支并入 develop 方式。
+**剩余（非 finding，待办）**：
+
+- **codex-cli 续接形态只读开关有效性（§8 #1）——用户裁决（2026-09-03）：不做取证，codex-cli 续接形态按 fail-closed 长期保持不启用**。数据安全可由 git + 方案 A 的每轮 baseline 复验兜底，但"reviewer 自证"的审计纯度问题与对 opencode 已取证的双标问题不成立豁免条件，故维持现状；将来实际需要 codex 多轮时再议"检测型取证 / 合同修订"（届时主审裁决）。
+- **chatgpt-tunnel 会话合同登记归属——用户裁决（2026-09-03，DEC-MB-04）：双层架构写死**。`chatgpt-tunnel` 归 grilling 传输层自管，不入 registry stateful 名册，无需 registry 侧会话档案与续接只读取证；该"待裁决"项**已销**。
+- 分支并入 develop 方式。
