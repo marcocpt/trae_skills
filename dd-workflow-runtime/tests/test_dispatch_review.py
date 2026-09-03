@@ -83,7 +83,12 @@ def _configuration() -> tuple[Dict[str, Any], Dict[str, Any]]:
                 "native_guard": "codex-route-guard",
                 "router_selectable": False,
             },
-            "opencode-cli": _backend("cli", "external"),
+            "opencode-cli": {
+                **_backend("cli", "external", readonly_mode="agent-read-only-contract"),
+                "invocation_forms": ["initial", "resume"],
+                "session_identity": {"field": "session", "owner": "opencode-review"},
+                "continuation_readonly_evidence": True,
+            },
             "opencode-native": {
                 **_backend("native", "native-agent", readonly_mode="agent-read-only-contract"),
                 "host": "opencode",
@@ -104,7 +109,7 @@ def _configuration() -> tuple[Dict[str, Any], Dict[str, Any]]:
         "stateful_roles": {
             "strong-reviewer-stateful": {
                 "capability": "strong-review",
-                "backends": [],
+                "backends": ["opencode-cli"],
                 "fallback_on": sorted(ROUTER.FALLBACK_CATEGORIES),
             }
         },
@@ -821,10 +826,11 @@ class RoutingConfigTests(unittest.TestCase):
         tunnel = registry["backends"]["chatgpt-tunnel"]
         self.assertEqual(tunnel["readonly_mode"], ROUTER.TUNNEL_READONLY_MODE)
         self.assertIs(tunnel["router_selectable"], False)
-        self.assertEqual(policy["stateful_roles"]["strong-reviewer-stateful"]["backends"], [])
+        self.assertEqual(policy["stateful_roles"]["strong-reviewer-stateful"]["backends"], ["opencode-cli"])
 
     def test_stateful_roles_accept_empty_order_as_transitional_state(self) -> None:
         registry, policy = _configuration()
+        policy["stateful_roles"]["strong-reviewer-stateful"]["backends"] = []
         self.assertEqual(ROUTER.validate_registry_policy(registry, policy), [])
 
     def test_router_chain_rejects_unselectable_external_backend(self) -> None:
@@ -973,6 +979,13 @@ class InvocationFormsRegistryContractTests(unittest.TestCase):
 
     def _registry_with(self, backend_id: str, spec_overrides: Dict[str, Any]):
         registry, policy = _configuration()
+        # 本测试类从"无续接声明"的干净基底构造合同样本：checked-in fixture 的
+        # opencode-cli 已带完整续接声明（MB-GRILL-020 落地后），若直接 update 会
+        # 残留旧字段、掩盖"缺字段"类用例。同时把被测 backend 移出 stateful 序列，
+        # 使 registry 层规则与 stateful 成员资格两套检查解耦测试。
+        for key in ("invocation_forms", "session_identity", "continuation_readonly_evidence"):
+            registry["backends"][backend_id].pop(key, None)
+        policy["stateful_roles"]["strong-reviewer-stateful"]["backends"] = []
         registry["backends"][backend_id].update(spec_overrides)
         return registry, policy
 

@@ -19,15 +19,17 @@ roles:
 # adapter-provided continuation form (FR-MB-015), and a backend-bound readonly
 # proof covering that exact invocation form (FR-MB-001.3 / FR-MB-004.3).
 #
-# EMPTY ORDER (MB-GRILL-020, transitional, honest state): no member qualifies
-# yet -- the runtime session-identity contract (FR-MB-016) is not landed and no
-# backend-bound continuation evidence exists, so even chatgpt-tunnel does not
-# qualify.  gpt-grilling-review MUST treat an empty order as
-# backend_unavailable instead of self-ordering (FR-MB-018.4).
+# opencode-cli qualifies (2026-09-03): declares resume + session_identity and
+# its continuation-form readonly evidence is captured.  chatgpt-tunnel and
+# codex-cli stay out: chatgpt-tunnel's session contract lives in the grilling
+# transport layer (cross-owner decision pending) and codex-cli has no
+# continuation-form readonly evidence yet (fail-closed, FR-MB-004.3).
+# gpt-grilling-review MUST treat an empty order as backend_unavailable instead
+# of self-ordering (FR-MB-018.4).
 stateful_roles:
   strong-reviewer-stateful:
     capability: strong-review
-    backends: []
+    backends: [opencode-cli]
     fallback_on: [backend_unavailable, executable_missing, endpoint_unavailable, capability_unavailable, temporary_backend_failure]
 
 host_native:

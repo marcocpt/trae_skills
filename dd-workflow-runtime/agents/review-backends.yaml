@@ -69,6 +69,17 @@ backends:
     command: [review]
     forbid_args: [--auto]
     capabilities: [strong-review]
+    # FR-MB-015 / FR-MB-016 / MB-GRILL-020: continuation forms and the
+    # structured session identity contract.  opencode-review maps a `resume`
+    # continuation onto `opencode run --session <handle>` and reports the
+    # engine-minted session under the canonical result field `session`.
+    invocation_forms: [initial, resume]
+    session_identity:
+      field: session
+      owner: opencode-review
+    # FR-MB-004.3 / FR-MB-012: continuation-form readonly evidence captured
+    # (tests/evidence/opencode-resume-readonly-evidence.yaml, 2026-09-03).
+    continuation_readonly_evidence: true
     readonly_required: true
     readonly_mode: agent-read-only-contract
     availability_exit_codes: [69]

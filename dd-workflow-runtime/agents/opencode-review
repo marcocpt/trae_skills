@@ -52,6 +52,49 @@ def _blocked_result(request: Dict[str, Any], category: str, detail: str) -> Dict
     }
 
 
+def _validate_continuation(req: Dict[str, Any]) -> str | None:
+    """Validate the optional continuation contract (FR-MB-015 / FR-MB-016).
+
+    Absent == a plain initial single-hop dispatch (legacy compatible).  An
+    explicit continuation must carry a known form; a resume must carry the
+    caller's session handle so the adapter can pin `--session` to it.
+    """
+    continuation = req.get("continuation")
+    if continuation is None:
+        return None
+    if not isinstance(continuation, dict):
+        return "request.continuation must be a mapping"
+    form = continuation.get("form")
+    if form not in ("initial", "resume"):
+        return "request.continuation.form must be 'initial' or 'resume'"
+    handle = continuation.get("handle")
+    if form == "resume" and (not isinstance(handle, str) or not handle):
+        return "request.continuation.handle is required for a resume form"
+    return None
+
+
+def _extract_session_id(stdout: str) -> str | None:
+    """Extract the opencode session identity from the NDJSON event stream.
+
+    Every opencode event carries the session it belongs to; the first well
+    -formed one is the session this invocation ran in (proven by the engine,
+    not self-reported by the model).
+    """
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict):
+            sid = event.get("sessionID")
+            if isinstance(sid, str) and sid:
+                return sid
+    return None
+
+
 def _validate_request(req: Dict[str, Any]) -> str | None:
     if req.get("schema") != REQUEST_SCHEMA:
         return f"request schema must be {REQUEST_SCHEMA}"
@@ -202,6 +245,11 @@ def main() -> int:
         result = _blocked_result(request, "schema_invalid", err)
         print(json.dumps(result, ensure_ascii=False))
         return 0
+    err = _validate_continuation(request)
+    if err:
+        result = _blocked_result(request, "schema_invalid", err)
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
 
     # Verify frozen baseline minimally (repo exists, HEAD matches, no dirty)
     # We do lightweight checks; full verification is Router's job, but adapter should fail-closed on dirty worktree
@@ -222,8 +270,13 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False))
         return 0
 
-    # Invoke opencode CLI
+    # Invoke opencode CLI.  A resume continuation pins the invocation to the
+    # caller's session (FR-MB-015); the pinned form's readonly continuity is
+    # proven by tests/evidence/opencode-resume-readonly-evidence.yaml.
+    continuation = request.get("continuation") if isinstance(request.get("continuation"), dict) else None
     cmd = ["opencode", "run", "--agent", AGENT_NAME, "--format", "json"]
+    if continuation and continuation.get("form") == "resume":
+        cmd += ["--session", continuation["handle"]]
     env = {"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", str(Path.home()))}
     try:
         completed = subprocess.run(
@@ -284,6 +337,15 @@ def main() -> int:
     for f in obj.get("findings", []):
         findings.append({k: f[k] for k in FINDING_KEYS})
 
+    # Structured session identity (FR-MB-015 / FR-MB-016): report the engine
+    # -proven session this invocation actually ran in.  With no continuation
+    # there is no session contract to honour and the field stays absent.
+    session = None
+    if continuation is not None:
+        sid = _extract_session_id(completed.stdout)
+        if sid:
+            session = {"form": continuation["form"], "handle": sid}
+
     result = {
         "schema": RESULT_SCHEMA,
         "backend": BACKEND_ID,
@@ -302,6 +364,8 @@ def main() -> int:
         "readonly_confirmation": {"confirmed": False, "evidence": None},
         "lifecycle": {"started": True, "completed": status in ("PASS", "FINDINGS")},
     }
+    if session is not None:
+        result["session"] = session
     print(json.dumps(result, ensure_ascii=False))
     return 0
 

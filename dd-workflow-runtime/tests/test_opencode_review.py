@@ -200,9 +200,11 @@ class AdapterIntegrationTests(unittest.TestCase):
             "routing_context": {"dispatch_boundary": "single-backend", "router_authority": False, "hop_count": 1, "dispatch_chain": ["opencode-cli"], "selected_backend": "opencode-cli"},
         }
 
-    def _run_adapter_with_fake_opencode(self, fake_stdout: str, exit_code: int = 0):
+    def _run_adapter_with_fake_opencode(self, fake_stdout: str, exit_code: int = 0, request_overrides: dict | None = None):
         """Run adapter with mocked subprocess.run for opencode."""
         req = self.request()
+        if request_overrides:
+            req.update(request_overrides)
         req_json = json.dumps(req)
         # Mock subprocess.run to return fake opencode result
         mock_completed = mock.Mock()
@@ -215,6 +217,7 @@ class AdapterIntegrationTests(unittest.TestCase):
             # git calls should go through real, opencode call mocked
             def side_effect(cmd, **kwargs):
                 if cmd[0] == "opencode":
+                    self.captured_opencode_cmd = list(cmd)
                     return mock_completed
                 return original_run(cmd, **kwargs)
             mocked.side_effect = side_effect
@@ -267,6 +270,168 @@ class AdapterIntegrationTests(unittest.TestCase):
         ret, out = self._run_adapter_with_fake_opencode(stream, exit_code=1)
         result = json.loads(out)
         self.assertEqual(result["failure_category"], "backend_execution_failed")
+
+
+class ExtractSessionIdTests(unittest.TestCase):
+    def test_extracts_first_session_id(self):
+        stream = (
+            json.dumps({"type": "step_start", "timestamp": 1, "sessionID": "ses_a", "part": {}})
+            + "\n"
+            + json.dumps({"type": "text", "timestamp": 2, "sessionID": "ses_a", "part": {"type": "text"}})
+        )
+        self.assertEqual(ADAPTER_MOD._extract_session_id(stream), "ses_a")
+
+    def test_skips_malformed_lines(self):
+        stream = "not json\n" + json.dumps({"type": "step_start", "sessionID": "ses_b", "part": {}})
+        self.assertEqual(ADAPTER_MOD._extract_session_id(stream), "ses_b")
+
+    def test_returns_none_without_session_id(self):
+        self.assertIsNone(ADAPTER_MOD._extract_session_id("garbage\nlines"))
+        self.assertIsNone(ADAPTER_MOD._extract_session_id(""))
+
+    def test_ignores_non_string_session_id(self):
+        stream = json.dumps({"type": "step_start", "sessionID": 42, "part": {}})
+        self.assertIsNone(ADAPTER_MOD._extract_session_id(stream))
+
+
+class ValidateContinuationTests(unittest.TestCase):
+    def test_absent_continuation_is_legacy(self):
+        self.assertIsNone(ADAPTER_MOD._validate_continuation({}))
+
+    def test_valid_initial_passes(self):
+        self.assertIsNone(ADAPTER_MOD._validate_continuation({"continuation": {"form": "initial"}}))
+
+    def test_valid_resume_passes(self):
+        self.assertIsNone(ADAPTER_MOD._validate_continuation({"continuation": {"form": "resume", "handle": "ses_x"}}))
+
+    def test_non_mapping_rejected(self):
+        self.assertIn("mapping", ADAPTER_MOD._validate_continuation({"continuation": ["initial"]}))
+
+    def test_unknown_form_rejected(self):
+        err = ADAPTER_MOD._validate_continuation({"continuation": {"form": "fork", "handle": "x"}})
+        self.assertIn("must be 'initial' or 'resume'", err)
+
+    def test_resume_requires_handle(self):
+        err = ADAPTER_MOD._validate_continuation({"continuation": {"form": "resume"}})
+        self.assertIn("handle is required", err)
+
+
+class ContinuationIntegrationTests(unittest.TestCase):
+    """FR-MB-015 / FR-MB-016: the adapter honours the continuation contract.
+
+    A resume continuation pins `--session <handle>` on the CLI invocation and
+    the transport result reports the engine-proven session identity extracted
+    from the event stream; a legacy request without continuation carries no
+    session field at all.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.temp.name) / "repo"
+        self.repo.mkdir()
+        subprocess.run(["git", "-C", str(self.repo), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "config", "user.email", "test@example.invalid"], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "config", "user.name", "Test"], check=True)
+        (self.repo / "review.py").write_text("print('base')\n")
+        subprocess.run(["git", "-C", str(self.repo), "add", "review.py"], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "commit", "-qm", "base"], check=True)
+        self.base = subprocess.run(["git", "-C", str(self.repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+        (self.repo / "review.py").write_text("print('head')\n")
+        subprocess.run(["git", "-C", str(self.repo), "add", "review.py"], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "commit", "-qm", "head"], check=True)
+        self.head = subprocess.run(["git", "-C", str(self.repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def request(self, continuation=None):
+        req = {
+            "schema": "dd-review-request/1",
+            "role": "strong-reviewer",
+            "host": "opencode",
+            "repo": str(self.repo),
+            "base_sha": self.base,
+            "head_sha": self.head,
+            "scope": ["review.py"],
+            "verification": [{"name": "unit", "status": "passed", "evidence": "fixture-pass"}],
+            "routing_context": {"dispatch_boundary": "single-backend", "router_authority": False, "hop_count": 1, "dispatch_chain": ["opencode-cli"], "selected_backend": "opencode-cli"},
+        }
+        if continuation is not None:
+            req["continuation"] = continuation
+        return req
+
+    def _run(self, req, fake_stdout):
+        req_json = json.dumps(req)
+        mock_completed = mock.Mock()
+        mock_completed.stdout = fake_stdout
+        mock_completed.stderr = ""
+        mock_completed.returncode = 0
+        original_run = subprocess.run
+        with mock.patch("subprocess.run") as mocked:
+            def side_effect(cmd, **kwargs):
+                if cmd[0] == "opencode":
+                    self.captured_cmd = list(cmd)
+                    return mock_completed
+                return original_run(cmd, **kwargs)
+            mocked.side_effect = side_effect
+            import io
+            with mock.patch("sys.stdin", io.StringIO(req_json)):
+                with mock.patch("sys.stdout", new_callable=io.StringIO) as fake_out:
+                    with mock.patch.object(sys, "argv", ["opencode-review", "review"]):
+                        ret = ADAPTER_MOD.main()
+                        return ret, fake_out.getvalue()
+
+    def _ok_stream(self):
+        return _event_stream(json.dumps(_valid_reviewer_json("PASS")))
+
+    def test_resume_pins_session_and_reports_identity(self):
+        req = self.request({"form": "resume", "handle": "ses_probe"})
+        stream = _event_stream(json.dumps(_valid_reviewer_json("PASS")))
+        ret, out = self._run(req, stream)
+        self.assertEqual(ret, 0)
+        self.assertIn("--session", self.captured_cmd)
+        self.assertEqual(self.captured_cmd[self.captured_cmd.index("--session") + 1], "ses_probe")
+        result = json.loads(out)
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["session"], {"form": "resume", "handle": "ses_test"})
+
+    def test_explicit_initial_reports_identity_without_session_flag(self):
+        req = self.request({"form": "initial"})
+        stream = _event_stream(json.dumps(_valid_reviewer_json("PASS")))
+        ret, out = self._run(req, stream)
+        self.assertEqual(ret, 0)
+        self.assertNotIn("--session", self.captured_cmd)
+        result = json.loads(out)
+        self.assertEqual(result["session"], {"form": "initial", "handle": "ses_test"})
+
+    def test_legacy_request_has_no_session_field(self):
+        req = self.request()
+        stream = _event_stream(json.dumps(_valid_reviewer_json("PASS")))
+        ret, out = self._run(req, stream)
+        self.assertEqual(ret, 0)
+        result = json.loads(out)
+        self.assertNotIn("session", result)
+
+    def test_resume_without_handle_blocked_schema_invalid(self):
+        req = self.request({"form": "resume"})
+        stream = _event_stream(json.dumps(_valid_reviewer_json("PASS")))
+        ret, out = self._run(req, stream)
+        self.assertEqual(ret, 0)
+        result = json.loads(out)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["failure_category"], "schema_invalid")
+        # The adapter must not have invoked opencode at all.
+        self.assertFalse(hasattr(self, "captured_cmd"))
+
+    def test_session_id_absent_means_no_session_field(self):
+        # Fail-closed: if the engine gave no identity, the adapter must not
+        # fabricate one -- the Router will judge the missing identity.
+        req = self.request({"form": "resume", "handle": "ses_probe"})
+        stream = _event_stream(json.dumps(_valid_reviewer_json("PASS"))).replace("ses_test", "")
+        ret, out = self._run(req, stream)
+        self.assertEqual(ret, 0)
+        result = json.loads(out)
+        self.assertNotIn("session", result)
 
 
 if __name__ == "__main__":

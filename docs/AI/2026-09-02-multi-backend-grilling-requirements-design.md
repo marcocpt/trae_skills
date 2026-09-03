@@ -1,6 +1,6 @@
 # 多后端强审 Grilling 闭环：需求与草案设计
 
-> 起草：2026-09-02 | 版本：v0.13-DRAFT（六轮 ChatGPT 复核 + 八次 targeted 复核；029~033 全部 CLOSED 并已 commit，见 §11.13；剩余：020 完全闭合需 adapter resume 子形态 + codex 续接只读取证）
+> 起草：2026-09-02 | 版本：v0.14-DRAFT（六轮 ChatGPT 复核 + 九次 targeted 复核；MB-GRILL-001~033 **全部 CLOSED**，见 §11.1~§11.14；剩余：codex-cli 续接形态只读取证 VERIFICATION_REQUIRED、chatgpt-tunnel 跨 owner 会话合同待裁决）
 > 适用范围：让 `gpt-grilling-review` 的强审闭环支持多个复审后端可选，而不复制 finding 生命周期与关闭权规则。
 > 修订说明：
 > - v0.1 复核返回 14 个 finding（8 HIGH / 5 MEDIUM / 1 LOW）；3 条架构项经用户裁决落地（DEC-MB-01~03），11 条 FINDING 在 v0.2 处置，并回填真机实测。
@@ -683,4 +683,30 @@ FR-MB-019 采用哪种基线模型：
 
 **为什么不声明任何 backend**：目前无 backend 同时具备 resume 证据与 adapter resume 子形态；按 MB-GRILL-020 教训（不得虚构资格），registry 保持不声明、序列保持空过渡态。
 
+> ⚠️ 此段为 §11.13 记录的**中间状态**（v0.13），已被 §11.14 取代：opencode-cli 已声明续接合同并进入 stateful 序列，MB-GRILL-020 已 CLOSED。
+
 **验证**：**207 tests OK**（197 → 203 → 205 → 207；033 补修新增 2 项，均通过负向验证）；`validate-review-routing.py` 6 backends / 1 roles OK；`validate-bindings.py` OK。
+
+### 11.14 第九轮：端到端断链修复 → MB-GRILL-020 CLOSED（2026-09-03）
+
+**断链发现（本地机械验证）**：§11.13 落地后 adapter 已实现 resume，但 registry 无任何 backend 声明 `session_identity`，opencode-cli 也无 `invocation_forms`——按 MB-GRILL-033 新规则，显式 continuation 在派发层 fail-fast（`initial` → "declares no session identity contract"；`resume` → "does not declare the requested invocation form"），**端到端断链**。222 项测试绿仅覆盖适配层，未覆盖"registry 声明 + 派发资格"段——"测试绿 ≠ 闭环"实例。
+
+**修复（v0.14，主审确认 `STATUS: CLOSED`）**：
+
+1. `review-backends.yaml`：opencode-cli 声明 `invocation_forms: [initial, resume]`、`session_identity: {field: session, owner: opencode-review}`（field 为 canonical 常量 `SESSION_IDENTITY_FIELD`）、`continuation_readonly_evidence: true`（证据：`tests/evidence/opencode-resume-readonly-evidence.yaml`）；
+2. `routing-policy.yaml`：`stateful_roles.strong-reviewer-stateful.backends: [opencode-cli]`——其续接只读取证已取得（§8 #2 CLOSED），成为**首个满足 FR-MB-001 三项资格**的 stateful 成员；chatgpt-tunnel（会话合同属 transport 层、跨 owner）与 codex-cli（续接只读取证未取得）仍在外；
+3. `opencode-review` adapter 续接子形态（并行会话半成品，本轮纳入复核）：resume → `opencode run --session <handle>`、从 NDJSON `sessionID` 提取真实会话、输出 `result["session"]={form,handle}`，字段与 `SESSION_IDENTITY_FIELD` 一致；
+4. 测试：`InvocationFormsRegistryContractTests` helper 改为从"无续接声明"的干净基底构造（避免 checked-in 完整声明掩盖缺字段用例），registry 层与 stateful 资格检查解耦；fixture 与 checked-in 对齐。
+
+**主审核查结论**：registry 声明与 adapter 实现配套、FR-MB-001 三项资格全部机械满足、opencode-cli 未进入 Router 单跳链（分层保持）、无越权、无新 finding。
+
+**MB-GRILL-020 → `CLOSED`。至此 MB-GRILL-001~033 全部闭环。**
+
+| finding | 状态 |
+|---|---|
+| MB-GRILL-001~018 | 早期轮次处置（v0.1~v0.4） |
+| MB-GRILL-019 / 020 / 021 / 027 / 028 | CLOSED |
+| MB-GRILL-022~026 / 029~033 | CLOSED |
+| **全部** | **CLOSED** |
+
+**剩余（非 finding，VERIFICATION_REQUIRED / 待裁决）**：codex-cli 续接形态只读开关有效性（§8 #1，需非嵌套沙箱行为正负对照）；chatgpt-tunnel 会话合同的 runtime 声明方式（跨 owner：transport 属 grilling skill、registry 属 runtime，待用户裁决后它方可具备 stateful 资格）；分支并入 develop 方式。
