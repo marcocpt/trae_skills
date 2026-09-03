@@ -57,6 +57,17 @@ FINDING_ENUM_FIELDS = (
 )
 ALLOWED_BACKEND_TYPES = {"mcp", "cli", "native"}
 ALLOWED_EXECUTIONS = {"external", "native-agent"}
+# Adapter invocation forms (FR-MB-015).  `initial` starts a new review session;
+# `resume` continues an existing one and must carry a structured session
+# identity so the caller can prove the continuation landed in the requested
+# session (FR-MB-003.2 / FR-MB-016).
+KNOWN_INVOCATION_FORMS = frozenset({"initial", "resume"})
+# Canonical normalized-result field carrying the structured session identity.
+# The registry's session_identity.field must name exactly this field: it is not
+# free-form, otherwise a declared contract could never drive extraction
+# (MB-GRILL-031).
+SESSION_IDENTITY_FIELD = "session"
+
 FALLBACK_CATEGORIES = {
     "backend_unavailable",
     "executable_missing",
@@ -77,6 +88,10 @@ KNOWN_FAILURE_CATEGORIES = FALLBACK_CATEGORIES | {
     "security_policy_violation",
     "readonly_violation",
     "verification_failed",
+    # Raised when a `resume` invocation returns a native session identity that
+    # differs from the caller-supplied handle (FR-MB-003.2).  Transport /
+    # runtime state, never a grilling finding (FR-MB-020).
+    "session_resume_mismatch",
 }
 ID_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 FORBIDDEN_MODEL_BINDING_KEYS = {
@@ -400,6 +415,39 @@ def validate_registry_policy(registry: Dict[str, Any], policy: Dict[str, Any]) -
             and set(availability_codes) & set(transient_codes)
         ):
             errors.append(f"{path}: availability and transient exit codes must not overlap")
+        invocation_forms = spec.get("invocation_forms", ["initial"])
+        if (
+            not isinstance(invocation_forms, list)
+            or not invocation_forms
+            or not all(isinstance(item, str) for item in invocation_forms)
+        ):
+            errors.append(f"{path}.invocation_forms: non-empty string list required")
+        elif set(invocation_forms) - set(KNOWN_INVOCATION_FORMS):
+            errors.append(
+                f"{path}.invocation_forms: unknown form(s) {sorted(set(invocation_forms) - set(KNOWN_INVOCATION_FORMS))}"
+            )
+        elif "initial" not in invocation_forms:
+            errors.append(f"{path}.invocation_forms: must always include 'initial'")
+        # MB-GRILL-031 / MB-GRILL-033: `resume` advertisement requires the
+        # contract; whenever it is declared at all it must be canonical, even
+        # for an initial-only backend that a caller invokes with an explicit
+        # initial continuation.  `field` names the canonical normalized result
+        # field, so a free-form value could never drive extraction.
+        session_identity = spec.get("session_identity")
+        if isinstance(invocation_forms, list) and "resume" in invocation_forms:
+            if not isinstance(session_identity, dict):
+                errors.append(f"{path}.session_identity: required when 'resume' is advertised (FR-MB-016)")
+        if isinstance(session_identity, dict):
+            field = session_identity.get("field")
+            if not isinstance(field, str) or not field:
+                errors.append(f"{path}.session_identity.field: required when a session identity is declared")
+            elif field != SESSION_IDENTITY_FIELD:
+                errors.append(
+                    f"{path}.session_identity.field: must be {SESSION_IDENTITY_FIELD!r} "
+                    "(the canonical normalized result field)"
+                )
+            if not isinstance(session_identity.get("owner"), str) or not session_identity["owner"]:
+                errors.append(f"{path}.session_identity.owner: required when a session identity is declared")
         if spec.get("result_schema") != RESULT_SCHEMA:
             errors.append(f"{path}.result_schema must be {RESULT_SCHEMA}")
         if any(key in spec for key in ("model", "profile", "reasoning_effort")):
@@ -506,11 +554,37 @@ def validate_registry_policy(registry: Dict[str, Any], policy: Dict[str, Any]) -
                     for item in candidates:
                         spec = backends.get(item) if isinstance(backends, dict) else None
                         if spec is None:
+                            # Unknown backend: the reference error is the
+                            # finding.  The FR-MB-001 qualification checks below
+                            # need a real spec, so stop here instead of
+                            # dereferencing None.
                             errors.append(f"{path}.backends: unknown backend reference {item!r}")
-                        elif item not in GRILLING_ONLY_BACKENDS and spec.get("router_selectable") is False:
+                            continue
+                        if item not in GRILLING_ONLY_BACKENDS and spec.get("router_selectable") is False:
                             errors.append(
                                 f"{path}.backends: {item} is router_selectable: false and not grilling-only; "
                                 "it cannot join a stateful candidate order"
+                            )
+                        # FR-MB-001 qualification contract, enforced mechanically.
+                        # A member may only join the stateful order when the
+                        # runtime actually owns all three capabilities -- an
+                        # unimplemented contract must never be declared
+                        # implicitly (MB-GRILL-020 / §11.11).
+                        forms = spec.get("invocation_forms", ["initial"])
+                        if isinstance(forms, list) and "resume" not in forms:
+                            errors.append(
+                                f"{path}.backends: {item} lacks a runtime-declared 'resume' "
+                                "invocation form (FR-MB-015)"
+                            )
+                        if not isinstance(spec.get("session_identity"), dict):
+                            errors.append(
+                                f"{path}.backends: {item} lacks a structured session identity "
+                                "contract (FR-MB-016)"
+                            )
+                        if spec.get("continuation_readonly_evidence") is not True:
+                            errors.append(
+                                f"{path}.backends: {item} has no backend-bound readonly evidence "
+                                "covering the continuation form (FR-MB-004.3 / FR-MB-012)"
                             )
                 role_fallback = role_spec.get("fallback_on")
                 if not isinstance(role_fallback, list) or not all(isinstance(item, str) for item in role_fallback):
@@ -643,6 +717,21 @@ def _validate_request_shape(request: Dict[str, Any]) -> None:
         raise TerminalReviewFailure("schema_invalid", "context.hop_count must be a non-negative integer")
     if not isinstance(chain, list) or not all(isinstance(item, str) for item in chain):
         raise TerminalReviewFailure("schema_invalid", "context.dispatch_chain must be a string list")
+    # Optional continuation contract (FR-MB-015 / FR-MB-016).  Absent == a
+    # plain `initial` single-hop dispatch, so existing callers are unaffected.
+    continuation = request.get("continuation")
+    if continuation is None:
+        return
+    if not isinstance(continuation, dict):
+        raise TerminalReviewFailure("schema_invalid", "request.continuation must be a mapping")
+    form = continuation.get("form")
+    if form not in KNOWN_INVOCATION_FORMS:
+        raise TerminalReviewFailure(
+            "schema_invalid", f"request.continuation.form must be one of {sorted(KNOWN_INVOCATION_FORMS)}"
+        )
+    handle = continuation.get("handle")
+    if form == "resume" and (not isinstance(handle, str) or not handle):
+        raise TerminalReviewFailure("schema_invalid", "request.continuation.handle is required for a resume form")
 
 
 def _git(repo: Path, args: Sequence[str]) -> str:
@@ -727,6 +816,26 @@ def _check_backend_eligibility(
     capabilities = backend.get("capabilities", [])
     if required_capability not in capabilities:
         raise BackendUnavailable("capability_unavailable", f"{backend_id} lacks {required_capability}")
+    # MB-GRILL-029 / MB-GRILL-033: an explicit continuation (initial OR resume)
+    # requires the form to be declared AND a structured session identity
+    # contract to exist.  Without the form check the request could be silently
+    # dropped at the adapter boundary; without the contract check the explicit
+    # initial form would run a real review and only fail at the result layer,
+    # even though it must yield a persistable handle (FR-MB-015 / FR-MB-016).
+    continuation = request.get("continuation")
+    if isinstance(continuation, dict):
+        form = continuation.get("form")
+        forms = backend.get("invocation_forms", ["initial"])
+        if not isinstance(forms, list) or form not in forms:
+            raise BackendUnavailable(
+                "capability_unavailable",
+                f"{backend_id} does not declare the requested invocation form {form!r}",
+            )
+        if not isinstance(backend.get("session_identity"), dict):
+            raise BackendUnavailable(
+                "capability_unavailable",
+                f"{backend_id} declares no session identity contract for a {form!r} invocation",
+            )
     # MB-GRILL-028: router_selectable: false is a universal Router dispatch ban
     # for external backends too (native backends keep their dedicated handoff
     # message below).  Defensive fail-closed so a future external backend marked
@@ -895,6 +1004,55 @@ def _normalize_result(
     if isinstance(lifecycle, dict) and lifecycle.get("completed") is False and status in {"PASS", "FINDINGS"}:
         raise TerminalReviewFailure("review_incomplete", "completed review cannot have completed=false")
 
+    # Structured session identity (FR-MB-016).  Optional for a plain `initial`
+    # dispatch; mandatory -- and mechanically verified against the caller's
+    # handle -- whenever a `resume` continuation was requested (FR-MB-003.2).
+    raw_session = raw.get("session")
+    session: Optional[Dict[str, Any]] = None
+    if raw_session is not None:
+        if not isinstance(raw_session, dict):
+            raise TerminalReviewFailure("schema_invalid", "result session must be a mapping")
+        session_form = raw_session.get("form")
+        if session_form not in KNOWN_INVOCATION_FORMS:
+            raise TerminalReviewFailure(
+                "schema_invalid", f"result session.form must be one of {sorted(KNOWN_INVOCATION_FORMS)}"
+            )
+        session_handle = raw_session.get("handle")
+        if not isinstance(session_handle, str) or not session_handle:
+            raise TerminalReviewFailure("schema_invalid", "result session.handle is required")
+        session = {"form": session_form, "handle": session_handle}
+
+    requested_continuation = request.get("continuation")
+    if isinstance(requested_continuation, dict):
+        requested_form = requested_continuation.get("form")
+        if requested_form == "resume":
+            # The resumed session must be proven, not assumed: neither an exit
+            # code nor an adapter self-report counts as evidence (FR-MB-003.2).
+            if session is None or session.get("form") != "resume":
+                raise TerminalReviewFailure(
+                    "session_resume_mismatch", "a resume invocation must return a resume session identity"
+                )
+            if session["handle"] != requested_continuation.get("handle"):
+                raise TerminalReviewFailure(
+                    "session_resume_mismatch",
+                    "resumed session identity differs from the requested continuation handle",
+                )
+            session["verified"] = True
+        elif requested_form == "initial":
+            # MB-GRILL-030: an EXPLICIT initial form must yield a persistable
+            # handle, otherwise the stateful loop has nothing to resume into
+            # after the first round (FR-MB-015 / FR-MB-016).  A request with no
+            # continuation at all stays the legacy plain single-hop form and
+            # remains allowed without a session.
+            if session is None or session.get("form") != "initial":
+                raise TerminalReviewFailure(
+                    "session_resume_mismatch",
+                    "an explicit initial invocation must return an initial session identity",
+                )
+            session["verified"] = True
+    if session is not None:
+        session.setdefault("verified", False)
+
     completed_at = _utc_now()
     return {
         "schema": RESULT_SCHEMA,
@@ -914,6 +1072,7 @@ def _normalize_result(
         "started_at": started_at,
         "completed_at": completed_at,
         "lifecycle": {"started": True, "completed": status in {"PASS", "FINDINGS"}},
+        "session": session,
         "failure_category": failure_category,
         "fallback_eligible": False,
         "readonly_confirmation": readonly,
@@ -1053,6 +1212,10 @@ def dispatch_review(
                 "verification": copy.deepcopy(request["verification"]),
                 "routing_context": routing_context,
             }
+            # MB-GRILL-029: a continuation request must actually reach the
+            # adapter, otherwise the adapter cannot honour the resume form.
+            if isinstance(request.get("continuation"), dict):
+                adapter_request["continuation"] = copy.deepcopy(request["continuation"])
             started_at = _utc_now()
             raw = runner(backend, adapter_request) if runner is not None else _run_cli_backend(backend, adapter_request)
             normalized = _normalize_result(

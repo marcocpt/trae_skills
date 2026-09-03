@@ -961,5 +961,384 @@ class FindingEnumContractTests(unittest.TestCase):
                         self.assertEqual(validated["change_risk"], change_risk)
 
 
+class InvocationFormsRegistryContractTests(unittest.TestCase):
+    """FR-MB-015/016 registry-side contract: invocation_forms + session_identity.
+
+    MB-GRILL-031: the registry is the invocation-contract owner, so a backend
+    that advertises `resume` must declare a complete session_identity mapping
+    unconditionally, and `session_identity.field` must name the canonical
+    normalized result field (`session`) -- a contract that could never drive
+    extraction is not a contract.
+    """
+
+    def _registry_with(self, backend_id: str, spec_overrides: Dict[str, Any]):
+        registry, policy = _configuration()
+        registry["backends"][backend_id].update(spec_overrides)
+        return registry, policy
+
+    def _stateful_member(self, backend_id: str, spec_overrides: Dict[str, Any]):
+        registry, policy = self._registry_with(backend_id, spec_overrides)
+        policy["stateful_roles"]["strong-reviewer-stateful"]["backends"] = [backend_id]
+        return registry, policy
+
+    def test_unknown_invocation_form_rejected(self) -> None:
+        registry, policy = self._registry_with("opencode-cli", {"invocation_forms": ["initial", "fork"]})
+        errors = ROUTER.validate_registry_policy(registry, policy)
+        self.assertTrue(any("invocation_forms" in error for error in errors), errors)
+
+    def test_invocation_forms_missing_initial_rejected(self) -> None:
+        registry, policy = self._registry_with("opencode-cli", {"invocation_forms": ["resume"]})
+        errors = ROUTER.validate_registry_policy(registry, policy)
+        self.assertTrue(any("must always include 'initial'" in error for error in errors), errors)
+
+    def test_resume_with_partial_session_identity_rejected(self) -> None:
+        registry, policy = self._registry_with(
+            "opencode-cli",
+            {
+                "invocation_forms": ["initial", "resume"],
+                "session_identity": {"field": "session"},
+            },
+        )
+        errors = ROUTER.validate_registry_policy(registry, policy)
+        self.assertTrue(any("session_identity" in error for error in errors), errors)
+
+    def test_resume_without_session_identity_mapping_rejected(self) -> None:
+        # MB-GRILL-031: the declaration itself is incomplete without the
+        # mapping -- the stateful gate must not be the only line of defence.
+        registry, policy = self._registry_with("opencode-cli", {"invocation_forms": ["initial", "resume"]})
+        errors = ROUTER.validate_registry_policy(registry, policy)
+        self.assertTrue(any("session_identity: required" in error for error in errors), errors)
+
+    def test_session_identity_field_must_be_canonical(self) -> None:
+        # MB-GRILL-031: `field` names the canonical normalized result field;
+        # a free-form value could never drive extraction.
+        registry, policy = self._registry_with(
+            "opencode-cli",
+            {
+                "invocation_forms": ["initial", "resume"],
+                "session_identity": {"field": "resume_handle", "owner": "opencode-review"},
+            },
+        )
+        errors = ROUTER.validate_registry_policy(registry, policy)
+        self.assertTrue(any("canonical normalized result field" in error for error in errors), errors)
+
+    def test_resume_with_full_session_identity_passes_backend_check(self) -> None:
+        # Full declaration, backend NOT in the stateful order: no errors.  An
+        # unqualified backend may advertise resume for grilling without the
+        # stateful gate being involved.
+        registry, policy = self._registry_with(
+            "opencode-cli",
+            {
+                "invocation_forms": ["initial", "resume"],
+                "session_identity": {"field": "session", "owner": "opencode-review"},
+            },
+        )
+        self.assertEqual(ROUTER.validate_registry_policy(registry, policy), [])
+
+    def test_stateful_member_without_resume_form_rejected(self) -> None:
+        registry, policy = self._stateful_member("opencode-cli", {"invocation_forms": ["initial"]})
+        errors = ROUTER.validate_registry_policy(registry, policy)
+        self.assertTrue(any("FR-MB-015" in error for error in errors), errors)
+
+    def test_stateful_member_without_session_identity_rejected(self) -> None:
+        registry, policy = self._stateful_member("opencode-cli", {"invocation_forms": ["initial", "resume"]})
+        errors = ROUTER.validate_registry_policy(registry, policy)
+        self.assertTrue(any("session identity" in error for error in errors), errors)
+
+    def test_stateful_member_without_continuation_evidence_rejected(self) -> None:
+        registry, policy = self._stateful_member(
+            "opencode-cli",
+            {
+                "invocation_forms": ["initial", "resume"],
+                "session_identity": {"field": "session", "owner": "opencode-review"},
+            },
+        )
+        errors = ROUTER.validate_registry_policy(registry, policy)
+        self.assertTrue(any("backend-bound readonly evidence" in error for error in errors), errors)
+
+    def test_initial_only_backend_with_malformed_session_identity_rejected(self) -> None:
+        # MB-GRILL-033: a declared contract must be canonical even for an
+        # initial-only backend.  Otherwise an explicit initial continuation
+        # would be accepted on a contract that can never drive extraction --
+        # dispatch_review() runs this validator first, so this is the real
+        # line of defence.
+        registry, policy = self._registry_with(
+            "opencode-cli",
+            {
+                "invocation_forms": ["initial"],
+                "session_identity": {"field": "wrong_field", "owner": ""},
+            },
+        )
+        errors = ROUTER.validate_registry_policy(registry, policy)
+        self.assertTrue(any("canonical normalized result field" in error for error in errors), errors)
+        self.assertTrue(any("session_identity.owner" in error for error in errors), errors)
+
+    def test_initial_only_backend_with_canonical_session_identity_accepted(self) -> None:
+        registry, policy = self._registry_with(
+            "opencode-cli",
+            {
+                "invocation_forms": ["initial"],
+                "session_identity": {"field": "session", "owner": "opencode-review"},
+            },
+        )
+        self.assertEqual(ROUTER.validate_registry_policy(registry, policy), [])
+
+    def test_fully_qualified_stateful_member_accepted(self) -> None:
+        registry, policy = self._stateful_member(
+            "opencode-cli",
+            {
+                "invocation_forms": ["initial", "resume"],
+                "session_identity": {"field": "session", "owner": "opencode-review"},
+                "continuation_readonly_evidence": True,
+            },
+        )
+        self.assertEqual(ROUTER.validate_registry_policy(registry, policy), [])
+
+
+class ContinuationSessionIdentityTests(unittest.TestCase):
+    """FR-MB-003.2 / FR-MB-016: a resumed session identity must be proven, not
+    assumed.  A resume continuation requires the normalized result to carry a
+    structured session identity whose form is `resume` and whose handle equals
+    the caller-supplied one; any mismatch is session_resume_mismatch
+    (transport/runtime state, never a grilling finding -- FR-MB-020)."""
+
+    def setUp(self) -> None:
+        # A real repo is required for full-dispatch tests (frozen baseline
+        # verification); the pure _normalize_result tests do not need it.
+        self.temp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.temp.name) / "repo"
+        self.repo.mkdir()
+        subprocess.run(["git", "-C", str(self.repo), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "config", "user.email", "test@example.invalid"], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "config", "user.name", "Router Test"], check=True)
+        (self.repo / "review.md").write_text("frozen review target\n")
+        subprocess.run(["git", "-C", str(self.repo), "add", "review.md"], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "commit", "-qm", "fixture"], check=True)
+        self.head = _git(self.repo, "rev-parse", "HEAD")
+        self.base = self.head
+
+    def tearDown(self) -> None:
+        self.temp.cleanup()
+
+    def _request(self, continuation: Any = None, head_sha: str = "", repo: str = "") -> Dict[str, Any]:
+        request: Dict[str, Any] = {
+            "schema": ROUTER.REQUEST_SCHEMA,
+            "role": "strong-reviewer",
+            "host": "codex",
+            "repo": repo or str(self.repo),
+            "base_sha": head_sha or self.base,
+            "head_sha": head_sha or self.head,
+            "scope": ["review.md"],
+            "verification": [{"name": "unit", "status": "passed", "evidence": "fixture-pass"}],
+            "external_review": {"authorization": "approved", "scope": ["review.md"]},
+            "readonly_evidence": [
+                {
+                    "backend": "mcp-review",
+                    "mode": "snapshot-send-only",
+                    "level": "L6",
+                    "confirmed": True,
+                    "source": "test-mcp-read-only",
+                }
+            ],
+            "context": {"hop_count": 0, "dispatch_chain": []},
+        }
+        if continuation is not None:
+            request["continuation"] = continuation
+        return request
+
+    def _payload(self, request: Dict[str, Any], **overrides: Any) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "schema": ROUTER.RESULT_SCHEMA,
+            "backend": "mcp-review",
+            "reviewer": "mcp-review/strong-reviewer",
+            "target": {
+                "base_sha": request["base_sha"],
+                "head_sha": request["head_sha"],
+                "scope": list(request["scope"]),
+            },
+            "status": "PASS",
+            "reviewed": list(request["scope"]),
+            "unreadable": [],
+            "findings": [],
+            "evidence": ["reviewed frozen target"],
+            "lifecycle": {"started": True, "completed": True},
+            "failure_category": None,
+            "readonly_confirmation": {"confirmed": True, "evidence": "probe-no-write"},
+        }
+        payload.update(overrides)
+        return payload
+
+    def _normalize(self, request: Dict[str, Any], payload: Dict[str, Any]):
+        """Return (normalized_result, None) or (None, failure_category).
+
+        The session-identity contract lives in _normalize_result, so those
+        contract tests drive that function directly instead of the full dispatch
+        loop.  The request fixture is still a fully valid request so the
+        request-shape tests exercise the continuation checks, not an earlier
+        host/repo failure (MB-GRILL-032).
+        """
+        try:
+            return (
+                ROUTER._normalize_result(
+                    payload,
+                    request,
+                    "mcp-review",
+                    ROUTER._utc_now(),
+                    {
+                        "backend": "mcp-review",
+                        "level": "L6",
+                        "confirmed": True,
+                        "mode": "snapshot-send-only",
+                        "source": "test-mcp-read-only",
+                    },
+                ),
+                None,
+            )
+        except ROUTER.TerminalReviewFailure as exc:
+            return None, exc.category
+
+    def _full_dispatch(self, request: Dict[str, Any], payload: Dict[str, Any]):
+        """Run the full dispatch loop with a capturing runner (MB-GRILL-029)."""
+        registry, policy = _configuration()
+        registry["backends"]["mcp-review"].update(
+            {
+                "invocation_forms": ["initial", "resume"],
+                "session_identity": {"field": "session", "owner": "mcp-review"},
+            }
+        )
+        policy["roles"]["strong-reviewer"]["backends"] = ["mcp-review"]
+        runner = BackendScriptRunner({"mcp-review": payload})
+        result = ROUTER.dispatch_review(request, registry, policy, runner)
+        return result, runner
+
+    def test_resume_request_without_handle_is_schema_invalid(self) -> None:
+        request = self._request(continuation={"form": "resume"})
+        with self.assertRaises(ROUTER.TerminalReviewFailure) as ctx:
+            ROUTER._validate_request_shape(request)
+        self.assertEqual(ctx.exception.category, "schema_invalid")
+        self.assertIn("continuation.handle", ctx.exception.detail)
+
+    def test_unknown_continuation_form_is_schema_invalid(self) -> None:
+        request = self._request(continuation={"form": "fork", "handle": "ses_x"})
+        with self.assertRaises(ROUTER.TerminalReviewFailure) as ctx:
+            ROUTER._validate_request_shape(request)
+        self.assertEqual(ctx.exception.category, "schema_invalid")
+        self.assertIn("continuation.form", ctx.exception.detail)
+
+    def test_full_dispatch_rejects_explicit_initial_without_session_contract(self) -> None:
+        # MB-GRILL-033: an explicit initial form must yield a persistable
+        # handle, so a backend without a session identity contract has to fail
+        # fast -- the adapter must not run a real review first.
+        request = self._request(continuation={"form": "initial"})
+        registry, policy = _configuration()
+        policy["roles"]["strong-reviewer"]["backends"] = ["mcp-review"]
+        runner = BackendScriptRunner({"mcp-review": self._payload(request)})
+        result = ROUTER.dispatch_review(request, registry, policy, runner)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["failure_category"], "all_backends_unavailable")
+        self.assertEqual(runner.calls, [])
+
+    def test_full_dispatch_explicit_initial_passes_with_session_contract(self) -> None:
+        request = self._request(continuation={"form": "initial"})
+        payload = self._payload(request, session={"form": "initial", "handle": "ses_new"})
+        result, runner = self._full_dispatch(request, payload)
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(runner.requests[0].get("continuation"), {"form": "initial"})
+        self.assertTrue(result["session"]["verified"])
+        self.assertEqual(result["session"]["handle"], "ses_new")
+
+    def test_full_dispatch_passes_continuation_to_adapter(self) -> None:
+        # MB-GRILL-029: the validated continuation must cross the adapter
+        # boundary, not stop at request validation.
+        request = self._request(continuation={"form": "resume", "handle": "ses_ok"})
+        payload = self._payload(request, session={"form": "resume", "handle": "ses_ok"})
+        result, runner = self._full_dispatch(request, payload)
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(len(runner.requests), 1)
+        self.assertEqual(
+            runner.requests[0].get("continuation"), {"form": "resume", "handle": "ses_ok"}
+        )
+        self.assertTrue(result["session"]["verified"])
+
+    def test_full_dispatch_rejects_backend_without_declared_form(self) -> None:
+        # mcp-review in the checked-in fixture declares only the default
+        # ["initial"]; a resume request must be rejected before reaching the
+        # adapter (MB-GRILL-029).
+        request = self._request(continuation={"form": "resume", "handle": "ses_ok"})
+        registry, policy = _configuration()
+        policy["roles"]["strong-reviewer"]["backends"] = ["mcp-review"]
+        runner = BackendScriptRunner({"mcp-review": self._payload(request)})
+        result = ROUTER.dispatch_review(request, registry, policy, runner)
+        self.assertEqual(result["status"], "BLOCKED")
+        # Sole chain member rejected for the undeclared form -> no candidate
+        # left, so the terminal category is all_backends_unavailable.
+        self.assertEqual(result["failure_category"], "all_backends_unavailable")
+        self.assertEqual(runner.calls, [])
+
+    def test_full_dispatch_rejects_unreadable_result_schema(self) -> None:
+        request = self._request()
+        bad = self._payload(request)
+        bad["schema"] = "dd-review-result/0"
+        result, _ = self._full_dispatch(request, bad)
+        self.assertEqual(result["status"], "BLOCKED")
+
+
+    def test_plain_dispatch_has_no_session_identity(self) -> None:
+        request = self._request()
+        result, category = self._normalize(request, self._payload(request))
+        self.assertIsNone(category)
+        self.assertEqual(result["status"], "PASS")
+        self.assertIsNone(result.get("session"))
+
+    def test_resume_without_result_session_blocked(self) -> None:
+        request = self._request(continuation={"form": "resume", "handle": "ses_ok"})
+        result, category = self._normalize(request, self._payload(request))
+        self.assertIsNone(result)
+        self.assertEqual(category, "session_resume_mismatch")
+
+    def test_resume_with_initial_result_form_blocked(self) -> None:
+        request = self._request(continuation={"form": "resume", "handle": "ses_ok"})
+        payload = self._payload(request, session={"form": "initial", "handle": "ses_ok"})
+        result, category = self._normalize(request, payload)
+        self.assertIsNone(result)
+        self.assertEqual(category, "session_resume_mismatch")
+
+    def test_resume_with_mismatched_handle_blocked(self) -> None:
+        request = self._request(continuation={"form": "resume", "handle": "ses_ok"})
+        payload = self._payload(request, session={"form": "resume", "handle": "ses_other"})
+        result, category = self._normalize(request, payload)
+        self.assertIsNone(result)
+        self.assertEqual(category, "session_resume_mismatch")
+
+    def test_resume_with_matching_identity_verified(self) -> None:
+        request = self._request(continuation={"form": "resume", "handle": "ses_ok"})
+        payload = self._payload(request, session={"form": "resume", "handle": "ses_ok"})
+        result, category = self._normalize(request, payload)
+        self.assertIsNone(category)
+        self.assertEqual(result["status"], "PASS")
+        self.assertIsNotNone(result.get("session"))
+        self.assertEqual(result["session"]["form"], "resume")
+        self.assertEqual(result["session"]["handle"], "ses_ok")
+        self.assertTrue(result["session"]["verified"])
+
+    def test_explicit_initial_without_session_blocked(self) -> None:
+        # MB-GRILL-030: an EXPLICIT initial form must yield a persistable
+        # handle; otherwise the stateful loop has nothing to resume into.
+        request = self._request(continuation={"form": "initial"})
+        result, category = self._normalize(request, self._payload(request))
+        self.assertIsNone(result)
+        self.assertEqual(category, "session_resume_mismatch")
+
+    def test_explicit_initial_with_session_verified(self) -> None:
+        request = self._request(continuation={"form": "initial"})
+        payload = self._payload(request, session={"form": "initial", "handle": "ses_new"})
+        result, category = self._normalize(request, payload)
+        self.assertIsNone(category)
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["session"]["form"], "initial")
+        self.assertEqual(result["session"]["handle"], "ses_new")
+        self.assertTrue(result["session"]["verified"])
+
+
 if __name__ == "__main__":
     unittest.main()
