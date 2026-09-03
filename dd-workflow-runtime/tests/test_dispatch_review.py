@@ -42,7 +42,16 @@ class BackendScriptRunner:
         return outcome
 
 
-def _backend(backend_type: str = "cli", execution: str = "external") -> Dict[str, Any]:
+# Fixture readonly modes must come from ROUTER.KNOWN_READONLY_MODES and mirror
+# the checked-in registry contract per backend type (MB-GRILL-021).
+_FIXTURE_READONLY_MODES = {
+    "mcp": "snapshot-send-only",
+    "cli": "agent-read-only-contract",
+    "native": "codex-route-guard",
+}
+
+
+def _backend(backend_type: str = "cli", execution: str = "external", readonly_mode: str = "") -> Dict[str, Any]:
     return {
         "type": backend_type,
         "execution": execution,
@@ -50,7 +59,7 @@ def _backend(backend_type: str = "cli", execution: str = "external") -> Dict[str
         "command": ["-c", "pass"],
         "capabilities": ["strong-review"],
         "readonly_required": True,
-        "readonly_mode": "snapshot-send-only" if backend_type == "mcp" else "test-readonly",
+        "readonly_mode": readonly_mode or _FIXTURE_READONLY_MODES[backend_type],
         "availability_exit_codes": [69],
         "transient_exit_codes": [75],
         "result_schema": ROUTER.RESULT_SCHEMA,
@@ -62,8 +71,12 @@ def _configuration() -> tuple[Dict[str, Any], Dict[str, Any]]:
         "schema": ROUTER.CONFIG_SCHEMA,
         "result_schema": ROUTER.RESULT_SCHEMA,
         "backends": {
+            "chatgpt-tunnel": {
+                **_backend("mcp", "external", readonly_mode=ROUTER.TUNNEL_READONLY_MODE),
+                "router_selectable": False,
+            },
             "mcp-review": _backend("mcp", "external"),
-            "codex-cli": _backend("cli", "external"),
+            "codex-cli": _backend("cli", "external", readonly_mode="codex-read-only-transport"),
             "codex-native": {
                 **_backend("native", "native-agent"),
                 "host": "codex",
@@ -72,7 +85,7 @@ def _configuration() -> tuple[Dict[str, Any], Dict[str, Any]]:
             },
             "opencode-cli": _backend("cli", "external"),
             "opencode-native": {
-                **_backend("native", "native-agent"),
+                **_backend("native", "native-agent", readonly_mode="agent-read-only-contract"),
                 "host": "opencode",
             },
         },
@@ -85,6 +98,13 @@ def _configuration() -> tuple[Dict[str, Any], Dict[str, Any]]:
                 "capability": "strong-review",
                 "max_hops": 1,
                 "backends": ["mcp-review", "codex-cli", "host-native"],
+                "fallback_on": sorted(ROUTER.FALLBACK_CATEGORIES),
+            }
+        },
+        "stateful_roles": {
+            "strong-reviewer-stateful": {
+                "capability": "strong-review",
+                "backends": [],
                 "fallback_on": sorted(ROUTER.FALLBACK_CATEGORIES),
             }
         },
@@ -138,28 +158,28 @@ class ReviewRouterTests(unittest.TestCase):
                 },
                 {
                     "backend": "codex-cli",
-                    "mode": "test-readonly",
+                    "mode": "codex-read-only-transport",
                     "level": "L6",
                     "confirmed": True,
                     "source": "test-codex-read-only",
                 },
                 {
                     "backend": "codex-native",
-                    "mode": "test-readonly",
+                    "mode": "codex-route-guard",
                     "level": "L6",
                     "confirmed": True,
                     "source": "test-codex-native-read-only",
                 },
                 {
                     "backend": "opencode-cli",
-                    "mode": "test-readonly",
+                    "mode": "agent-read-only-contract",
                     "level": "L6",
                     "confirmed": True,
                     "source": "test-opencode-read-only",
                 },
                 {
                     "backend": "opencode-native",
-                    "mode": "test-readonly",
+                    "mode": "agent-read-only-contract",
                     "level": "L6",
                     "confirmed": True,
                     "source": "test-opencode-native-read-only",
@@ -292,7 +312,7 @@ class ReviewRouterTests(unittest.TestCase):
         self.assertEqual(result["routing"]["attempted"][0]["failure_category"], "endpoint_unavailable")
         self.assertEqual(
             result["readonly_confirmation"],
-            {"confirmed": True, "evidence": "router-validated:codex-cli:test-readonly"},
+            {"confirmed": True, "evidence": "router-validated:codex-cli:codex-read-only-transport"},
         )
 
     def test_transport_blocked_result_without_readonly_confirmation_can_fallback(self) -> None:
@@ -539,7 +559,7 @@ class ReviewRouterTests(unittest.TestCase):
         valid = self.request()["readonly_evidence"][0]
         invalid_cases = {
             "wrong backend": {**valid, "backend": "codex-cli"},
-            "wrong mode": {**valid, "mode": "codex-read-only-transport"},
+            "wrong mode": {**valid, "mode": ROUTER.TUNNEL_READONLY_MODE},
             "wrong level": {**valid, "level": "L7"},
             "not confirmed": {**valid, "confirmed": False},
             "missing source": {key: value for key, value in valid.items() if key != "source"},
@@ -786,6 +806,100 @@ class RoutingConfigTests(unittest.TestCase):
         registry["backends"]["mcp-review"]["forbid_args"] = ["--auto"]
         errors = ROUTER.validate_registry_policy(registry, policy)
         self.assertTrue(any("forbidden argument" in error for error in errors))
+
+    def test_checked_in_registry_includes_grilling_backend_and_stateful_order(self) -> None:
+        # MB-GRILL-021 / MB-GRILL-020：chatgpt-tunnel 入 registry 并作为默认
+        # grilling 后端；routing-policy 提供 stateful 候选序列骨架。序列成员
+        # 为空属诚实过渡态（MB-GRILL-020：FR-MB-016 会话标识合同与续接只读
+        # 证据落地前，无 backend 满足 FR-MB-001 三项资格）。
+        registry, policy = ROUTER.load_configuration(
+            AGENTS_DIR / "review-backends.yaml",
+            AGENTS_DIR / "routing-policy.yaml",
+            AGENTS_DIR / "model-bindings.yaml",
+        )
+        self.assertIn("chatgpt-tunnel", registry["backends"])
+        tunnel = registry["backends"]["chatgpt-tunnel"]
+        self.assertEqual(tunnel["readonly_mode"], ROUTER.TUNNEL_READONLY_MODE)
+        self.assertIs(tunnel["router_selectable"], False)
+        self.assertEqual(policy["stateful_roles"]["strong-reviewer-stateful"]["backends"], [])
+
+    def test_stateful_roles_accept_empty_order_as_transitional_state(self) -> None:
+        registry, policy = _configuration()
+        self.assertEqual(ROUTER.validate_registry_policy(registry, policy), [])
+
+    def test_router_chain_rejects_unselectable_external_backend(self) -> None:
+        # MB-GRILL-028：router_selectable: false 是通用 Router 禁令，对外部
+        # backend 同样生效（snapshot 豁免不得被未来的 false 成员穿透）。
+        registry, policy = _configuration()
+        registry["backends"]["future-mcp"] = {
+            **_backend("mcp", "external", readonly_mode=ROUTER.TUNNEL_READONLY_MODE),
+            "router_selectable": False,
+        }
+        policy["roles"]["strong-reviewer"]["backends"].insert(0, "future-mcp")
+        errors = ROUTER.validate_registry_policy(registry, policy)
+        self.assertTrue(
+            any("router_selectable: false backend(s)" in error for error in errors),
+            errors,
+        )
+
+    def test_dispatch_eligibility_rejects_unselectable_external_backend(self) -> None:
+        # MB-GRILL-028 防御层：即使校验被绕过，派发层也对 external 的
+        # router_selectable: false fail-closed。
+        registry, policy = _configuration()
+        registry["backends"]["future-mcp"] = {
+            **_backend("mcp", "external", readonly_mode=ROUTER.TUNNEL_READONLY_MODE),
+            "router_selectable": False,
+        }
+        policy["roles"]["strong-reviewer"]["backends"] = ["future-mcp"]
+        # 新检查在 external 授权与 evidence 校验之前触发，最小 request 即可。
+        with self.assertRaises(ROUTER.BackendUnavailable) as ctx:
+            ROUTER._check_backend_eligibility({}, policy["roles"]["strong-reviewer"], "future-mcp", registry["backends"]["future-mcp"])
+        self.assertEqual(ctx.exception.category, "capability_unavailable")
+        self.assertIn("not router-selectable", str(ctx.exception))
+
+    def test_grilling_only_backend_in_router_chain_is_rejected(self) -> None:
+        # MB-GRILL-018.3：不得把 chatgpt-tunnel 塞进 Router 单跳链。
+        registry, policy = _configuration()
+        policy["roles"]["strong-reviewer"]["backends"].insert(0, "chatgpt-tunnel")
+        errors = ROUTER.validate_registry_policy(registry, policy)
+        self.assertTrue(any("grilling-only backend(s)" in error for error in errors))
+
+    def test_unknown_readonly_mode_is_rejected(self) -> None:
+        registry, policy = _configuration()
+        registry["backends"]["chatgpt-tunnel"]["readonly_mode"] = "bogus-mode"
+        errors = ROUTER.validate_registry_policy(registry, policy)
+        self.assertTrue(any("unknown readonly mode" in error for error in errors))
+
+    def test_router_selectable_mcp_keeps_snapshot_mode_requirement(self) -> None:
+        registry, policy = _configuration()
+        registry["backends"]["mcp-review"]["readonly_mode"] = ROUTER.TUNNEL_READONLY_MODE
+        errors = ROUTER.validate_registry_policy(registry, policy)
+        self.assertTrue(any("router-selectable MCP readonly_mode must be" in error for error in errors))
+
+    def test_grilling_only_mcp_may_use_tunnel_readonly_mode(self) -> None:
+        # DEC-MB-02：chatgpt-tunnel 是 Tunnel 自读，不是快照发送；MCP 快照硬
+        # 校验只约束 router-selectable 的 MCP backend。
+        registry, policy = _configuration()
+        self.assertEqual(ROUTER.validate_registry_policy(registry, policy), [])
+
+    def test_stateful_roles_reject_non_grilling_unselectable_backend(self) -> None:
+        # native backend 需要 verified host handoff，不能进 stateful 候选序。
+        registry, policy = _configuration()
+        policy["stateful_roles"]["strong-reviewer-stateful"]["backends"] = ["codex-native"]
+        errors = ROUTER.validate_registry_policy(registry, policy)
+        self.assertTrue(any("cannot join a stateful candidate order" in error for error in errors))
+
+    def test_stateful_roles_reject_unknown_backend(self) -> None:
+        registry, policy = _configuration()
+        policy["stateful_roles"]["strong-reviewer-stateful"]["backends"] = ["does-not-exist"]
+        errors = ROUTER.validate_registry_policy(registry, policy)
+        self.assertTrue(any("unknown backend reference" in error for error in errors))
+
+    def test_stateful_roles_reject_bad_fallback_category(self) -> None:
+        registry, policy = _configuration()
+        policy["stateful_roles"]["strong-reviewer-stateful"]["fallback_on"] = ["schema_invalid"]
+        errors = ROUTER.validate_registry_policy(registry, policy)
+        self.assertTrue(any("unknown categories" in error for error in errors))
 
 
 class FindingEnumContractTests(unittest.TestCase):

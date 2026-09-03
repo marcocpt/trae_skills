@@ -28,6 +28,22 @@ REQUEST_SCHEMA = "dd-review-request/1"
 CONFIG_SCHEMA = "dd-review-backends/1"
 POLICY_SCHEMA = "dd-routing-policy/1"
 MCP_READONLY_MODE = "snapshot-send-only"
+TUNNEL_READONLY_MODE = "tunnel-self-read-only"
+# Canonical readonly_mode vocabulary owned by this registry (FR-MB-004).  A
+# backend may only declare one of these modes so the grilling capability check
+# (FR-MB-001.3) can bind backend-bound readonly evidence mechanically.
+KNOWN_READONLY_MODES = frozenset(
+    {
+        MCP_READONLY_MODE,
+        TUNNEL_READONLY_MODE,
+        "codex-read-only-transport",
+        "agent-read-only-contract",
+        "codex-route-guard",
+    }
+)
+# Backends reserved for gpt-grilling-review's stateful loop (DEC-MB-02).  They
+# must never appear in a Router single-hop role chain (FR-MB-018.3).
+GRILLING_ONLY_BACKENDS = frozenset({"chatgpt-tunnel"})
 # Finding vocabulary owned by gpt-grilling-review (CON-002).  The router only
 # enforces it mechanically so a normalized dd-review-result/1 finding can enter
 # the grilling F/V/H triage state machine without re-interpretation.
@@ -368,6 +384,8 @@ def validate_registry_policy(registry: Dict[str, Any], policy: Dict[str, Any]) -
             errors.append(f"{path}.readonly_required: must be true")
         if not isinstance(spec.get("readonly_mode"), str) or not spec.get("readonly_mode"):
             errors.append(f"{path}.readonly_mode: required")
+        elif spec.get("readonly_mode") not in KNOWN_READONLY_MODES:
+            errors.append(f"{path}.readonly_mode: unknown readonly mode {spec.get('readonly_mode')!r}")
         for exit_key in ("availability_exit_codes", "transient_exit_codes"):
             exit_codes = spec.get(exit_key)
             if not isinstance(exit_codes, list) or not all(
@@ -386,8 +404,16 @@ def validate_registry_policy(registry: Dict[str, Any], policy: Dict[str, Any]) -
             errors.append(f"{path}.result_schema must be {RESULT_SCHEMA}")
         if any(key in spec for key in ("model", "profile", "reasoning_effort")):
             errors.append(f"{path}: model binding fields belong in model-bindings.yaml")
-        if backend_type == "mcp" and spec.get("readonly_mode") != MCP_READONLY_MODE:
-            errors.append(f"{path}: MCP readonly_mode must be {MCP_READONLY_MODE}")
+        # Router-selectable MCP backends are snapshot-send-only by construction;
+        # grilling-only MCP backends (router_selectable: false) read through the
+        # approved Tunnel instead (DEC-MB-02), so they are exempt here but must
+        # still declare a mode from KNOWN_READONLY_MODES.
+        if (
+            backend_type == "mcp"
+            and spec.get("router_selectable", True) is not False
+            and spec.get("readonly_mode") != MCP_READONLY_MODE
+        ):
+            errors.append(f"{path}: router-selectable MCP readonly_mode must be {MCP_READONLY_MODE}")
 
     roles = policy.get("roles")
     if not isinstance(roles, dict) or not roles:
@@ -409,6 +435,28 @@ def validate_registry_policy(registry: Dict[str, Any], policy: Dict[str, Any]) -
             missing = [item for item in candidates if item != "host-native" and item not in backends]
             if missing:
                 errors.append(f"{path}.backends: unknown backend reference(s) {missing}")
+            grilling_only = [item for item in candidates if item in GRILLING_ONLY_BACKENDS]
+            if grilling_only:
+                errors.append(
+                    f"{path}.backends: grilling-only backend(s) {grilling_only} belong in stateful_roles, "
+                    "not a Router single-hop chain"
+                )
+            # MB-GRILL-028: router_selectable: false is a universal Router
+            # dispatch ban, enforced at validation time for every execution
+            # type (dispatch time re-checks it defensively).
+            unselectable = [
+                item
+                for item in candidates
+                if item != "host-native"
+                and item in backends
+                and isinstance(backends[item], dict)
+                and backends[item].get("router_selectable") is False
+            ]
+            if unselectable:
+                errors.append(
+                    f"{path}.backends: router_selectable: false backend(s) {unselectable} cannot be "
+                    "dispatched by the Router single-hop chain"
+                )
         role_fallback = role_spec.get("fallback_on")
         if not isinstance(role_fallback, list) or not all(isinstance(item, str) for item in role_fallback):
             errors.append(f"{path}.fallback_on: string list required")
@@ -424,6 +472,51 @@ def validate_registry_policy(registry: Dict[str, Any], policy: Dict[str, Any]) -
                 errors.append(f"host_native.{host}: unknown backend reference {backend_id!r}")
             elif isinstance(backends.get(backend_id), dict) and backends[backend_id].get("execution") != "native-agent":
                 errors.append(f"host_native.{host}: target must be native-agent")
+
+    # Grilling first-round candidate order (FR-MB-018 / MB-GRILL-020).  Optional
+    # key: the Router's dispatch loop never consumes it; gpt-grilling-review
+    # reads it for PRE_INITIAL_REVIEW fallback ordering.  Members must exist in
+    # the registry and be either grilling-only backends or router-selectable
+    # ones -- a router_selectable: false native backend requires a verified
+    # host handoff and cannot join a stateful candidate order.
+    stateful_roles = policy.get("stateful_roles")
+    if stateful_roles is not None:
+        if not isinstance(stateful_roles, dict) or not stateful_roles:
+            errors.append("policy stateful_roles must be a non-empty mapping when present")
+        else:
+            for role, role_spec in stateful_roles.items():
+                path = f"stateful_roles.{role}"
+                if not isinstance(role_spec, dict):
+                    errors.append(f"{path}: expected mapping")
+                    continue
+                if not isinstance(role_spec.get("capability"), str) or not role_spec.get("capability"):
+                    errors.append(f"{path}.capability: required")
+                candidates = role_spec.get("backends")
+                if not isinstance(candidates, list) or not all(isinstance(item, str) for item in candidates):
+                    errors.append(f"{path}.backends: string list required")
+                elif not candidates:
+                    # MB-GRILL-020 transitional state (FR-MB-018.4): no member
+                    # has met the FR-MB-001 qualification contract yet (runtime
+                    # -owned session identity + continuation-form readonly
+                    # proof).  An empty order is the honest declaration;
+                    # gpt-grilling-review must treat it as backend_unavailable
+                    # instead of self-ordering.
+                    pass
+                else:
+                    for item in candidates:
+                        spec = backends.get(item) if isinstance(backends, dict) else None
+                        if spec is None:
+                            errors.append(f"{path}.backends: unknown backend reference {item!r}")
+                        elif item not in GRILLING_ONLY_BACKENDS and spec.get("router_selectable") is False:
+                            errors.append(
+                                f"{path}.backends: {item} is router_selectable: false and not grilling-only; "
+                                "it cannot join a stateful candidate order"
+                            )
+                role_fallback = role_spec.get("fallback_on")
+                if not isinstance(role_fallback, list) or not all(isinstance(item, str) for item in role_fallback):
+                    errors.append(f"{path}.fallback_on: string list required")
+                elif set(role_fallback) - FALLBACK_CATEGORIES:
+                    errors.append(f"{path}.fallback_on: unknown categories {sorted(set(role_fallback) - FALLBACK_CATEGORIES)}")
     return errors
 
 
@@ -634,6 +727,16 @@ def _check_backend_eligibility(
     capabilities = backend.get("capabilities", [])
     if required_capability not in capabilities:
         raise BackendUnavailable("capability_unavailable", f"{backend_id} lacks {required_capability}")
+    # MB-GRILL-028: router_selectable: false is a universal Router dispatch ban
+    # for external backends too (native backends keep their dedicated handoff
+    # message below).  Defensive fail-closed so a future external backend marked
+    # non-selectable can never be dispatched by a Router role chain even if a
+    # validator rule is bypassed.
+    if backend.get("router_selectable", True) is False and backend.get("execution") != "native-agent":
+        raise BackendUnavailable(
+            "capability_unavailable",
+            f"{backend_id} is not router-selectable (reserved for the grilling stateful loop)",
+        )
     if backend.get("execution") == "external" and not _external_authorized(request):
         raise TerminalReviewFailure("authorization_violation", f"external backend {backend_id} is not authorized for this scope")
     if backend.get("execution") == "native-agent":

@@ -9,6 +9,27 @@ schema: dd-review-backends/1
 result_schema: dd-review-result/1
 
 backends:
+  chatgpt-tunnel:
+    # Grilling multi-round backend (DEC-MB-02).  The reviewer reads the repo
+    # itself through the approved read-only Tunnel using `work/<relative>` repo
+    # names; the local side never sends absolute paths or file contents, so the
+    # readonly model is self-read via Tunnel rather than snapshot-send-only.
+    # Not router-selectable: single-hop dispatch uses mcp-review; this backend
+    # is consumed by gpt-grilling-review's stateful loop through its transport
+    # contract (chatgpt_send / chatgpt_get_result with conversation_id reuse,
+    # owned by gpt-grilling-review/references/transport.md).
+    type: mcp
+    execution: external
+    executable: chatgpt-tunnel
+    command: [review]
+    router_selectable: false
+    capabilities: [strong-review]
+    readonly_required: true
+    readonly_mode: tunnel-self-read-only
+    availability_exit_codes: [69]
+    transient_exit_codes: [75]
+    result_schema: dd-review-result/1
+
   mcp-review:
     type: mcp
     execution: external
