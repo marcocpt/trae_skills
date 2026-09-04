@@ -98,13 +98,13 @@ User Verification
 
 读取 [diagnosis-and-verification.md](references/diagnosis-and-verification.md) 的 Intake。
 
-复述症状、复现条件和期望行为；扫描可用日志但不猜测来源。只询问仍缺失的 blocker。Gate：问题边界确认、日志选择记录、工作环境决策已取得或可从状态恢复。
+**新任务首次进入 Intake 时，必须先用通俗语言向用户复述三件事：症状是什么、期望行为是什么、准备在什么范围内修**，取得用户确认后才算 Intake 通过——这是防跑偏的唯一闸口，不得跳过或推迟到诊断中段；恢复任务若状态已含有效需求确认，则复用确认结果，不重复 ASK。随后扫描可用日志但不猜测来源，只询问仍缺失的 blocker。Gate：需求复述已获用户确认（新任务）或状态已含有效确认（恢复任务）、问题边界确认、日志选择记录、工作环境决策已取得或可从状态恢复。
 
 ### Environment
 
 读取 [diagnosis-and-verification.md](references/diagnosis-and-verification.md) 的 Environment。
 
-创建隔离 fix worktree 或验证用户选择的当前 worktree。Gate：路径固定、无并发工作流、工作区与基线证据有效、Bug state 已原子写入。
+**首次建立执行环境时默认新建隔离 fix worktree，且必须在修改任何项目产物（代码、测试、规格、项目文档等交付范围内文件）之前完成**；恢复任务、有效 Handoff 或父工作流已提供的 worktree 必须复用并验证，不重新创建。仅当用户明确要求在当前工作区修改时才例外，且必须把例外原因写入状态。runtime 状态文件与工作流内部证据文件按 runtime 合同处理，不属于项目产物修改。Gate：worktree 已新建或已复用并验证、路径固定、无并发工作流、工作区与基线证据有效、Bug state 已原子写入。
 
 ### Diagnosis and Repair
 
@@ -159,6 +159,8 @@ User Verification
 
 ## 红线
 
+- 新任务未向用户复述症状与期望并取得确认就开始诊断或修复（恢复任务状态已含有效确认的除外）；
+- 首次建立执行环境时未新建 worktree 就修改项目产物（恢复/Handoff/用户明确要求的例外除外）；
 - 未稳定复现或定义失败证据就写修复；
 - 未完成根因调查就提出确定性修复；
 - 一次修改多个变量后宣称根因已证明；

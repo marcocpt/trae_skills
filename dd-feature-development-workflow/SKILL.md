@@ -20,8 +20,8 @@ description: 当实现需要规格套件、分阶段计划、TDD、CI 或用户�
 
 一个 Feature 从需求到交付的大致旅程：
 
-1. 收集并确认需求，复用已有 Handoff 和已解决事实，不重复询问；
-2. 固定工作环境并确认基线；
+1. **新任务首次进入 Intake 时，先用通俗语言向用户复述需求**（要解决什么问题、范围边界、成功标准），取得确认后再收集剩余事实——这是防跑偏的第一道闸口，不得跳过；恢复任务若状态已含有效需求确认则复用，不重复 ASK；随后复用已有 Handoff 和已解决事实，不重复询问；
+2. **首次建立执行环境时默认新建隔离 worktree，且在修改项目产物（代码、测试、规格、项目文档等交付范围内文件）之前完成**；恢复任务、有效 Handoff 或父工作流已提供的 worktree 必须复用并验证，不重新创建；仅用户明确要求时才允许在当前工作区，且须记录原因；
 3. 调用 `dd-writing-specs` 生成并批准 Requirements、Design、Test Matrix，UI 功能按需包含 Visual；
 4. 从已批准规格拆出 Phase 和可执行 Task；
 5. 按 Phase → Task → TDD 实现，每个 Phase 必须通过 Local Gate；
@@ -101,8 +101,8 @@ intake → environment → specification → planning → implementation
 
 | Stage | 实际要做什么 | 完成标志 | 详细规则 |
 |---|---|---|---|
-| Intake | 确认 Feature 的目标、范围、成功标准、失败路径、兼容性及可验证 AC，只补尚未解决的 blocker | 需求事实已确认并持久化 | [intake-and-environment.md](references/intake-and-environment.md) |
-| Environment | 固定唯一 worktree，验证基线和并发状态 | 工作环境与状态一致，可安全进入规格阶段 | [intake-and-environment.md](references/intake-and-environment.md) |
+| Intake | **新任务首次进入时先用通俗语言复述需求并取得用户确认**（恢复任务状态已含有效确认则复用，不重复 ASK），再确认 Feature 的目标、范围、成功标准、失败路径、兼容性及可验证 AC，只补尚未解决的 blocker | 需求复述已获用户确认并持久化 | [intake-and-environment.md](references/intake-and-environment.md) |
+| Environment | **首次建立执行环境时默认新建隔离 worktree，且在修改项目产物之前完成**；恢复任务、有效 Handoff 或父工作流已提供的 worktree 必须复用并验证；仅用户明确要求时才允许在当前工作区并记录原因。验证基线和并发状态 | worktree 已新建或已复用并验证，工作环境与状态一致，可安全进入规格阶段 | [intake-and-environment.md](references/intake-and-environment.md) |
 | Specification | 调用 `dd-writing-specs` 生成并批准 Requirements、Design、Test Matrix；UI 功能按需生成 Visual | canonical spec 已批准，并有当前内容指纹和批准依据 | [specification.md](references/specification.md) |
 | Planning | 从已批准规格生成 Phase 和可执行 Task 包，建立 AC → Task → Test/Evidence 映射 | 所有 Phase/Task 输入输出、写入范围、验证方式和停止条件都明确 | [planning-stage.md](references/planning-stage.md) |
 | Implementation | 按当前 Task 的 `anchors`、全局约束、Out of Scope、失败路径及必要集成输入选择性读取规格（不完整重读）；按 Phase 执行 Task 并采用 TDD；每个 Phase 通过 Local Gate 并完成按风险路由的紧凑 Phase 复核（命中风险触发器时升级独立强审）；高风险 UI 按风险触发远程 Smoke CI；Local Gate 未通过不得进入下一 Phase | 全部 Phase 已验证，无未解释的当前 Phase 缺口 | [implementation.md](references/implementation.md) |
@@ -146,6 +146,8 @@ intake → environment → specification → planning → implementation
 
 ### 阶段纪律
 
+- 新任务未向用户复述需求并取得确认就开始收集规格或修改项目产物（恢复任务状态已含有效确认的除外）；
+- 首次建立执行环境时未新建 worktree 就修改项目产物（恢复/Handoff/用户明确要求的例外除外）；
 - 未通过 Phase Local Gate 就进入下一 Phase；
 - Phase ≥ 3 时只用一个总计划文件包含所有 Phase，或使用 planning reference 不传 `split_mode` 与 `phase_list`；
 - 完整 CI 没有验证最终候选 SHA 就推进 develop；
