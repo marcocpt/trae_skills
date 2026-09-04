@@ -16,6 +16,7 @@
 | 轮询连接 ECONNRESET → 脚本崩溃放弃（任务其实还在跑） | 每次轮询新建连接 + 重试 |
 | 用了已删除的 worktree 名 → 白跑一轮 | 送审前 `git worktree list` 确认 |
 | content 指令含糊 → 审核方等待粘贴代码 | 用本技能模板 + 逃逸句 |
+| 给 Tunnel 未映射或非 git 的新目录送审 → 回复「无法读取指定文件」，白跑一轮（2026-09-04 实测） | repo 必须是映射表内**且本身是 git 仓库**的目录；不要为送审临时复制文件副本，直接找真实路径 |
 
 ## 三步法
 
@@ -46,8 +47,11 @@
 | develop 主目录 | `cpdf` |
 | CPDF worktree | `cpdf-wt/<分组>/<分支名>`，如 `cpdf-wt/test/S5-Governance-review` |
 | 其他项目（~/Working 下全部，含未来新增） | `work/<相对路径>`，如 `work/Keyboard/Macim-worktrees/F-3.3` |
+| dd-* 工作流技能库（`~/.workbuddy/skills/dd-*` 均为其软链） | `work/AGENT/skills`（git 仓库，develop 分支） |
 
 worktree 动态变化，送审前先确认仍存在：`git -C /Users/dengdeng/Working/PDF/CPDF worktree list`。
+
+> ⚠️ 「~/Working 下全部」的前提是该目录本身是 git 仓库：2026-09-04 实测，给新建的非 git 目录（临时副本工作区）送审直接得到「无法读取指定文件」。送审前确认目标在映射表内且为 git 仓库；技能文件不要复制副本送审，直接用 `work/AGENT/skills`。
 
 ### Tunnel 解析规则（强制）
 
