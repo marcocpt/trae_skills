@@ -1,14 +1,110 @@
 > 迁移来源：`gpt-review-loop/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
+> 依据：[多后端强审 Grilling 闭环需求与草案设计](../../docs/AI/2026-09-02-multi-backend-grilling-requirements-design.md)（v0.15-DRAFT）。backend 的调用命令、能力、只读模式与候选顺序由 `dd-workflow-runtime` 的 registry 与 policy 拥有；本文件只引用，不复制（FR-MB-006）。
 
-# ChatGPT 审核闭环
+# 强审传输合同（后端中立）
 
 ## 概述
 
-弱模型修改代码后，向外部 ChatGPT 发起审核：**只发审核要求，不发代码**；审核方经授权通道自行读取本地代码并返回意见，agent 逐条处置形成闭环。
+弱模型完成实现与确定性验证后，向**强审后端**发起审核，逐条处置返回的 finding 形成闭环。后端可替换，但闭环语义（finding 生命周期、三字段、CLOSED 判据、DISPUTED、HARD-GATE、关闭权）对所有后端一致，定义在 [SKILL.md](../SKILL.md)。
+
+本文件只拥有两件事：
+
+1. **多轮编排**：何时再叫同一个 reviewer 一次、句柄如何复用与校验、降级与阻塞；
+2. **`chatgpt-tunnel` 后端自管的传输细节**（DEC-MB-04）。
+
+其他后端的调用命令、参数与只读证据一律引用 runtime，不在本文件重述。
 
 **违反规则的字面意思就是违反规则的精神。**
 
-## 基线失败（无本技能时的真实错误）
+## 后端选择（FR-MB-001）
+
+- `backend` 取值必须是 `dd-workflow-runtime/agents/review-backends.yaml` 中的 canonical backend ID；别名与 canonical ID 的映射只在 runtime 侧有一处定义。
+- **存在于 registry 不等于可用于 grilling**。可选后端必须同时满足三项能力条件：
+  1. 有状态续接能力（adapter 提供 `resume` 调用形态，FR-MB-015）；
+  2. 结构化会话标识输出合同（FR-MB-016）；
+  3. 与本次调用形态匹配的有效只读证明（FR-MB-012、FR-MB-004 第 3 条）。
+- **缺省** → 使用默认后端 `chatgpt-tunnel`。
+- **显式给出但无法识别或不满足上述三项条件** → 判 `configuration_invalid` 并 BLOCKED，**不得静默回退**到默认后端（typo 变成默认后端是 fail-open）。
+- 当前可选状态：
+  - `chatgpt-tunnel`：默认；传输细节由本文件自管（DEC-MB-04）。
+  - `opencode-cli`：已满足三项条件，见下方分节。
+  - `codex-cli`：`resume` 形态的只读正负对照证据尚未取得，**不可用于多轮**（fail-closed）。取证要求见设计文档 §8 第 1 条。
+
+候选顺序的 canonical 属主是 `routing-policy.yaml` 的 `stateful_roles`；本文件不自行排序（FR-MB-018）。
+
+## 编排合同（本 skill 自有）
+
+以下规则对所有后端一致生效。
+
+### 续接句柄与身份校验（FR-MB-003、FR-MB-011）
+
+句柄的取值类型、获取方式与续接调用形态由 runtime adapter 合同定义；**grilling 只编排轮次，不拼装 provider 命令行**（FR-MB-015）。grilling 侧只依赖以下不变式：
+
+1. `initial` 调用必须返回可持久化的会话标识，记为 `review_session_handle`。
+2. `resume` 调用必须接受该标识并回到同一会话上下文。
+3. **身份校验（MUST）**：每次续接后必须从后端**结构化**输出提取实际会话标识，校验 `actual_session_id == review_session_handle`；无法提取或不相等 → `session_resume_mismatch` → BLOCKED。
+4. **不得把进程退出码 0 当作续接成功的证据。**
+5. 句柄唯一绑定一个 workflow + backend + reviewer 身份，**不得跨 workflow 复用**；同一 active session 同时只允许一个 in-flight 轮次，并发续接必须机械串行化。
+6. 派生类调用（如 `--fork` 形态）生成新句柄并保存 parent 关系，**旧句柄不自动转移关闭权**。
+7. 崩溃后只从 runtime 持久状态恢复，不从 stdout、临时文件或 provider 私有文件重建。
+8. 句柄缺失或身份校验失败时，针对性复查与 CLOSED 关闭权不可执行，必须 fail-closed。
+
+**可恢复自动化只认可显式传入句柄的 canonical 续接形态**；依赖"最近会话"的隐式续接存在被其他任务改写的歧义，不得作为合同（FR-MB-014）。
+
+### 只读（FR-MB-004）
+
+各 backend 的 `readonly_mode`、参数与 backend-bound 只读证据属主是 `review-backends.yaml` 及其证据文件，本文件不复制该表。grilling 侧只守三条：
+
+1. 任何后端无法机械强制只读时，该后端本次不可用。
+2. 绕过沙箱或审批的危险模式一律 fail-closed。
+3. **续接属于新的调用形态**：只有现有 backend-bound 只读证据明确覆盖该续接形态时才能沿用，否则必须重新取证。
+
+### 结果双层分离（FR-MB-013）
+
+1. **传输层**：后端一轮只返回 `dd-review-result/1`（`PASS` / `FINDINGS` / `BLOCKED`），属主是 runtime。
+2. **关闭层**：`CLOSED` / `REOPEN` / `VERIFICATION_REQUIRED` / `HUMAN_DECISION_REQUIRED` 由 [SKILL.md](../SKILL.md) 的状态机定义，属主是本 skill。
+3. 转换规则：`BLOCKED` **永不得** CLOSED；`FINDINGS` 必须逐条分流处置，不得整体视为 CLOSED；`PASS` 仅作为 targeted review 的 CLOSED 候选，仍须满足 CLOSED 判据四项。
+4. **不得把 `dd-review-result/1` 的 `PASS` 与 finding 的 `CLOSED` 等同。**
+
+### 能力探测与失效触发器（FR-MB-012）
+
+每次 `initial` 前、每次 `resume` 前、以及从中断状态恢复后，都必须检查是否存在与当前 backend / 版本 / 调用形态 / 只读模式 / agent-profile / 续接方式 / 结果格式**完全匹配**的有效能力证据；缺失或指纹不匹配时先重新取证，取证未通过则该调用形态本次不可用。
+
+失效触发器：CLI 或 provider 版本变化、agent / profile 变化、只读配置变化、adapter 调用形态变化、续接参数变化。任一触发后旧证据失效，须重新取证。
+
+### 降级与阻塞（FR-MB-007）
+
+分两个语义阶段，规则不同：
+
+1. **首次审查尚未发生（PRE_INITIAL_REVIEW）**：后端不可用时按 `routing-policy.yaml` 的 stateful 候选顺序降级。**读到空序列必须按 `backend_unavailable` 阻塞，不得自行排序**（FR-MB-018 第 4 条）。
+2. **已产生 finding 之后（ACTIVE_GRILLING_SESSION）**：原 reviewer / 会话不可恢复 → `BLOCKED: reviewer_continuity_lost`，**默认不得切换 reviewer**。若未来支持 reviewer 转移，必须作为独立协议，要求完整原 finding、原审核证据、全部修复 diff、当前源码与 baseline，且新 reviewer 完整重新验证，不得称之为"继续原会话"。
+3. 任一后端返回 FINDINGS / schema 非法 / 基线漂移 / 只读违例 / 续接违例：**不得降级**（fail-closed）。
+4. 后端可用性降级**不增加**返工计数，也**不清零**已有计数（返工上限引用 `routing.max_rework_cycles`）。
+
+### 幂等与恢复（FR-MB-009）
+
+复用 runtime 的供应商中立外部审核防重合同（`runtime-contract.md`），字段、状态名与状态机由 runtime 拥有，本文件不复制。grilling 侧不变式：
+
+1. 提交不确定状态恢复后，必须先用幂等键与后端对账，确认无在途任务才允许重新提交——**重复提交次数为零**。
+2. `resume` 重试与 `submit` 重试不得共用重试语义。
+
+## 禁忌（跨后端通用）
+
+各后端自有的禁忌见其分节；以下为所有后端共用的禁忌。
+
+- 绕过 scope 清单让审核方拿到未授权文件；审核方所需的读取范围必须在请求内显式给出
+- 敏感文件（密钥/凭据/.env）进入请求
+- 用 `opencode-cli` 时套用 Tunnel repo 名或 `work/<相对路径>` 形式
+- 未经身份校验就宣称续接成功，并据此进入针对性复查或 CLOSED
+- 在续接形态只读证据缺失时复用首轮只读证据
+
+## 后端分节
+
+### `chatgpt-tunnel`（默认后端，本文件自管）
+
+按 DEC-MB-04，该后端的会话身份（`conversation_id`）与 Tunnel 只读规则均属本传输合同，不进 registry 的 stateful 名册。
+
+#### 基线失败（无本技能时的真实错误）
 
 | 真实失败 | 技能对策 |
 |---|---|
@@ -18,16 +114,16 @@
 | content 指令含糊 → 审核方等待粘贴代码 | 用本技能模板 + 逃逸句 |
 | 给 Tunnel 未映射或非 git 的新目录送审 → 回复「无法读取指定文件」，白跑一轮（2026-09-04 实测） | repo 必须是映射表内**且本身是 git 仓库**的目录；不要为送审临时复制文件副本，直接找真实路径 |
 
-## 三步法
+#### 三步法
 
-### 1. 提交 chatgpt_send
+**1. 提交 chatgpt_send**
 
 - `conversation_id`：固定 `"<app 名>-<仓库名>-<分支名>-<月日时分>"`，同一个会话中多轮复用（复审带上下文）
 - `instruction`：传 `""`（不加默认前缀）
 - `timeout_seconds`：`600`（单轮审核等待上限；MCP 参数上限 3600，传更大直接报参数错误）
 - `content`：按下方模板。只写业务要求 + 仓库名 + 范围；**禁止粘贴代码/diff**
 
-### 2. 取结果 chatgpt_get_result（长轮询）
+**2. 取结果 chatgpt_get_result（长轮询）**
 
 - 直接调用 `chatgpt_get_result`，不必传 `wait_seconds`：服务端默认挂起最长 55 秒等待，完成立即返回；返回 `[RUNNING]` 则循环再调，审核通常 5-10 分钟
 - 无需客户端自定节奏（旧的“隔 20/40 秒再调”已废弃）；仅当所在客户端单次工具调用超时小于 55 秒时显式传更小的 `wait_seconds`（传 0 = 立即返回不等待）
@@ -35,12 +131,12 @@
 - 连接异常（ECONNRESET 等）：任务仍在 daemon，**新建连接更新 conversation_id 重试轮询**，不要放弃
 - 满 10 分钟仍未完成：报告用户等待中，不得无限阻塞
 
-### 3. 处置意见
+**3. 处置意见**
 
 - 逐条：采纳 → 修改并注明依据哪条意见；不采纳 → 说明理由（审核方可能掌握你没看到的事实）
-- 重大修改后复用同一 conversation_id 复审
+- 重大修改后复用同一 `conversation_id` 复审
 
-## 仓库命名
+#### 仓库命名
 
 | 目标 | repo 名 |
 |---|---|
@@ -53,7 +149,7 @@ worktree 动态变化，送审前先确认仍存在：`git -C /Users/dengdeng/Wo
 
 > ⚠️ 「~/Working 下全部」的前提是该目录本身是 git 仓库：2026-09-04 实测，给新建的非 git 目录（临时副本工作区）送审直接得到「无法读取指定文件」。送审前确认目标在映射表内且为 git 仓库；技能文件不要复制副本送审，直接用 `work/AGENT/skills`。
 
-### Tunnel 解析规则（强制）
+##### Tunnel 解析规则（强制）
 
 ChatGPT 只能通过 **Tunnel 工具按 repo 名解析**到本地真实目录，映射固定：
 
@@ -62,7 +158,7 @@ ChatGPT 只能通过 **Tunnel 工具按 repo 名解析**到本地真实目录，
 
 **content 中的 repo 必须是上表的名字形式，严禁使用任何绝对路径（如 `/Users/dengdeng/Working/...`）或项目真实目录名。** 弱模型送审前必须把本地绝对路径按此表换算成 `work/<相对路径>` 形式（例：`/Users/dengdeng/Working/Keyboard/Macim-worktrees/F-3.3` → `work/Keyboard/Macim-worktrees/F-3.3`）。文件清单也必须是 repo 内相对路径，不得写绝对路径。
 
-## content 模板
+#### content 模板
 
 **分支整体审（最常用）：**
 
@@ -89,15 +185,36 @@ ChatGPT 只能通过 **Tunnel 工具按 repo 名解析**到本地真实目录，
 输出结构化意见（问题、位置、建议）。
 ```
 
-## 禁忌
+#### 禁忌（本后端）
 
 - content 透漏 MCP/浏览器/插件等底层实现细节；repo 必须以 `work/<相对路径>` 形式给出，并明确让 ChatGPT 用 Tunnel 工具按 repo 名读取（不得写绝对路径，也不得写项目真实目录名）
 - 粘贴代码/diff 进 content → 审核方自行读取
 - 敏感文件（密钥/凭据/.env）进入请求
-- timeout_seconds 超过 3600（参数上限）
+- `timeout_seconds` 超过 3600（参数上限）
 - `[RUNNING]` 期间重复提交
 - 省略模板末尾的逃逸句
 - 在 content 中写本地绝对路径（如 `/Users/dengdeng/Working/...`）或项目真实目录名代替 `work/<相对路径>` 形式的 repo 名
+
+### `opencode-cli`
+
+**资格**：已于 2026-09-03 取得续接形态的 backend-bound 只读取证，并在 runtime 的 stateful 候选序列内。其调用命令、参数与 `readonly_mode` 的属主是 `review-backends.yaml`，本文件不重述。
+
+**续接**：走 adapter 的 `resume` 调用形态，显式传入 `review_session_handle`（FR-MB-015）。每次续接后按「续接句柄与身份校验」从结构化 `session` 字段提取实际会话标识并比对；不得依赖"最近会话"隐式续接，不得以退出码 0 判定续接成功。
+
+**读取方式（FR-MB-005）**：**不使用 Tunnel，不要求 `work/<相对路径>` repo 名**。给定工作区 cwd 与相对 `scope` 列表，审核方直接 Read / Grep / Glob。因此：
+
+- content 里写**仓库内相对路径清单**与关注点，不写 Tunnel repo 名，也不写绝对路径；
+- 本后端不适用上面「仓库命名」与「Tunnel 解析规则」两节，那两节只属于 `chatgpt-tunnel`。
+
+**只读**：属 agent 权限合同（默认拒绝 + 只读工具白名单），机制与证据属主是 registry 的 `readonly_mode` 及 backend-bound 证据文件。
+
+**取证边界**（引用 2026-09-03 主审终确认，边界不外推）：
+
+> 在 `opencode-cli` + `strong-reviewer-cli`、OpenCode **1.18.25**、`resume` 续接调用形态下，initial 与 resume 两轮保持同一 sessionID，且两轮均产生实际 `read` tool event 并成功读取同一 repo 文件，证明只读工具能力在 resume 形态连续；write 能力在两轮均未暴露，但该部分证据等级为 agent-self-reported-consistent，**而非 engine-denial-event-backed**。该结论**仅覆盖上述 backend / agent / OpenCode 版本 / 续接调用形态，不外推到其他 agent、版本、backend 或调用形态**。
+
+证据文件：`dd-workflow-runtime/tests/evidence/opencode-resume-readonly-evidence.yaml`（4 份原始事件流），其中记录了该次取证的确切调用形态。**OpenCode 版本或 agent 变化即触发失效，须重新取证**（FR-MB-012）。
+
+**结果**：一轮只返回 `dd-review-result/1`；finding 的 `severity` / `classification` / `change_risk` 三字段已由 runtime 机械校验对齐 canonical 枚举（FR-MB-017），F/V/H 分流仍按 [SKILL.md](../SKILL.md) 的语义执行，不得由 provider 定义另一套枚举含义。
 
 ## 红线 - 出现即停下纠正
 
@@ -108,3 +225,7 @@ ChatGPT 只能通过 **Tunnel 工具按 repo 名解析**到本地真实目录，
 | "直接把 diff 粘过去更快" | 粘贴 = 失去审核方主动探索上下文的能力 |
 | "连接断了任务肯定没了" | 任务在 daemon，重连继续轮询 |
 | "审核意见只是建议" | 必须逐条处置（采纳或说明理由），不得忽略 |
+| "后端退出了换个后端接着审就行" | 已产生 finding 后换后端 = 换 reviewer，判 `reviewer_continuity_lost` 并 BLOCKED，不得称之为继续原会话 |
+| "首轮证明只读了，续接沿用就行" | 续接是新调用形态，须有覆盖该形态的 backend-bound 证据，否则重新取证 |
+| "退出码 0 说明续接成功了" | 必须做结构化会话标识比对，不等即 `session_resume_mismatch` |
+| "这个后端在 registry 里，所以能用于多轮" | registry 只登记能力，多轮还须满足续接、会话标识、续接只读取证三项条件 |
