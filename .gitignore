@@ -71,6 +71,9 @@ out/
 .idea/
 *.iml
 
+# AI agent host-local config
+.codebuddy/
+
 # Temporary files
 tmp/
 temp/

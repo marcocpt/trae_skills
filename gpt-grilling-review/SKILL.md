@@ -1,19 +1,21 @@
 ---
 name: gpt-grilling-review
-description: Use when 用户要求 ChatGPT 审核指定文件/指定仓库、让 ChatGPT 自行读取本地代码找问题并给修改意见、弱模型按意见修改后需要送回复审，或需要对审核发现做裁决处置。触发词：ChatGPT 文件审核、指定文件审核、gpt grilling、修改后复审、裁决。
+description: Use when 用户要求外部强审者审核指定文件/指定仓库、让强审者自行读取本地代码找问题并给修改意见、弱模型按意见修改后需要送回复审、需要用 ChatGPT 之外的复审后端（如 opencode、codex）做强审，或需要对审核发现做裁决处置。触发词：ChatGPT 文件审核、指定文件审核、gpt grilling、修改后复审、裁决、外部强审、强审者复审、多后端强审、opencode 复审、codex 复审。
 ---
 
-# ChatGPT 文件 Grilling 审核
+# 强审 Grilling 审核
+
+> 本 skill 支持多个强审后端可选（`chatgpt-tunnel` 默认、`opencode-cli`、`codex-cli`）。闭环语义（finding 生命周期、三字段、CLOSED 判据、关闭权）对所有后端一致；后端差异只在 [transport.md](references/transport.md) 的对应分节。
 
 ## 目标
 
-角色反转的审核闭环：**ChatGPT（强模型）是主审与最终关闭人**，**本地 agent（弱模型）是执行者与核对者**，**用户是最终裁决人**。依据 [classification-policy.md](references/classification-policy.md) 的人工判断升级规则，对核对属实的风险点做三类分流，**仅 HUMAN_DECISION_REQUIRED 逐条裁决**。用户可一次启用本 skill 的自动化处置约定，减少已核实 FINDING 的重复确认；该约定不扩大文件、真实数据或交付动作的授权范围。修复采用三个独立字段（SEVERITY / CLASSIFICATION / CHANGE_RISK）：**凡 ChatGPT 提出的 finding 修改了生产代码或测试语义，弱模型不得自行 CLOSED，必须由 ChatGPT 针对性复查（原 finding + 真实 diff + 授权范围 + 验证结果）返回 CLOSED 才闭环**；纯拼写/格式可本地验证关闭。
+角色反转的审核闭环：**强审者是主审与最终关闭人**，**本地 agent（弱模型）是执行者与核对者**，**用户是最终裁决人**。依据 [classification-policy.md](references/classification-policy.md) 的人工判断升级规则，对核对属实的风险点做三类分流，**仅 HUMAN_DECISION_REQUIRED 逐条裁决**。用户可一次启用本 skill 的自动化处置约定，减少已核实 FINDING 的重复确认；该约定不扩大文件、真实数据或交付动作的授权范围。修复采用三个独立字段（SEVERITY / CLASSIFICATION / CHANGE_RISK）：**凡强审者提出的 finding 修改了生产代码或测试语义，弱模型不得自行 CLOSED，必须由强审者针对性复查，产生可归一为 `PASS` 的结果后，再由本 skill 关闭层按 CLOSED 判据四项决定是否 CLOSED**；纯拼写/格式可本地验证关闭。
 
 ## 角色分工
 
 | 角色 | 职责 | 禁止 |
 |---|---|---|
-| ChatGPT（强模型/主审） | 首审输出 finding + SEVERITY + 建议分流；针对性复查并给出 STATUS | 不得只凭弱模型摘要 CLOSED |
+| 强审者（主审） | 首审输出 finding + SEVERITY + 建议分流；针对性复查并给出可归一为 `dd-review-result/1` 的审查结果 | 不得只凭弱模型摘要 CLOSED |
 | 本地 agent（弱模型，执行+核对） | 送审、核对引用、按规则分流、按已启用的自动化策略执行范围内修改、按风险分级送复查 | 不得机械接受意见；不得静默重分类 F/V/H 或降级 CHANGE_RISK；不得自行 CLOSED 生产代码/测试语义修改；不得越过自动化策略边界；不得覆盖用户已有变更 |
 | 用户（裁决人） | 对 HUMAN_DECISION_REQUIRED 逐条裁决；可一次启用或覆盖 FINDING 自动处置策略；对 VERIFICATION_REQUIRED 确认需要外部/真实环境的取证方式 | — |
 
@@ -28,13 +30,13 @@ description: Use when 用户要求 ChatGPT 审核指定文件/指定仓库、让
 - `HUMAN_DECISION_REQUIRED` 仍遵循 HARD-GATE，逐个请求用户裁决；
 - 用户当前消息中的“只审核/先不改/加入 TODO/LATER/不采纳”覆盖自动化约定；
 - 自动化约定不包含 commit、push、merge、PR、deploy、生产配置、真实用户数据或其他外部状态变更，这些仍需单独授权；
-- 凡生产代码或测试语义发生修改，仍须由 ChatGPT 按风险等级复审并返回 `STATUS: CLOSED`，本地 agent 不得自行关闭。
+- 凡生产代码或测试语义发生修改，仍须由强审者按风险等级复审，并由本 skill 的关闭层据 CLOSED 判据落地闭环；本地 agent 不得自行关闭。线上返回形态见 [transport.md](references/transport.md)「统一结果路径」。
 
 ## 三个独立字段
 
 每个 finding 有三个独立字段，不得混用：
 
-- **SEVERITY**（首审 ChatGPT 输出）：finding 本身的严重度，HIGH/MEDIUM/LOW。仅表示严重度，不决定处置路径
+- **SEVERITY**（首审强审者输出）：finding 本身的严重度，HIGH/MEDIUM/LOW。仅表示严重度，不决定处置路径
 - **CLASSIFICATION**（问题分流，处置轴一）：FINDING / VERIFICATION_REQUIRED / HUMAN_DECISION_REQUIRED
 - **CHANGE_RISK**（修改方案确定后评估，处置轴二）：LOW/MEDIUM/HIGH，回答"这个具体修改有多大复查风险"
 
@@ -47,7 +49,7 @@ CLASSIFICATION 与 CHANGE_RISK 是两个处置轴；SEVERITY 仅表示严重度�
 - 至少 **HIGH**：公共 API、用户可见行为、并发、安全/权限、持久化/文件格式、兼容性、数据迁移
 - 至少 **MEDIUM**：状态机、异步逻辑、错误语义、fail-open/fail-closed、公共函数行为、测试期望变化
 - 同时命中多个下限时，取最高等级
-- 突破下限降级须送 ChatGPT 复核（见「弱模型重分类复核」）
+- 突破下限降级须送强审者复核（见「弱模型重分类复核」）
 
 ## finding 生命周期（轻量）
 
@@ -59,7 +61,7 @@ CLASSIFICATION 与 CHANGE_RISK 是两个处置轴；SEVERITY 仅表示严重度�
 | lifecycle | 含义 |
 |---|---|
 | OPEN | 已发现待处置 |
-| DISPUTED | 弱模型对 ChatGPT finding 提出反证，待 ChatGPT 复核 |
+| DISPUTED | 弱模型对强审者的 finding 提出反证，待强审者复核 |
 | CLOSED | 满足 CLOSED 判据（见下） |
 | INVALIDATED | 经 DISPUTED 复核确认 finding 不成立 |
 
@@ -83,25 +85,28 @@ disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING 
 
 开始前必须确认（缺失则向用户提问，不得猜测）：
 
-1. **仓库名**：按 [transport.md](references/transport.md) 的仓库命名规则；送审前 `git worktree list` 确认存在
-2. **文件清单**：用户指定的待审文件（仓库内相对路径）；用户只给了目录或分支时，先送审"列范围"请求，拿到 ChatGPT 发现的文件清单后与用户确认。**文件清单与 repo 名都必须是 `work/<相对路径>` 形式，禁止任何绝对路径**
+1. **强审后端**（`backend`，可选）：按 [transport.md](references/transport.md)「后端选择」合同校验；**缺省** → `chatgpt-tunnel`；**不具资格** → 按该合同判 `configuration_invalid` 并 BLOCKED，**不得静默回退**。资格条件与候选顺序一律以 transport 与 runtime 为准，本文件不复制
+2. **受审范围**：按已选 backend 在 [transport.md](references/transport.md) 对应分节的要求构造。**不得跨后端混用受审范围或 session 语义**；具体字段与形态按 transport 对应分节
 3. **可选权威依据**：需求/设计/规范文档路径
 4. **修改前 baseline**（修复阶段必记）：当前 HEAD、`git status --short`、已有 dirty diff、相关测试命令及既有失败。**禁止修改/覆盖用户已有变更**
 
+用户只给了目录或分支时，先送审"列范围"请求，拿到强审者发现的文件清单后与用户确认。
+
 ## 循环状态机
 
-1. 确认输入（仓库名 + 文件清单）
-2. 首次送审（见「首次送审模板」），拿到 ChatGPT 的 finding 清单（含 SEVERITY + 建议分流 + reviewed/missing 覆盖）
-3. **本地核对**：对 ChatGPT 引用的每个文件、行号、结论，用 Read/Grep 当场验证
+1. 确认输入（后端 + 受审范围 + 权威依据）
+2. 解析并校验 `backend`（缺省走 `chatgpt-tunnel`，不具资格即 BLOCKED）
+3. 首次送审（按所选后端打开 [transport.md](references/transport.md) 对应分节），拿到强审者的 finding 清单（含 SEVERITY + 建议分流 + `reviewed`/`unreadable` 覆盖）
+4. **本地核对**：对强审者引用的每个文件、行号、结论，用 Read/Grep 当场验证
    - 引用属实 → 进入分流
    - 引用有误/结论不成立 → 走「DISPUTED 路径」，不得直接丢弃
-4. **风险分流**：依据「风险分流规则」+ ChatGPT 建议分流，归入 FINDING / VERIFICATION_REQUIRED / HUMAN_DECISION_REQUIRED；弱模型重分类须复核
-5. 按分流路径处置：
+5. **风险分流**：依据「风险分流规则」+ 强审者的建议分流，归入 FINDING / VERIFICATION_REQUIRED / HUMAN_DECISION_REQUIRED；弱模型重分类须复核
+6. 按分流路径处置：
    - FINDING → 走「批量 finding 处置」
    - VERIFICATION_REQUIRED → 登记 VERIFICATION_PENDING，按「VERIFICATION_REQUIRED 转换」处置
    - HUMAN_DECISION_REQUIRED → 走「逐条裁决」（HARD-GATE 适用）
-6. 任何「立即修复」执行后，评估 CHANGE_RISK，按「修复后复查（按风险分级）」处置；HUMAN_DECISION_REQUIRED 项先人工定方案再实现
-7. 还有本轮可主动处置的 finding → 回步骤 5 对应路径；仅剩 TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING → 输出最终报告（列明各 finding 的 lifecycle + disposition），询问是否扩大范围/收尾（不得自动继续）
+7. 任何「立即修复」执行后，评估 CHANGE_RISK，按「修复后复查（按风险分级）」处置；HUMAN_DECISION_REQUIRED 项先人工定方案再实现
+8. 还有本轮可主动处置的 finding → 回步骤 6 对应路径；仅剩 TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING → 输出最终报告（列明各 finding 的 lifecycle + disposition），询问是否扩大范围/收尾（不得自动继续）
 
 <HARD-GATE>
 - 仅对 HUMAN_DECISION_REQUIRED 类逐条裁决：每轮只处理一个、只提一个裁决问题；用户未回答不得继续下一个
@@ -132,15 +137,15 @@ disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING 
 - 缺事实证据 → V；缺正确行为定义 → H；优先减少误报
 
 ### 弱模型重分类复核
-弱模型若改变 ChatGPT 建议的 CLASSIFICATION（任何 F/V/H 重分类），**不得静默改分流**，须把反证送 ChatGPT targeted reconsideration。CHANGE_RISK 突破下限降级同样须复核。反向升级（如 F→H）须说明理由。最简单可靠的执行：**任何 F/V/H 重分类均须 ChatGPT 复核**（例如 ChatGPT 判定 FINDING，弱模型不得改成 VERIFICATION_REQUIRED 把应修复问题变成无限待验证）。
+弱模型若改变强审者建议的 CLASSIFICATION（任何 F/V/H 重分类），**不得静默改分流**，须把反证送强审者 targeted reconsideration。CHANGE_RISK 突破下限降级同样须复核。反向升级（如 F→H）须说明理由。最简单可靠的执行：**任何 F/V/H 重分类均须强审者复核**（例如强审者判定 FINDING，弱模型不得改成 VERIFICATION_REQUIRED 把应修复问题变成无限待验证）。
 
 ## DISPUTED 路径
 
-弱模型不得静默否定 ChatGPT finding（"引用有误"不能让问题直接消失）：
+弱模型不得静默否定强审者的 finding（"引用有误"不能让问题直接消失）：
 
-1. 弱模型发现 ChatGPT 引用/结论不成立 → 标记 `DISPUTED`，附本地反证（实际代码/行号/规格）
-2. 送 ChatGPT 复核反证（同 conversation_id）
-3. ChatGPT 确认不成立 → `INVALIDATED`；确认成立 → 恢复原分流继续处置
+1. 弱模型发现强审者引用/结论不成立 → 标记 `DISPUTED`，附本地反证（实际代码/行号/规格）
+2. 送**同一强审者**复核反证（复用 `review_session_handle`，句柄形态见 transport 对应分节）
+3. 强审者确认不成立 → `INVALIDATED`；确认成立 → 恢复原分流继续处置
 
 ## VERIFICATION_REQUIRED 转换
 
@@ -151,25 +156,15 @@ disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING 
 
 ## 首次送审模板
 
-调用契约遵循 [transport.md](references/transport.md)。content：
+**模板按后端分别定义在 [transport.md](references/transport.md) 的对应分节**，本文件不复制——后端专属的 repo 名形式、路径规则、请求字段名各不相同，写在这里会与 transport 形成两套事实源，也会在换后端时给出错误指令。
 
-```
-请使用 Tunnel 工具按仓库名读取仓库 "<repo>" 中的以下文件（不要依赖我提供内容，也不要猜绝对路径——"<repo>" 即本地 work 下的相对路径，Tunnel 会解析到真实目录）：
-<文件清单，每行一个 repo 内相对路径>
+本文件只规定**后端中立的三步**：
 
-逐文件审核：正确性、边界处理、错误传播、与同目录其他代码的一致性；
-如有提供需求/设计文档（<文档路径>），同时审核实现与文档的一致性。
+1. 按已解析的 `backend` 打开 [transport.md](references/transport.md) 的对应分节；
+2. 按该分节的要求构造请求，内容至少覆盖：**授权受审范围、关注点、可选权威依据、冻结 baseline**；
+3. 请求中必须要求强审者声明覆盖情况（`reviewed` / `unreadable`），**未完整读取即不得宣称范围审核完成**。
 
-对每个 finding 输出：finding ID、SEVERITY(HIGH/MEDIUM/LOW)、问题描述、位置(文件:行号)、修改建议、建议分流(FINDING/VERIFICATION_REQUIRED/HUMAN_DECISION_REQUIRED)。
-
-最后必须输出文件覆盖清单：
-REVIEWED: <已读文件>
-UNREADABLE: <未能读取的文件>
-
-只要有指定文件未读到，不得宣称范围审核完成。如果无法读取任何指定文件，直接回复一行：无法读取指定文件。
-```
-
-**repo 名与路径形式（强制）**：`<repo>` 必须按 [transport.md](references/transport.md) 命名表给出（~/Working 下项目一律 `work/<相对路径>`，如 `work/Keyboard/Macim-worktrees/F-3.3`），**严禁在 content 中写任何绝对路径**；`<文件清单>` 必须是该 repo 内的相对路径，同样不得写绝对路径。弱模型送审前须把本地绝对路径换算为 `work/<相对路径>` 形式。
+各后端的强制读取、路径与传输规则见 transport 对应分节。
 
 ## 修复后复查（按风险分级）
 
@@ -177,8 +172,8 @@ UNREADABLE: <未能读取的文件>
 
 ### 关闭权规则（堵自闭环）
 
-- **凡 ChatGPT 提出的 finding，修改了生产代码或测试语义，弱模型不得自行 CLOSED**，必须由 ChatGPT 针对性复查返回 CLOSED
-- LOW 可把多个 finding 合并成一次轻量 ChatGPT targeted review，以控制成本
+- **凡强审者提出的 finding，修改了生产代码或测试语义，弱模型不得自行 CLOSED**，必须由强审者针对性复查产生可归一为 `PASS` 的结果，再由关闭层按 CLOSED 判据四项落地
+- LOW 可把多个 finding 合并成一次轻量的强审者 targeted review，以控制成本
 - 仅纯非行为修改（确定性拼写/格式修复）允许本地验证直接 CLOSED
 - HUMAN_DECISION_REQUIRED 项先人工定方案再实现，不得弱模型直接修掉
 
@@ -186,55 +181,43 @@ UNREADABLE: <未能读取的文件>
 
 | CHANGE_RISK | 复查要求 | 关闭条件 |
 |---|---|---|
-| LOW | 测试/静态检查通过；多个可合并一次轻量 ChatGPT targeted review | ChatGPT 返回 CLOSED（生产代码/测试语义修改）；纯拼写/格式可本地 CLOSED |
-| MEDIUM | ChatGPT 针对性复查（真实 diff + 当前源码） | ChatGPT 返回 CLOSED |
-| HIGH | ChatGPT 针对性复查 + 测试/真实运行证据 + baseline 对比 | ChatGPT 返回 CLOSED 且证据齐备 |
+| LOW | 测试/静态检查通过；多个可合并为一次轻量的强审者 targeted review | `PASS` + CLOSED 判据四项满足；纯拼写/格式可本地 CLOSED |
+| MEDIUM | 由强审者针对性复查（真实 diff + 当前源码） | `PASS` + CLOSED 判据四项满足 |
+| HIGH | 由强审者针对性复查 + 测试/真实运行证据 + baseline 对比 | `PASS` + CLOSED 判据四项满足且证据齐备 |
 
 CHANGE_RISK 按「三个独立字段」中的下限评估，弱模型不得无理由突破下限降级。
 
-### ChatGPT 针对性复查模板（同 conversation_id 续发）
+### 针对性复查模板（同一强审者续接）
 
-不强求重新全仓审核。给 ChatGPT 输入：**finding ID、原 finding、实际 diff、当前相关源码、授权范围、人工裁决记录、baseline、测试命令与结果**。**MEDIUM/HIGH 必须提供真实 diff + 当前源码，禁止用"文件清单+修改摘要"替代**。
+不强求重新全仓审核。向**同一强审者**提供：**finding ID、原 finding、授权范围、人工裁决记录、baseline、测试命令与结果**，以及**能定位真实 diff 与当前源码的 backend-appropriate scope**。
 
-```
-请复查以下修复。重点不是重新做完整代码审查，而是验证：
-1. 原 finding 是否被真正解决；
-2. 修复是否改变了未授权的行为（对照授权范围/裁决记录）；
-3. 是否引入新的逻辑、并发、兼容性或测试问题；
-4. 当前证据是否足以关闭 finding。
+**MEDIUM/HIGH 必须让强审者真正取得真实 diff 与当前源码，禁止只用"文件清单+修改摘要"替代**。"让强审者取得"不等于粘贴——具体方式按 [transport.md](references/transport.md) 对应分节执行。
 
-finding ID: <ID>
-原 finding: <SEVERITY/问题描述/位置>
-授权范围: <用户批准的修复事项>
-人工裁决: <如有，用户最终选择的方案>
-允许修改文件: <范围>
-不得改变: <兼容性/API/行为约束>
-修改前 baseline: <HEAD/已知失败>
-实际 diff: <真实 diff>
-当前相关源码: <修改后相关代码>
-验证结果: <测试命令/退出码/日志>
+续接必须复用 `review_session_handle`（各后端的句柄形态见 transport 对应分节），并做身份校验；**不得因换后端而继承原会话的 CLOSED 权**。
 
-第一行必须且只能是以下状态之一：
-STATUS: CLOSED
-STATUS: REOPEN
-STATUS: VERIFICATION_REQUIRED
-STATUS: HUMAN_DECISION_REQUIRED
+**请求字段（后端中立）**：finding ID、原 finding、授权范围、人工裁决记录、baseline、测试命令与结果、能定位真实 diff 与当前源码的受审范围。
 
-第二行起：若不是 CLOSED，说明最小原因和下一步。REOPEN 须指明是原问题未解决还是引入新问题（新问题须建新 finding ID + introduced_by）。
-```
+**线上模板按后端定义**——`chatgpt-tunnel` 的 `STATUS:` 文本模板见 [transport.md](references/transport.md) 对应分节。本文件不复制线上格式，只规定结果语义。
 
 ### 复查结果处置
 
-- `CLOSED`：满足 CLOSED 判据，标记闭环
-- `REOPEN`：原问题未解决 → 原 finding lifecycle 置回/保持 OPEN、保留原 ID 回步骤 3；引入新问题 → 新 finding ID + introduced_by 回步骤 3
-- `VERIFICATION_REQUIRED`：登记 VERIFICATION_PENDING，补证据后再复查
-- `HUMAN_DECISION_REQUIRED`：升级为逐条裁决（HARD-GATE 适用）
+reviewer 一轮输出先按 [transport.md](references/transport.md) 的「统一结果路径」归一为 `dd-review-result/1`，再由本 skill 的关闭层状态机处置：
+
+| 归一结果 | 关闭层处置 |
+|---|---|
+| `PASS` | CLOSED 候选，仍须满足 CLOSED 判据四项 |
+| `FINDINGS`（`classification=FINDING`） | 原 finding lifecycle 置回/保持 `OPEN`、保留原 ID 回步骤 4；引入新问题 → 新 finding ID + `introduced_by` |
+| `FINDINGS`（`classification=VERIFICATION_REQUIRED`） | 登记 VERIFICATION_PENDING，补证据后再复查 |
+| `FINDINGS`（`classification=HUMAN_DECISION_REQUIRED`） | 升级为逐条裁决（HARD-GATE 适用） |
+| `BLOCKED` | **永不得 CLOSED**；按 `failure_category` 处理 |
+
+**不得把 `dd-review-result/1` 的 `PASS` 直接等同于 finding 的 `CLOSED`。**
 
 ## 风险点展示格式（MUST）
 
 展示任何风险点时，必须给出**能够独立理解该问题的最小完整语义上下文**：优先完整函数/方法；类级问题给完整相关成员；配置/非代码文件（YAML/JSON/SQL/Markdown 等）给完整相关块。问题语句用**对应语言的注释语法**标注警告（如 Python `# ⚠️`、SQL `-- ⚠️`），并明确这是展示标注、不是源码内容。代码块后只补 1-3 条要点。禁止：把代码打散配大段文字、行尾长注释、用宽表格替代代码。
 
-展示内容固定四段：**ChatGPT 意见**（含 SEVERITY 与建议分流）→ **本地核对结论**（引用属实/有误，逐条）→ **分流归类**（F/V/H + 一句理由）→ **建议处置**。
+展示内容固定四段：**强审者意见**（含 SEVERITY 与建议分流）→ **本地核对结论**（引用属实/有误，逐条）→ **分流归类**（F/V/H + 一句理由）→ **建议处置**。
 
 - FINDING 批量展示时，多条可紧凑列出，每条仍含 ID+位置+问题+建议修复
 - HUMAN_DECISION_REQUIRED 单条展示时，在「建议处置」后接「逐条裁决提问」
@@ -244,7 +227,7 @@ STATUS: HUMAN_DECISION_REQUIRED
 - 把所有 FINDING 类风险点合并展示（遵循「风险点展示格式」）
 - 若已启用「自动化处置约定」，对本轮已核实且范围明确的 FINDING 直接执行最小修复，不再询问；超出约定边界的 finding 单独暂停
 - 未启用自动化约定时，才一次性向用户确认处置（不逐条提问）：全部立即修复、全部加入 TODO、或按子集拆分
-- 修复前仍记录 baseline，保留用户已有变更；修复后评估 CHANGE_RISK 并按风险等级送 ChatGPT 针对性复查
+- 修复前仍记录 baseline，保留用户已有变更；修复后评估 CHANGE_RISK 并按风险等级送强审者针对性复查
 - 修复完成后评估 CHANGE_RISK，按「修复后复查（按风险分级）」处置
 
 ## 逐条裁决提问要求（仅 HUMAN_DECISION_REQUIRED）
@@ -270,16 +253,16 @@ STATUS: HUMAN_DECISION_REQUIRED
 
 | 借口 / 失败模式 | 现实 |
 |---|---|
-| "ChatGPT 说的肯定对，直接照改"；未核对引用就展示或执行其意见 | 引用可能错；先本地核对，再分流；引用有误走 DISPUTED，不得静默丢弃或作废 |
-| "低风险，测试过了我自己关掉"；改完不复审就宣称闭环；把非 CLOSED 回复、TODO/LATER/ACCEPTED_RISK 当作 CLOSED | 生产代码/测试语义修改必须由 ChatGPT 针对性复查返回 CLOSED，且满足 CLOSED 判据四项 |
+| "强审者说的肯定对，直接照改"；未核对引用就展示或执行其意见 | 引用可能错；先本地核对，再分流；引用有误走 DISPUTED，不得静默丢弃或作废 |
+| "低风险，测试过了我自己关掉"；改完不复审就宣称闭环；把 `FINDINGS` / `BLOCKED`、TODO/LATER/ACCEPTED_RISK，或其他未满足 CLOSED 判据的状态当作 CLOSED | 生产代码/测试语义修改必须经强审者针对性复查，再由关闭层按 CLOSED 判据四项落地；`PASS` 只是 CLOSED 候选，不等于 CLOSED |
 | "每个问题都得问用户才稳妥"；缺测试或只缺运行证据就让用户定夺 | 缺测试归 FINDING 并指出补什么测试；缺事实证据归 VERIFICATION_REQUIRED；只有缺正确行为定义才是 HUMAN_DECISION_REQUIRED；能客观判定的归 FINDING 批量处置 |
 | "问题都差不多，一起问了效率高"；一次列出全部 HUMAN_DECISION_REQUIRED 风险点 | HARD-GATE：原子单位=独立决策点，一次一个，一个提问不得捆绑多个独立决策 |
-| "这个 H 其实是 FINDING，我直接重分类"；静默突破 CHANGE_RISK 下限降级 | 任何 F/V/H 重分类、以及突破 CHANGE_RISK 下限的降级，必须送 ChatGPT 复核，不得静默更改 |
-| "引用有误，这 finding 作废" | 走 DISPUTED：附本地反证送 ChatGPT 复核 |
-| "中风险给个摘要就行"；中高风险复查用"文件清单+摘要"替代真实 diff | MEDIUM/HIGH 必须真实 diff + 当前源码 |
+| "这个 H 其实是 FINDING，我直接重分类"；静默突破 CHANGE_RISK 下限降级 | 任何 F/V/H 重分类、以及突破 CHANGE_RISK 下限的降级，必须送强审者复核，不得静默更改 |
+| "引用有误，这 finding 作废" | 走 DISPUTED：附本地反证送强审者复核 |
+| "中风险给个摘要就行"；中高风险复查用"文件清单+摘要"替代真实 diff | MEDIUM/HIGH 必须让强审者取得真实 diff 与当前源码（**方式按 transport 对应分节，不等于粘贴**） |
 | "修改 obvious 不用等授权"；"顺手把旁边的问题也修了"；复审发现的新问题不经过分流直接修 | 未经授权不得改任何文件；只改获批事项，不夹带重构；新问题走新分流（新 finding ID + introduced_by） |
 | 修改前不记 baseline；修改/覆盖用户已有变更 | 先记录 HEAD/dirty tree/测试基线/已知失败；禁止覆盖用户已有变更 |
-| 送审不指定文件清单；部分文件未读却宣称范围审核完成 | 输入必须含文件清单 + REVIEWED/UNREADABLE 覆盖 |
-| 把代码粘贴进 content；复审 content 透露 MCP/浏览器/插件等底层实现细节或绝对路径 | ChatGPT 经 Tunnel 按 `work/<相对路径>` repo 名自行读取；content 只写业务视角，禁止绝对路径 |
+| 送审不指定受审范围；部分内容未读却宣称范围审核完成 | 输入必须含受审范围，且结果须给出 `reviewed` / `unreadable` 完整覆盖 |
+| 把代码粘贴进 content；复审 content 透露 MCP/浏览器/插件等底层实现细节或绝对路径 | 按 [transport.md](references/transport.md) 对应分节的读取方式执行；content 只写业务视角、禁止绝对路径 |
 | HUMAN_DECISION_REQUIRED 不给技术分析和可选方案，只写"请人工确认"；未经人工定方案就由弱模型直接修掉 | 逐条裁决前必须先给技术分析 + 可选方案（A/B/C），裁决后按获批方案实现 |
 | 复查模板缺授权范围/裁决记录/baseline | 针对性复查必须提供完整上下文，否则"未授权"无法判断 |
