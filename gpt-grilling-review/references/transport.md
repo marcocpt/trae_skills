@@ -38,16 +38,19 @@
 
 ### 续接句柄与身份校验（FR-MB-003、FR-MB-011）
 
-句柄的取值类型、获取方式与续接调用形态由 runtime adapter 合同定义；**grilling 只编排轮次，不拼装 provider 命令行**（FR-MB-015）。grilling 侧只依赖以下不变式：
+**不变式（所有后端一致）**：针对性复查必须回到**同一强审身份**与**同一 active review session**，且身份连续性必须有**机械可验证依据**。**不得把进程退出码 0、或"复用同一个字符串"当作续接成功的证据。**
 
-1. `initial` 调用必须返回可持久化的会话标识，记为 `review_session_handle`。
-2. `resume` 调用必须接受该标识并回到同一会话上下文。
-3. **身份校验（MUST）**：每次续接后必须从后端**结构化**输出提取实际会话标识，校验 `actual_session_id == review_session_handle`；无法提取或不相等 → `session_resume_mismatch` → BLOCKED。
-4. **不得把进程退出码 0 当作续接成功的证据。**
-5. 句柄唯一绑定一个 workflow + backend + reviewer 身份，**不得跨 workflow 复用**；同一 active session 同时只允许一个 in-flight 轮次，并发续接必须机械串行化。
-6. 派生类调用（如 `--fork` 形态）生成新句柄并保存 parent 关系，**旧句柄不自动转移关闭权**。
-7. 崩溃后只从 runtime 持久状态恢复，不从 stdout、临时文件或 provider 私有文件重建。
-8. 句柄缺失或身份校验失败时，针对性复查与 CLOSED 关闭权不可执行，必须 fail-closed。
+句柄的取值类型、获取方式与续接调用形态**按后端分两类**实现，不得互相套用：
+
+1. **runtime-managed backend**（`opencode-cli`、`codex-cli` 等）：调用形态与会话标识由 runtime adapter 合同定义，grilling 只编排轮次、不拼装 provider 命令行（FR-MB-015）；每次续接后从 canonical 结构化 `session` 字段提取实际标识，校验 `actual_session_id == review_session_handle`，无法提取或不相等 → `session_resume_mismatch` → BLOCKED。
+2. **`chatgpt-tunnel`**：会话身份由本传输合同自管（DEC-MB-04），映射与连续性规则见本文件下方 `chatgpt-tunnel` 分节。要点是**句柄取回读到的实际 `conversation_id`，不取送审时传入的别名**——两者并不相同。
+
+其余不变式：
+
+- 句柄唯一绑定一个 workflow + backend + reviewer 身份，**不得跨 workflow 复用**；同一 active session 同时只允许一个 in-flight 轮次，并发续接必须机械串行化。
+- 派生类调用（如 `--fork` 形态）生成新句柄并保存 parent 关系，**旧句柄不自动转移关闭权**。
+- 崩溃后只从 runtime 持久状态恢复，不从 stdout、临时文件或 provider 私有文件重建。
+- 句柄缺失或身份校验失败时，针对性复查与 CLOSED 关闭权不可执行，必须 fail-closed。
 
 **可恢复自动化只认可显式传入句柄的 canonical 续接形态**；依赖"最近会话"的隐式续接存在被其他任务改写的歧义，不得作为合同（FR-MB-014）。
 
@@ -59,12 +62,38 @@
 2. 绕过沙箱或审批的危险模式一律 fail-closed。
 3. **续接属于新的调用形态**：只有现有 backend-bound 只读证据明确覆盖该续接形态时才能沿用，否则必须重新取证。
 
+### 受审候选身份与基线复验（FR-MB-019）
+
+只读强制只保证"reviewer 不改东西"，**不保证"reviewer 看到的东西在两轮之间没被第三方改过"**。本地 CLI 后端读的是**活的**工作树：主 Agent 的修复提交、其他进程或并发任务都可能在第 N 轮与第 N+1 轮之间改变受审内容，使后一轮 verdict 不再对应前一轮的修复结果，CLOSED 判据因此失去所指对象。此约束适用于**所有 grilling 后端**，包括 `chatgpt-tunnel`——审核方经授权通道自读时，本地同样无法保证其读取的远端状态在多轮之间不变。
+
+1. 每个 authoritative review turn 必须绑定一个**受审候选标识**（candidate identity），至少能区分仓库/工作区身份与内容状态。该标识的字段名与持久化方式由 runtime 状态属主定义，本文件**不自行造字段**（FR-MB-006 单向引用纪律）。
+2. **捕获与复核时机（MUST，方案 A）**：每轮送审前先 commit 当轮修复（WIP commit 可接受），以该 commit 的 HEAD SHA 作为本轮 candidate identity，工作树必须干净；在 verdict 进入 CLOSED 判据**之前**重新校验 HEAD 仍等于该 SHA 且工作树仍干净。
+3. 校验不通过 → 按既有 runtime canonical 状态 `baseline_mismatch` 处理（**不新造状态名**）；本轮 verdict **不得用于 CLOSED 任何 finding**，并 fail-closed（FR-MB-007 第 4 条，不得降级）。
+4. **与只读强制正交**：基线标识防"受审内容被第三方改变"，只读强制防"reviewer 自身产生副作用"。**满足只读 ≠ 满足基线一致**，两者不得互相替代或合并取证；两份证据分别持久化、分别失效、分别重新取证，任一份失效只使它自身失效。
+5. 多轮语境**复用** runtime 既有冻结基线校验机制（`_verify_frozen_baseline`）：由"每轮先 commit"化解"工作树必须干净"与多轮语义的冲突。**不新增多轮专用机制，不新造第二个状态名**——那正是 FR-MB-020 要防的第二套规则。
+6. 在 candidate identity 可机械校验前，多轮 verdict **不得视为可 CLOSED 的证据**（fail-closed）。
+
 ### 结果双层分离（FR-MB-013）
 
 1. **传输层**：后端一轮只返回 `dd-review-result/1`（`PASS` / `FINDINGS` / `BLOCKED`），属主是 runtime。
 2. **关闭层**：`CLOSED` / `REOPEN` / `VERIFICATION_REQUIRED` / `HUMAN_DECISION_REQUIRED` 由 [SKILL.md](../SKILL.md) 的状态机定义，属主是本 skill。
 3. 转换规则：`BLOCKED` **永不得** CLOSED；`FINDINGS` 必须逐条分流处置，不得整体视为 CLOSED；`PASS` 仅作为 targeted review 的 CLOSED 候选，仍须满足 CLOSED 判据四项。
 4. **不得把 `dd-review-result/1` 的 `PASS` 与 finding 的 `CLOSED` 等同。**
+
+#### 统一结果路径（MUST）
+
+**只有一个结论入口**：无论哪个后端，reviewer 一轮的输出都先归一为 `dd-review-result/1`，再交给关闭层状态机。**不得存在"某后端直接产出关闭层结论"的第二条路径。**
+
+`chatgpt-tunnel` 的 `STATUS:` 首行是**线上格式，不是关闭层结论**，必须先归一：
+
+| reviewer 返回 | 归一为 | 后续 |
+|---|---|---|
+| `STATUS: CLOSED` | `PASS` | 仅作为 CLOSED 候选，仍须满足 CLOSED 判据四项 |
+| `STATUS: REOPEN` | `FINDINGS` | 原 finding 保持 `OPEN` 并回分流；新问题新建 ID + `introduced_by` |
+| `STATUS: VERIFICATION_REQUIRED` | 不进入三态结论 | 作为关闭层处置信号，按 [SKILL.md](../SKILL.md) 登记 `VERIFICATION_PENDING` |
+| `STATUS: HUMAN_DECISION_REQUIRED` | 不进入三态结论 | 作为关闭层处置信号，按 [SKILL.md](../SKILL.md) 走逐条裁决 |
+
+归一完成前，reviewer 返回的 `STATUS:` **不得**直接写入 finding 的 lifecycle。
 
 ### 能力探测与失效触发器（FR-MB-012）
 
@@ -134,7 +163,15 @@
 **3. 处置意见**
 
 - 逐条：采纳 → 修改并注明依据哪条意见；不采纳 → 说明理由（审核方可能掌握你没看到的事实）
-- 重大修改后复用同一 `conversation_id` 复审
+- 重大修改后复用同一实际 `conversation_id` 复审（见下节，非别名）
+
+#### 会话句柄与连续性（DEC-MB-04 自管）
+
+按 DEC-MB-04，本后端的会话身份不进入 runtime stateful 会话合同，映射与连续性规则由本节定义。
+
+- **句柄取回读值，不取传入值**：首轮 `chatgpt_send` 传入的 `conversation_id` 是**别名**（形如 `<app 名>-<仓库名>-<分支名>-<月日时分>`）；`review_session_handle` 取**结果头部回读到的实际 `conversation_id`**。两者不同——2026-09-05 实测：传入别名 `codebuddy-AGENT-skills-refactor-gpt-grilling-transport-09051906`，结果头部回读实际 ID `6a9bf7dd-cc3c-83ee-b017-e8c3abaaa1b9`。
+- **续接校验**：后续每轮续发携带该实际 ID；取得结果后校验头部回读 ID 仍等于句柄，不相等 → `session_resume_mismatch` → BLOCKED。
+- **重连不改句柄**：连接异常重连时**继续携带原 `conversation_id`**，不得生成新 ID（三步法第 2 步的"新建连接"指新建客户端连接，不是换 ID）。
 
 #### 仓库命名
 
