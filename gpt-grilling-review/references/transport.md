@@ -90,8 +90,10 @@
 |---|---|---|
 | `STATUS: CLOSED` | `PASS` | 仅作为 CLOSED 候选，仍须满足 CLOSED 判据四项 |
 | `STATUS: REOPEN` | `FINDINGS` | 原 finding 保持 `OPEN` 并回分流；新问题新建 ID + `introduced_by` |
-| `STATUS: VERIFICATION_REQUIRED` | 不进入三态结论 | 作为关闭层处置信号，按 [SKILL.md](../SKILL.md) 登记 `VERIFICATION_PENDING` |
-| `STATUS: HUMAN_DECISION_REQUIRED` | 不进入三态结论 | 作为关闭层处置信号，按 [SKILL.md](../SKILL.md) 走逐条裁决 |
+| `STATUS: VERIFICATION_REQUIRED` | `FINDINGS`，其 finding 的 `classification=VERIFICATION_REQUIRED` | 由关闭层按 [SKILL.md](../SKILL.md) 登记 `VERIFICATION_PENDING` |
+| `STATUS: HUMAN_DECISION_REQUIRED` | `FINDINGS`，其 finding 的 `classification=HUMAN_DECISION_REQUIRED` | 由关闭层按 [SKILL.md](../SKILL.md) 走逐条裁决 |
+
+**四种 `STATUS:` 都必须先形成合法的 `dd-review-result/1`**，不存在 `wire STATUS → 关闭层` 的旁路；`VERIFICATION_REQUIRED` / `HUMAN_DECISION_REQUIRED` 是 finding 的 `classification` 取值，不是绕过三态的独立通道。
 
 归一完成前，reviewer 返回的 `STATUS:` **不得**直接写入 finding 的 lifecycle。
 
@@ -147,7 +149,7 @@
 
 **1. 提交 chatgpt_send**
 
-- `conversation_id`：固定 `"<app 名>-<仓库名>-<分支名>-<月日时分>"`，同一个会话中多轮复用（复审带上下文）
+- `conversation_id`：**首轮**传稳定别名 `"<app 名>-<仓库名>-<分支名>-<月日时分>"`；拿到结果头部回读的**实际** `conversation_id` 后，以该回读值作为 `review_session_handle`，**后续轮次一律使用实际 ID**。别名与实际 ID 不同，不可互相替代（见下方「会话句柄与连续性」）
 - `instruction`：传 `""`（不加默认前缀）
 - `timeout_seconds`：`600`（单轮审核等待上限；MCP 参数上限 3600，传更大直接报参数错误）
 - `content`：按下方模板。只写业务要求 + 仓库名 + 范围；**禁止粘贴代码/diff**
@@ -157,7 +159,7 @@
 - 直接调用 `chatgpt_get_result`，不必传 `wait_seconds`：服务端默认挂起最长 55 秒等待，完成立即返回；返回 `[RUNNING]` 则循环再调，审核通常 5-10 分钟
 - 无需客户端自定节奏（旧的“隔 20/40 秒再调”已废弃）；仅当所在客户端单次工具调用超时小于 55 秒时显式传更小的 `wait_seconds`（传 0 = 立即返回不等待）
 - **禁止重复提交**；`[FAILED]` 检查原因后最多重试 1 次
-- 连接异常（ECONNRESET 等）：任务仍在 daemon，**新建连接更新 conversation_id 重试轮询**，不要放弃
+- 连接异常（ECONNRESET 等）：任务仍在 daemon，**新建客户端连接并继续携带原实际 `conversation_id`** 重试轮询，不要放弃，**不要生成新 ID**
 - 满 10 分钟仍未完成：报告用户等待中，不得无限阻塞
 
 **3. 处置意见**
@@ -172,6 +174,7 @@
 - **句柄取回读值，不取传入值**：首轮 `chatgpt_send` 传入的 `conversation_id` 是**别名**（形如 `<app 名>-<仓库名>-<分支名>-<月日时分>`）；`review_session_handle` 取**结果头部回读到的实际 `conversation_id`**。两者不同——2026-09-05 实测：传入别名 `codebuddy-AGENT-skills-refactor-gpt-grilling-transport-09051906`，结果头部回读实际 ID `6a9bf7dd-cc3c-83ee-b017-e8c3abaaa1b9`。
 - **续接校验**：后续每轮续发携带该实际 ID；取得结果后校验头部回读 ID 仍等于句柄，不相等 → `session_resume_mismatch` → BLOCKED。
 - **重连不改句柄**：连接异常重连时**继续携带原 `conversation_id`**，不得生成新 ID（三步法第 2 步的"新建连接"指新建客户端连接，不是换 ID）。
+- **续接连续性实测（2026-09-05）**：首轮传别名 `codebuddy-AGENT-skills-refactor-gpt-grilling-transport-09051906` → 结果头部回读实际 ID `6a9bf7dd-cc3c-83ee-b017-e8c3abaaa1b9`；第二轮以该实际 ID 续发 → 回读仍为 `6a9bf7dd-cc3c-83ee-b017-e8c3abaaa1b9`。满足「initial 回读 X → resume 携带 X → resume 回读 X」的连续性验证。
 
 #### 仓库命名
 
