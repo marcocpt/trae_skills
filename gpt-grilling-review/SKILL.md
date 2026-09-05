@@ -15,7 +15,7 @@ description: Use when 用户要求外部强审者审核指定文件/指定仓库
 
 | 角色 | 职责 | 禁止 |
 |---|---|---|
-| 强审者（主审） | 首审输出 finding + SEVERITY + 建议分流；针对性复查并给出 STATUS | 不得只凭弱模型摘要 CLOSED |
+| 强审者（主审） | 首审输出 finding + SEVERITY + 建议分流；针对性复查并给出可归一为 `dd-review-result/1` 的审查结果 | 不得只凭弱模型摘要 CLOSED |
 | 本地 agent（弱模型，执行+核对） | 送审、核对引用、按规则分流、按已启用的自动化策略执行范围内修改、按风险分级送复查 | 不得机械接受意见；不得静默重分类 F/V/H 或降级 CHANGE_RISK；不得自行 CLOSED 生产代码/测试语义修改；不得越过自动化策略边界；不得覆盖用户已有变更 |
 | 用户（裁决人） | 对 HUMAN_DECISION_REQUIRED 逐条裁决；可一次启用或覆盖 FINDING 自动处置策略；对 VERIFICATION_REQUIRED 确认需要外部/真实环境的取证方式 | — |
 
@@ -86,7 +86,7 @@ disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING 
 开始前必须确认（缺失则向用户提问，不得猜测）：
 
 1. **强审后端**（`backend`，可选）：按 [transport.md](references/transport.md)「后端选择」合同校验；**缺省** → `chatgpt-tunnel`；**不具资格** → 按该合同判 `configuration_invalid` 并 BLOCKED，**不得静默回退**。资格条件与候选顺序一律以 transport 与 runtime 为准，本文件不复制
-2. **受审范围**：按已选 backend 在 [transport.md](references/transport.md) 对应分节的要求构造。**不得跨后端混用受审范围或 session 语义**（repo 名、cwd、scope、句柄各自只属于其后端）
+2. **受审范围**：按已选 backend 在 [transport.md](references/transport.md) 对应分节的要求构造。**不得跨后端混用受审范围或 session 语义**；具体字段与形态按 transport 对应分节
 3. **可选权威依据**：需求/设计/规范文档路径
 4. **修改前 baseline**（修复阶段必记）：当前 HEAD、`git status --short`、已有 dirty diff、相关测试命令及既有失败。**禁止修改/覆盖用户已有变更**
 
@@ -164,7 +164,7 @@ disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING 
 2. 按该分节的要求构造请求，内容至少覆盖：**授权受审范围、关注点、可选权威依据、冻结 baseline**；
 3. 请求中必须要求强审者声明覆盖情况（`reviewed` / `unreadable`），**未完整读取即不得宣称范围审核完成**。
 
-各后端的强制规则（如 `chatgpt-tunnel` 的 repo 命名映射表与"禁止绝对路径"）见 transport 对应分节。
+各后端的强制读取、路径与传输规则见 transport 对应分节。
 
 ## 修复后复查（按风险分级）
 
@@ -254,7 +254,7 @@ reviewer 一轮输出先按 [transport.md](references/transport.md) 的「统一
 | 借口 / 失败模式 | 现实 |
 |---|---|
 | "强审者说的肯定对，直接照改"；未核对引用就展示或执行其意见 | 引用可能错；先本地核对，再分流；引用有误走 DISPUTED，不得静默丢弃或作废 |
-| "低风险，测试过了我自己关掉"；改完不复审就宣称闭环；把非 CLOSED 回复、TODO/LATER/ACCEPTED_RISK 当作 CLOSED | 生产代码/测试语义修改必须经强审者针对性复查，再由关闭层按 CLOSED 判据四项落地；`PASS` 只是 CLOSED 候选，不等于 CLOSED |
+| "低风险，测试过了我自己关掉"；改完不复审就宣称闭环；把 `FINDINGS` / `BLOCKED`、TODO/LATER/ACCEPTED_RISK，或其他未满足 CLOSED 判据的状态当作 CLOSED | 生产代码/测试语义修改必须经强审者针对性复查，再由关闭层按 CLOSED 判据四项落地；`PASS` 只是 CLOSED 候选，不等于 CLOSED |
 | "每个问题都得问用户才稳妥"；缺测试或只缺运行证据就让用户定夺 | 缺测试归 FINDING 并指出补什么测试；缺事实证据归 VERIFICATION_REQUIRED；只有缺正确行为定义才是 HUMAN_DECISION_REQUIRED；能客观判定的归 FINDING 批量处置 |
 | "问题都差不多，一起问了效率高"；一次列出全部 HUMAN_DECISION_REQUIRED 风险点 | HARD-GATE：原子单位=独立决策点，一次一个，一个提问不得捆绑多个独立决策 |
 | "这个 H 其实是 FINDING，我直接重分类"；静默突破 CHANGE_RISK 下限降级 | 任何 F/V/H 重分类、以及突破 CHANGE_RISK 下限的降级，必须送强审者复核，不得静默更改 |
