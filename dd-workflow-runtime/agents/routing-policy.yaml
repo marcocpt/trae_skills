@@ -21,9 +21,11 @@ roles:
 #
 # opencode-cli qualifies (2026-09-03): declares resume + session_identity and
 # its continuation-form readonly evidence is captured.  chatgpt-tunnel and
-# codex-cli stay out: chatgpt-tunnel's session contract lives in the grilling
-# transport layer (cross-owner decision pending) and codex-cli has no
-# continuation-form readonly evidence yet (fail-closed, FR-MB-004.3).
+# codex-cli stay out: chatgpt-tunnel is transport-owned per DEC-MB-04 (its
+# session contract lives in gpt-grilling-review/references/transport.md and is
+# deliberately not registered here — not a pending decision), and codex-cli's
+# continuation form stays fail-closed by user decision (2026-09-03, no
+# forensic run planned).
 # gpt-grilling-review MUST treat an empty order as backend_unavailable instead
 # of self-ordering (FR-MB-018.4).
 stateful_roles:
