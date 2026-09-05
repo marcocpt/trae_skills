@@ -9,7 +9,7 @@ description: Use when 用户要求外部强审者审核指定文件/指定仓库
 
 ## 目标
 
-角色反转的审核闭环：**强审者是主审与最终关闭人**，**本地 agent（弱模型）是执行者与核对者**，**用户是最终裁决人**。依据 [classification-policy.md](references/classification-policy.md) 的人工判断升级规则，对核对属实的风险点做三类分流，**仅 HUMAN_DECISION_REQUIRED 逐条裁决**。用户可一次启用本 skill 的自动化处置约定，减少已核实 FINDING 的重复确认；该约定不扩大文件、真实数据或交付动作的授权范围。修复采用三个独立字段（SEVERITY / CLASSIFICATION / CHANGE_RISK）：**凡强审者提出的 finding 修改了生产代码或测试语义，弱模型不得自行 CLOSED，必须由强审者针对性复查（原 finding + 真实 diff + 授权范围 + 验证结果）返回 CLOSED 才闭环**；纯拼写/格式可本地验证关闭。
+角色反转的审核闭环：**强审者是主审与最终关闭人**，**本地 agent（弱模型）是执行者与核对者**，**用户是最终裁决人**。依据 [classification-policy.md](references/classification-policy.md) 的人工判断升级规则，对核对属实的风险点做三类分流，**仅 HUMAN_DECISION_REQUIRED 逐条裁决**。用户可一次启用本 skill 的自动化处置约定，减少已核实 FINDING 的重复确认；该约定不扩大文件、真实数据或交付动作的授权范围。修复采用三个独立字段（SEVERITY / CLASSIFICATION / CHANGE_RISK）：**凡强审者提出的 finding 修改了生产代码或测试语义，弱模型不得自行 CLOSED，必须由强审者针对性复查，产生可归一为 `PASS` 的结果后，再由本 skill 关闭层按 CLOSED 判据四项决定是否 CLOSED**；纯拼写/格式可本地验证关闭。
 
 ## 角色分工
 
@@ -85,8 +85,8 @@ disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING 
 
 开始前必须确认（缺失则向用户提问，不得猜测）：
 
-1. **强审后端**（`backend`，可选）：取值必须是 `dd-workflow-runtime/agents/review-backends.yaml` 中的 canonical backend ID。**缺省** → `chatgpt-tunnel`；**显式给出但无法识别或不满足三项能力条件**（续接能力、结构化会话标识、匹配调用形态的只读证明）→ 判 `configuration_invalid` 并 BLOCKED，**不得静默回退**。资格与候选顺序一律以 [transport.md](references/transport.md) 与 runtime 为准，本文件不复制
-2. **受审范围**：按所选后端的读取规则给出——`chatgpt-tunnel` 用 Tunnel repo 名（`work/<相对路径>` 形式，禁止任何绝对路径，送审前 `git worktree list` 确认存在）；`opencode-cli` / `codex-cli` 用工作区 cwd + 仓库内相对 `scope` 清单。**不得跨后端混用 repo 名、cwd、scope 或句柄语义**
+1. **强审后端**（`backend`，可选）：按 [transport.md](references/transport.md)「后端选择」合同校验；**缺省** → `chatgpt-tunnel`；**不具资格** → 按该合同判 `configuration_invalid` 并 BLOCKED，**不得静默回退**。资格条件与候选顺序一律以 transport 与 runtime 为准，本文件不复制
+2. **受审范围**：按已选 backend 在 [transport.md](references/transport.md) 对应分节的要求构造。**不得跨后端混用受审范围或 session 语义**（repo 名、cwd、scope、句柄各自只属于其后端）
 3. **可选权威依据**：需求/设计/规范文档路径
 4. **修改前 baseline**（修复阶段必记）：当前 HEAD、`git status --short`、已有 dirty diff、相关测试命令及既有失败。**禁止修改/覆盖用户已有变更**
 
@@ -172,7 +172,7 @@ disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING 
 
 ### 关闭权规则（堵自闭环）
 
-- **凡强审者提出的 finding，修改了生产代码或测试语义，弱模型不得自行 CLOSED**，必须由强审者针对性复查返回 CLOSED
+- **凡强审者提出的 finding，修改了生产代码或测试语义，弱模型不得自行 CLOSED**，必须由强审者针对性复查产生可归一为 `PASS` 的结果，再由关闭层按 CLOSED 判据四项落地
 - LOW 可把多个 finding 合并成一次轻量的强审者 targeted review，以控制成本
 - 仅纯非行为修改（确定性拼写/格式修复）允许本地验证直接 CLOSED
 - HUMAN_DECISION_REQUIRED 项先人工定方案再实现，不得弱模型直接修掉
@@ -181,9 +181,9 @@ disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING 
 
 | CHANGE_RISK | 复查要求 | 关闭条件 |
 |---|---|---|
-| LOW | 测试/静态检查通过；多个可合并为一次轻量的强审者 targeted review | 强审者返回 CLOSED（生产代码/测试语义修改）；纯拼写/格式可本地 CLOSED |
-| MEDIUM | 由强审者针对性复查（真实 diff + 当前源码） | 强审者返回 CLOSED |
-| HIGH | 由强审者针对性复查 + 测试/真实运行证据 + baseline 对比 | 强审者返回 CLOSED 且证据齐备 |
+| LOW | 测试/静态检查通过；多个可合并为一次轻量的强审者 targeted review | `PASS` + CLOSED 判据四项满足；纯拼写/格式可本地 CLOSED |
+| MEDIUM | 由强审者针对性复查（真实 diff + 当前源码） | `PASS` + CLOSED 判据四项满足 |
+| HIGH | 由强审者针对性复查 + 测试/真实运行证据 + baseline 对比 | `PASS` + CLOSED 判据四项满足且证据齐备 |
 
 CHANGE_RISK 按「三个独立字段」中的下限评估，弱模型不得无理由突破下限降级。
 
@@ -191,7 +191,7 @@ CHANGE_RISK 按「三个独立字段」中的下限评估，弱模型不得无�
 
 不强求重新全仓审核。向**同一强审者**提供：**finding ID、原 finding、授权范围、人工裁决记录、baseline、测试命令与结果**，以及**能定位真实 diff 与当前源码的 backend-appropriate scope**。
 
-**MEDIUM/HIGH 必须让强审者真正取得真实 diff 与当前源码，禁止只用"文件清单+修改摘要"替代**。"让强审者取得"不等于粘贴：Tunnel 类后端由强审者按 repo 名自读（`chatgpt-tunnel` 的禁忌明令禁止粘贴代码/diff），本地 CLI 类后端给 cwd + 相对 scope。具体方式按 [transport.md](references/transport.md) 对应分节执行。
+**MEDIUM/HIGH 必须让强审者真正取得真实 diff 与当前源码，禁止只用"文件清单+修改摘要"替代**。"让强审者取得"不等于粘贴——具体方式按 [transport.md](references/transport.md) 对应分节执行。
 
 续接必须复用 `review_session_handle`（各后端的句柄形态见 transport 对应分节），并做身份校验；**不得因换后端而继承原会话的 CLOSED 权**。
 
@@ -259,10 +259,10 @@ reviewer 一轮输出先按 [transport.md](references/transport.md) 的「统一
 | "问题都差不多，一起问了效率高"；一次列出全部 HUMAN_DECISION_REQUIRED 风险点 | HARD-GATE：原子单位=独立决策点，一次一个，一个提问不得捆绑多个独立决策 |
 | "这个 H 其实是 FINDING，我直接重分类"；静默突破 CHANGE_RISK 下限降级 | 任何 F/V/H 重分类、以及突破 CHANGE_RISK 下限的降级，必须送强审者复核，不得静默更改 |
 | "引用有误，这 finding 作废" | 走 DISPUTED：附本地反证送强审者复核 |
-| "中风险给个摘要就行"；中高风险复查用"文件清单+摘要"替代真实 diff | MEDIUM/HIGH 必须让强审者取得真实 diff 与当前源码（方式按后端：Tunnel 自读或 cwd + scope，**不等于粘贴**） |
+| "中风险给个摘要就行"；中高风险复查用"文件清单+摘要"替代真实 diff | MEDIUM/HIGH 必须让强审者取得真实 diff 与当前源码（**方式按 transport 对应分节，不等于粘贴**） |
 | "修改 obvious 不用等授权"；"顺手把旁边的问题也修了"；复审发现的新问题不经过分流直接修 | 未经授权不得改任何文件；只改获批事项，不夹带重构；新问题走新分流（新 finding ID + introduced_by） |
 | 修改前不记 baseline；修改/覆盖用户已有变更 | 先记录 HEAD/dirty tree/测试基线/已知失败；禁止覆盖用户已有变更 |
 | 送审不指定受审范围；部分内容未读却宣称范围审核完成 | 输入必须含受审范围，且结果须给出 `reviewed` / `unreadable` 完整覆盖 |
-| 把代码粘贴进 content；复审 content 透露 MCP/浏览器/插件等底层实现细节或绝对路径 | 按 [transport.md](references/transport.md) 对应分节的读取方式执行；`chatgpt-tunnel` 由强审者经 Tunnel 按 `work/<相对路径>` repo 名自读，content 只写业务视角、禁止绝对路径 |
+| 把代码粘贴进 content；复审 content 透露 MCP/浏览器/插件等底层实现细节或绝对路径 | 按 [transport.md](references/transport.md) 对应分节的读取方式执行；content 只写业务视角、禁止绝对路径 |
 | HUMAN_DECISION_REQUIRED 不给技术分析和可选方案，只写"请人工确认"；未经人工定方案就由弱模型直接修掉 | 逐条裁决前必须先给技术分析 + 可选方案（A/B/C），裁决后按获批方案实现 |
 | 复查模板缺授权范围/裁决记录/baseline | 针对性复查必须提供完整上下文，否则"未授权"无法判断 |

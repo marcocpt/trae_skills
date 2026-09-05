@@ -270,7 +270,7 @@ STATUS: HUMAN_DECISION_REQUIRED
 
 ### `opencode-cli`
 
-**资格**：已于 2026-09-03 取得续接形态的 backend-bound 只读取证，并在 runtime 的 stateful 候选序列内。其调用命令、参数与 `readonly_mode` 的属主是 `review-backends.yaml`，本文件不重述。
+**资格**：由 `review-backends.yaml` 的续接形态、会话标识与 backend-bound 只读取证，以及 `routing-policy.yaml` 的 stateful 候选序列共同决定；**本节不记录当前资格状态**。其调用命令、参数与 `readonly_mode` 的属主是 `review-backends.yaml`，本文件不重述。
 
 **续接**：走 adapter 的 `resume` 调用形态，显式传入 `review_session_handle`（FR-MB-015）。每次续接后按「续接句柄与身份校验」从结构化 `session` 字段提取实际会话标识并比对；不得依赖"最近会话"隐式续接，不得以退出码 0 判定续接成功。
 
@@ -283,7 +283,7 @@ STATUS: HUMAN_DECISION_REQUIRED
 
 **取证边界**：本后端续接形态的只读证据属主是 `dd-workflow-runtime/tests/evidence/opencode-resume-readonly-evidence.yaml`（4 份原始事件流），其中记录了该次取证的确切 backend / agent / CLI 版本 / 调用形态与事件级结论。该证据**版本与形态绑定**——CLI 版本、agent、调用形态任一变化即失效，须重新取证（FR-MB-012）。**本文件不复制其事件级结论**。
 
-**结果**：一轮只返回 `dd-review-result/1`；finding 的 `severity` / `classification` / `change_risk` 三字段已由 runtime 机械校验对齐 canonical 枚举（FR-MB-017），F/V/H 分流仍按 [SKILL.md](../SKILL.md) 的语义执行，不得由 provider 定义另一套枚举含义。
+**结果**：一轮只返回 `dd-review-result/1`；finding 的 `severity` / `classification` / `change_risk` 三字段与 canonical 枚举的机械兼容性由 runtime schema/validator 属主保证（FR-MB-017），本文件只引用，F/V/H 分流仍按 [SKILL.md](../SKILL.md) 的语义执行，不得由 provider 定义另一套枚举含义。
 
 ## 红线 - 出现即停下纠正
 
