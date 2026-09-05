@@ -223,6 +223,41 @@ ChatGPT 只能通过 **Tunnel 工具按 repo 名解析**到本地真实目录，
 输出结构化意见（问题、位置、建议）。
 ```
 
+#### 针对性复查模板（本后端线上格式）
+
+`SKILL.md` 只规定后端中立的请求字段；本节的 `STATUS:` 文本格式是**本后端专属的线上格式**，不进 SKILL.md。
+
+字段含义要点：`实际 diff` 与 `当前相关源码` 由强审者按 repo 名**自读**，本地不粘贴代码内容（见下方禁忌）；`baseline` 与 `验证结果` 由本地给出。
+
+```
+请复查以下修复。重点不是重新做完整代码审查，而是验证：
+1. 原 finding 是否被真正解决；
+2. 修复是否改变了未授权的行为（对照授权范围/裁决记录）；
+3. 是否引入新的逻辑、并发、兼容性或测试问题；
+4. 当前证据是否足以关闭 finding。
+
+finding ID: <ID>
+原 finding: <SEVERITY/问题描述/位置>
+授权范围: <用户批准的修复事项>
+人工裁决: <如有，用户最终选择的方案>
+允许修改文件: <范围>
+不得改变: <兼容性/API/行为约束>
+修改前 baseline: <HEAD/已知失败>
+实际 diff: <真实 diff，或指明强审者应自读的 commit 区间>
+当前相关源码: <修改后相关代码，或指明强审者应自读的路径>
+验证结果: <测试命令/退出码/日志>
+
+第一行必须且只能是以下状态之一：
+STATUS: CLOSED
+STATUS: REOPEN
+STATUS: VERIFICATION_REQUIRED
+STATUS: HUMAN_DECISION_REQUIRED
+
+第二行起：若不是 CLOSED，说明最小原因和下一步。REOPEN 须指明是原问题未解决还是引入新问题（新问题须建新 finding ID + introduced_by）。
+```
+
+返回的 `STATUS:` 先按上文「统一结果路径」归一为 `dd-review-result/1`，再交给关闭层；归一前**不得**直接写入 finding 的 lifecycle。
+
 #### 禁忌（本后端）
 
 - content 透漏 MCP/浏览器/插件等底层实现细节；repo 必须以 `work/<相对路径>` 形式给出，并明确让 ChatGPT 用 Tunnel 工具按 repo 名读取（不得写绝对路径，也不得写项目真实目录名）
