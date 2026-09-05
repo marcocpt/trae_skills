@@ -25,10 +25,8 @@
   3. 与本次调用形态匹配的有效只读证明（FR-MB-012、FR-MB-004 第 3 条）。
 - **缺省** → 使用默认后端 `chatgpt-tunnel`。
 - **显式给出但无法识别或不满足上述三项条件** → 判 `configuration_invalid` 并 BLOCKED，**不得静默回退**到默认后端（typo 变成默认后端是 fail-open）。
-- 当前可选状态：
-  - `chatgpt-tunnel`：默认；传输细节由本文件自管（DEC-MB-04）。
-  - `opencode-cli`：已满足三项条件，见下方分节。
-  - `codex-cli`：`resume` 形态的只读正负对照证据尚未取得，**不可用于多轮**（fail-closed）。取证要求见设计文档 §8 第 1 条。
+- **本文件不登记"当前哪些后端可选"的状态快照**。资格状态、续接形态与续接只读取证的属主是 `review-backends.yaml` 及 backend-bound evidence；`stateful` 候选序列的属主是 `routing-policy.yaml` 的 `stateful_roles`。本文件只按上方三项条件做规范性判定——**不满足即不可选**，无需也不得在此处维护第二份状态清单（否则证据或版本一变就立刻产生第二套 active 事实源）。
+- `chatgpt-tunnel` 不受 runtime stateful 序列约束：其会话身份与只读规则由本文件自管（DEC-MB-04），始终作为默认后端可选。
 
 候选顺序的 canonical 属主是 `routing-policy.yaml` 的 `stateful_roles`；本文件不自行排序（FR-MB-018）。
 
@@ -248,11 +246,7 @@ ChatGPT 只能通过 **Tunnel 工具按 repo 名解析**到本地真实目录，
 
 **只读**：属 agent 权限合同（默认拒绝 + 只读工具白名单），机制与证据属主是 registry 的 `readonly_mode` 及 backend-bound 证据文件。
 
-**取证边界**（引用 2026-09-03 主审终确认，边界不外推）：
-
-> 在 `opencode-cli` + `strong-reviewer-cli`、OpenCode **1.18.25**、`resume` 续接调用形态下，initial 与 resume 两轮保持同一 sessionID，且两轮均产生实际 `read` tool event 并成功读取同一 repo 文件，证明只读工具能力在 resume 形态连续；write 能力在两轮均未暴露，但该部分证据等级为 agent-self-reported-consistent，**而非 engine-denial-event-backed**。该结论**仅覆盖上述 backend / agent / OpenCode 版本 / 续接调用形态，不外推到其他 agent、版本、backend 或调用形态**。
-
-证据文件：`dd-workflow-runtime/tests/evidence/opencode-resume-readonly-evidence.yaml`（4 份原始事件流），其中记录了该次取证的确切调用形态。**OpenCode 版本或 agent 变化即触发失效，须重新取证**（FR-MB-012）。
+**取证边界**：本后端续接形态的只读证据属主是 `dd-workflow-runtime/tests/evidence/opencode-resume-readonly-evidence.yaml`（4 份原始事件流），其中记录了该次取证的确切 backend / agent / CLI 版本 / 调用形态与事件级结论。该证据**版本与形态绑定**——CLI 版本、agent、调用形态任一变化即失效，须重新取证（FR-MB-012）。**本文件不复制其事件级结论**。
 
 **结果**：一轮只返回 `dd-review-result/1`；finding 的 `severity` / `classification` / `change_risk` 三字段已由 runtime 机械校验对齐 canonical 枚举（FR-MB-017），F/V/H 分流仍按 [SKILL.md](../SKILL.md) 的语义执行，不得由 provider 定义另一套枚举含义。
 
