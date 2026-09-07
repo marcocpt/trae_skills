@@ -85,7 +85,7 @@ disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING 
 
 开始前必须确认（缺失则向用户提问，不得猜测）：
 
-1. **强审后端**（`backend`，可选）：按 [transport.md](references/transport.md)「后端选择」合同校验；**缺省** → `chatgpt-tunnel`；**不具资格** → 按该合同判 `configuration_invalid` 并 BLOCKED，**不得静默回退**。资格条件与候选顺序一律以 transport 与 runtime 为准，本文件不复制
+1. **强审后端**（`backend`，可选）：按 [transport.md](references/transport.md)「后端选择」合同校验；**缺省** → `chatgpt-tunnel`；**不具资格** → 按该合同判 `configuration_invalid` 并 BLOCKED，**不得静默回退**，随后按「BLOCKED 恢复动作」处理。资格条件与候选顺序一律以 transport 与 runtime 为准，本文件不复制
 2. **受审范围**：按已选 backend 在 [transport.md](references/transport.md) 对应分节的要求构造。**不得跨后端混用受审范围或 session 语义**；具体字段与形态按 transport 对应分节
 3. **可选权威依据**：需求/设计/规范文档路径
 4. **修改前 baseline**（修复阶段必记）：当前 HEAD、`git status --short`、已有 dirty diff、相关测试命令及既有失败。**禁止修改/覆盖用户已有变更**
@@ -95,7 +95,7 @@ disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING 
 ## 循环状态机
 
 1. 确认输入（后端 + 受审范围 + 权威依据）
-2. 解析并校验 `backend`（缺省走 `chatgpt-tunnel`，不具资格即 BLOCKED）
+2. 解析并校验 `backend`（缺省走 `chatgpt-tunnel`，不具资格即 BLOCKED，按「BLOCKED 恢复动作」处理，不得自行改选后端）
 3. 首次送审（按所选后端打开 [transport.md](references/transport.md) 对应分节），拿到强审者的 finding 清单（含 SEVERITY + 建议分流 + `reviewed`/`unreadable` 覆盖）
 4. **本地核对**：对强审者引用的每个文件、行号、结论，用 Read/Grep 当场验证
    - 引用属实 → 进入分流
@@ -114,6 +114,17 @@ disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING 
 - 不得提前列出后续 HUMAN_DECISION_REQUIRED 清单让用户批量决定
 - FINDING / VERIFICATION_REQUIRED 不受逐条裁决约束
 </HARD-GATE>
+
+## BLOCKED 恢复动作（仅限后端选择）
+
+资格判定产生的 `configuration_invalid` BLOCKED 只终止**当前后端选择**，不等于任务终止：
+
+1. 报告权威原因：缺哪项资格条件、依据哪个属主文件；不得复制资格表，也不得自行维护资格快照；
+2. 按 [transport.md](references/transport.md)「后端选择」引用的规范属主，动态说明可供用户改选的后端；不得仅凭 `review-backends.yaml` 条目或 `routing-policy.yaml` 候选序列宣称后端可用，也不得在本文件维护当前可用名单；
+3. **不得自行改选后端继续执行**——是否允许自动降级及其失败分类以 `routing-policy.yaml` 的 `fallback_on` 为准，本节只允许报告原因并等待用户明确改选；
+4. 用户明确改选后，回到状态机步骤 2 重新校验新后端；用户也可终止任务。
+
+已产生 finding 之后的 BLOCKED 不适用本节，仍按 transport「降级与阻塞」的 ACTIVE_GRILLING_SESSION 规则处理。
 
 ## 风险分流规则
 
