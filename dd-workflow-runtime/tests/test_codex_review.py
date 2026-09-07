@@ -393,5 +393,116 @@ class AdapterIntegrationTests(unittest.TestCase):
         self.assertEqual(cmds, [])
 
 
+class AdvisoryModeTests(unittest.TestCase):
+    """LATER-20260907: codex-review advisory contract.
+
+    Codex reviewers emit the FULL envelope (unlike opencode's bare payload),
+    so the adapter's advisory validation covers the whole dd-advisory-result/1
+    shape, the DP coverage gate, and mode/shape cross-rejection.
+    """
+
+    def advisory_request(self, **overrides):
+        req = {
+            "schema": "dd-review-request/1",
+            "mode": "advisory",
+            "role": "strong-reviewer",
+            "host": "codex",
+            "repo": "/repo",
+            "base_sha": "a" * 40,
+            "head_sha": "b" * 40,
+            "scope": ["review.py"],
+            "decision_points": [
+                {"id": "DP-1", "question": "which ttl?", "options": [{"id": "A", "description": "60s"}, {"id": "B", "description": "300s"}]},
+            ],
+            "routing_context": {"dispatch_boundary": "single-backend", "router_authority": False, "hop_count": 1, "dispatch_chain": ["codex-cli"], "selected_backend": "codex-cli"},
+        }
+        req.update(overrides)
+        return req
+
+    def advisory_envelope(self, request, **overrides):
+        payload = {
+            "schema": "dd-advisory-result/1",
+            "backend": "codex-cli",
+            "reviewer": "strong-reviewer/codex-cli",
+            "target": {"base_sha": request["base_sha"], "head_sha": request["head_sha"], "scope": list(request["scope"])},
+            "status": "ADVISORY",
+            "reviewed": list(request["scope"]),
+            "unreadable": [],
+            "decision_points": [
+                {"id": dp["id"], "recommendation": "A", "rationale": "smallest surface", "risks": [], "information_sufficient": True, "info_gaps": []}
+                for dp in request["decision_points"]
+            ],
+            "suggested_decision_points": [],
+            "evidence": ["fixture advisory evidence"],
+            "failure_category": None,
+            "lifecycle": {"started": True, "completed": True},
+            "readonly_confirmation": {"confirmed": False, "evidence": None},
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_valid_advisory_envelope_passes(self):
+        req = self.advisory_request()
+        self.assertIsNone(ADAPTER_MOD._validate_result(self.advisory_envelope(req), req))
+
+    def test_advisory_rejects_finding_shape(self):
+        req = self.advisory_request()
+        finding = {
+            "schema": "dd-review-result/1",
+            "backend": "codex-cli",
+            "status": "PASS",
+        }
+        err = ADAPTER_MOD._validate_result(finding, req)
+        self.assertIsNotNone(err)
+        self.assertIn("dd-advisory-result/1", err)
+
+    def test_finding_rejects_advisory_shape(self):
+        req = self.advisory_request()
+        req["mode"] = "finding"
+        err = ADAPTER_MOD._validate_result(self.advisory_envelope(req), req)
+        self.assertIsNotNone(err)
+        self.assertIn("dd-review-result/1", err)
+
+    def test_advisory_rejects_findings_field(self):
+        req = self.advisory_request()
+        payload = self.advisory_envelope(req)
+        payload["findings"] = []
+        err = ADAPTER_MOD._validate_result(payload, req)
+        self.assertIsNotNone(err)
+        self.assertIn("findings", err)
+
+    def test_blocked_advisory_allows_empty_decision_points(self):
+        req = self.advisory_request()
+        payload = self.advisory_envelope(req, status="BLOCKED", decision_points=[], failure_category="review_incomplete", reviewed=[], unreadable=list(req["scope"]), lifecycle={"started": True, "completed": False})
+        self.assertIsNone(ADAPTER_MOD._validate_result(payload, req))
+
+    def test_advisory_dp_coverage_mismatch_rejected(self):
+        req = self.advisory_request()
+        payload = self.advisory_envelope(req)
+        payload["decision_points"] = payload["decision_points"] + [
+            {"id": "DP-X", "recommendation": "A", "rationale": "r", "risks": [], "information_sufficient": True, "info_gaps": []}
+        ]
+        err = ADAPTER_MOD._validate_result(payload, req)
+        self.assertIsNotNone(err)
+        self.assertIn("coverage mismatch", err)
+
+    def test_suggested_decision_points_reject_canonical_id(self):
+        req = self.advisory_request()
+        payload = self.advisory_envelope(
+            req,
+            suggested_decision_points=[{"id": "DP-99", "question": "sneaky", "options": [{"description": "x"}]}],
+        )
+        err = ADAPTER_MOD._validate_result(payload, req)
+        self.assertIsNotNone(err)
+        self.assertIn("canonical id", err)
+
+    def test_finding_request_rejects_decision_points_input(self):
+        req = self.advisory_request()
+        req["mode"] = "finding"
+        err = ADAPTER_MOD._validate_request(req)
+        self.assertIsNotNone(err)
+        self.assertIn("decision_points", err)
+
+
 if __name__ == "__main__":
     unittest.main()

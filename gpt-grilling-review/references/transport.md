@@ -82,7 +82,7 @@
 
 **只有一个结论入口**：无论哪个后端，**问题闭环审查的权威审查轮次**（authoritative review turn）的输出都先归一为 `dd-review-result/1`，再交给关闭层状态机。**不得存在"某后端直接产出关闭层结论"的第二条路径。**
 
-**边界（决策建议审查）**：`chatgpt-tunnel` 的决策建议审查轮次（advisory turn）是**非关闭型的信息建议轮次**——不进入 `dd-review-result/1`，不进入关闭层，不产生 `PASS` / `CLOSED` 或任何关闭权，其输出由 [advisory-review.md](advisory-review.md) 的决策点模型处理。除此之外的后端轮次仍受本节全部约束。
+**边界（决策建议审查）**：决策建议审查轮次（advisory turn）是**非关闭型的信息建议轮次**——不进入 `dd-review-result/1`，不进入关闭层，不产生 `PASS` / `CLOSED` 或任何关闭权。`chatgpt-tunnel` 的 advisory 输出由 [advisory-review.md](advisory-review.md) 的决策点模型处理（自由文本）；声明了 `advisory` capability 与 `advisory_result_schema: dd-advisory-result/1` 的 CLI 后端则经 dispatch 的 advisory 路径产出 `dd-advisory-result/1`（`status ∈ {ADVISORY, BLOCKED}`），同样非关闭型。advisory 结果中的 `base_sha` / `head_sha` / `scope` 仅用于冻结建议上下文与结果可重复性，属于 **context identity**：它不取得 FR-MB-019 的 finding CLOSED candidate identity 语义，advisory 也不存在进入 CLOSED 前的二次候选复验。除此之外的后端轮次仍受本节全部约束。
 
 `chatgpt-tunnel` 的 `STATUS:` 首行是**线上格式，不是关闭层结论**，必须先归一：
 
@@ -296,7 +296,7 @@ STATUS: HUMAN_DECISION_REQUIRED
 
 **取证边界**：本后端续接形态的只读证据属主是 `dd-workflow-runtime/tests/evidence/opencode-resume-readonly-evidence.yaml`（4 份原始事件流），其中记录了该次取证的确切 backend / agent / CLI 版本 / 调用形态与事件级结论。该证据**版本与形态绑定**——CLI 版本、agent、调用形态任一变化即失效，须重新取证（FR-MB-012）。**本文件不复制其事件级结论**。
 
-**结果**：一轮只返回 `dd-review-result/1`；finding 的 `severity` / `classification` / `change_risk` 三字段与 canonical 枚举的机械兼容性由 runtime schema/validator 属主保证（FR-MB-017），本文件只引用，F/V/H 分流仍按 [SKILL.md](../SKILL.md) 的语义执行，不得由 provider 定义另一套枚举含义。
+**结果**：按请求 mode 返回——finding 轮返回 `dd-review-result/1`，advisory 轮返回 `dd-advisory-result/1`（均由 runtime schema/validator 属主机械保证，FR-MB-017），本文件只引用，F/V/H 分流仍按 [SKILL.md](../SKILL.md) 的语义执行，advisory 的决策点模型按 [advisory-review.md](advisory-review.md) 执行，不得由 provider 定义另一套枚举含义。
 
 ## 红线 - 出现即停下纠正
 

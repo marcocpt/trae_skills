@@ -24,9 +24,17 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 AGENTS_DIR = Path(__file__).resolve().parent
 RESULT_SCHEMA = "dd-review-result/1"
+ADVISORY_RESULT_SCHEMA = "dd-advisory-result/1"
 REQUEST_SCHEMA = "dd-review-request/1"
 CONFIG_SCHEMA = "dd-review-backends/1"
 POLICY_SCHEMA = "dd-routing-policy/1"
+# Request dispatch modes (LATER-20260907 advisory result contract).  A request
+# is a tagged union on `mode`: absent == legacy `finding` dispatch, so existing
+# callers are unaffected.  An advisory dispatch never enters the finding
+# closure vocabulary: its result schema is ADVISORY_RESULT_SCHEMA and its
+# successful status is ADVISORY (never PASS/FINDINGS).
+KNOWN_MODES = frozenset({"finding", "advisory"})
+ADVISORY_CAPABILITY = "advisory"
 MCP_READONLY_MODE = "snapshot-send-only"
 TUNNEL_READONLY_MODE = "tunnel-self-read-only"
 # Canonical readonly_mode vocabulary owned by this registry (FR-MB-004).  A
@@ -450,6 +458,16 @@ def validate_registry_policy(registry: Dict[str, Any], policy: Dict[str, Any]) -
                 errors.append(f"{path}.session_identity.owner: required when a session identity is declared")
         if spec.get("result_schema") != RESULT_SCHEMA:
             errors.append(f"{path}.result_schema must be {RESULT_SCHEMA}")
+        if ADVISORY_CAPABILITY in (capabilities if isinstance(capabilities, list) else []):
+            # A declared advisory capability must name its wire contract, so a
+            # backend can never claim to serve advisory dispatches while its
+            # registry entry still promises only finding-shaped results
+            # (LATER-20260907).
+            if spec.get("advisory_result_schema") != ADVISORY_RESULT_SCHEMA:
+                errors.append(
+                    f"{path}.advisory_result_schema: must be {ADVISORY_RESULT_SCHEMA} "
+                    f"when the {ADVISORY_CAPABILITY} capability is declared"
+                )
         if any(key in spec for key in ("model", "profile", "reasoning_effort")):
             errors.append(f"{path}: model binding fields belong in model-bindings.yaml")
         # Router-selectable MCP backends are snapshot-send-only by construction;
@@ -653,8 +671,31 @@ def _blocked_result(
     detail: str,
     selected_backend: Optional[str] = None,
     started: bool = False,
+    mode: str = "finding",
 ) -> Dict[str, Any]:
     completed_at = _utc_now()
+    if mode == "advisory":
+        return {
+            "schema": ADVISORY_RESULT_SCHEMA,
+            "backend": selected_backend or "router",
+            "reviewer": None,
+            "target": _target(request),
+            "baseline": _target(request),
+            "status": "BLOCKED",
+            "verdict": "BLOCKED",
+            "reviewed": [],
+            "unreadable": list(request.get("scope", [])),
+            "decision_points": [],
+            "suggested_decision_points": [],
+            "evidence": [{"category": category, "detail": detail}],
+            "started_at": completed_at if started else None,
+            "completed_at": completed_at,
+            "lifecycle": {"started": started, "completed": False},
+            "failure_category": category,
+            "fallback_eligible": False,
+            "readonly_confirmation": {"confirmed": False, "evidence": None},
+            "routing": _routing_metadata(request, policy, attempts, selected_backend),
+        }
     return {
         "schema": RESULT_SCHEMA,
         "backend": selected_backend or "router",
@@ -677,6 +718,36 @@ def _blocked_result(
     }
 
 
+def _request_mode(request: Dict[str, Any]) -> str:
+    """Resolve the tagged-union dispatch mode (absent == legacy finding)."""
+    mode = request.get("mode", "finding")
+    if mode not in KNOWN_MODES:
+        raise TerminalReviewFailure("schema_invalid", f"request.mode must be one of {sorted(KNOWN_MODES)}")
+    return mode
+
+
+def _validate_decision_point_input(dp: Any) -> str:
+    if not isinstance(dp, dict):
+        return "decision point must be a mapping"
+    for key in ("id", "question"):
+        if not isinstance(dp.get(key), str) or not dp[key]:
+            return f"decision point.{key} is required"
+    options = dp.get("options")
+    if not isinstance(options, list) or not options:
+        return "decision point.options must be a non-empty list"
+    seen_option_ids = set()
+    for option in options:
+        if not isinstance(option, dict):
+            return "decision point option must be a mapping"
+        for key in ("id", "description"):
+            if not isinstance(option.get(key), str) or not option[key]:
+                return f"decision point option.{key} is required"
+        if option["id"] in seen_option_ids:
+            return f"decision point option id duplicated: {option['id']!r}"
+        seen_option_ids.add(option["id"])
+    return ""
+
+
 def _validate_request_shape(request: Dict[str, Any]) -> None:
     if request.get("schema") != REQUEST_SCHEMA:
         raise TerminalReviewFailure("schema_invalid", f"request schema must be {REQUEST_SCHEMA}")
@@ -685,6 +756,24 @@ def _validate_request_shape(request: Dict[str, Any]) -> None:
             "security_policy_violation",
             "request.native_guard is runtime-owned and cannot be supplied by the caller",
         )
+    mode = _request_mode(request)
+    decision_points = request.get("decision_points")
+    if mode == "finding" and "decision_points" in request:
+        raise TerminalReviewFailure(
+            "schema_invalid",
+            "request.decision_points is advisory-only and must not be supplied in finding mode",
+        )
+    if mode == "advisory":
+        if not isinstance(decision_points, list) or not decision_points:
+            raise TerminalReviewFailure("schema_invalid", "advisory requests require a non-empty decision_points list")
+        seen_dp = set()
+        for dp in decision_points:
+            error = _validate_decision_point_input(dp)
+            if error:
+                raise TerminalReviewFailure("schema_invalid", error)
+            if dp["id"] in seen_dp:
+                raise TerminalReviewFailure("schema_invalid", f"decision point id duplicated: {dp['id']!r}")
+            seen_dp.add(dp["id"])
     for key in ("role", "host", "repo", "base_sha", "head_sha"):
         if not isinstance(request.get(key), str) or not request[key]:
             raise TerminalReviewFailure("schema_invalid", f"request.{key} is required")
@@ -700,14 +789,21 @@ def _validate_request_shape(request: Dict[str, Any]) -> None:
         path = Path(item)
         if path.is_absolute() or ".." in path.parts or item in {"", "."}:
             raise TerminalReviewFailure("security_policy_violation", f"scope escapes repository: {item!r}")
-    verification = request.get("verification")
-    if not isinstance(verification, list) or not verification:
-        raise TerminalReviewFailure("verification_failed", "deterministic verification evidence is required")
-    for item in verification:
-        if not isinstance(item, dict) or item.get("status") not in {"passed", "PASS", "success", "SUCCESS"}:
-            raise TerminalReviewFailure("verification_failed", "all deterministic verification entries must pass")
-        if not item.get("evidence"):
-            raise TerminalReviewFailure("verification_failed", "verification entries require evidence")
+    if mode == "finding":
+        verification = request.get("verification")
+        if not isinstance(verification, list) or not verification:
+            raise TerminalReviewFailure("verification_failed", "deterministic verification evidence is required")
+        for item in verification:
+            if not isinstance(item, dict) or item.get("status") not in {"passed", "PASS", "success", "SUCCESS"}:
+                raise TerminalReviewFailure("verification_failed", "all deterministic verification entries must pass")
+            if not item.get("evidence"):
+                raise TerminalReviewFailure("verification_failed", "verification entries require evidence")
+    else:
+        # Advisory advice does not gate on a green test suite: an open design
+        # question often has no code to test.  Verification, when present, is
+        # supplementary context for the reviewer, never an admission gate.
+        if "verification" in request and not isinstance(request.get("verification"), list):
+            raise TerminalReviewFailure("schema_invalid", "request.verification must be a list when supplied")
     context = request.get("context")
     if not isinstance(context, dict):
         raise TerminalReviewFailure("schema_invalid", "request.context must be a mapping")
@@ -816,6 +912,18 @@ def _check_backend_eligibility(
     capabilities = backend.get("capabilities", [])
     if required_capability not in capabilities:
         raise BackendUnavailable("capability_unavailable", f"{backend_id} lacks {required_capability}")
+    if _request_mode(request) == "advisory":
+        # An advisory dispatch requires the backend to declare the advisory
+        # capability AND the matching wire contract; a bare capability flag
+        # without the schema declaration would claim a result format the
+        # adapter cannot produce (LATER-20260907).
+        if ADVISORY_CAPABILITY not in capabilities:
+            raise BackendUnavailable("capability_unavailable", f"{backend_id} lacks the {ADVISORY_CAPABILITY} capability")
+        if backend.get("advisory_result_schema") != ADVISORY_RESULT_SCHEMA:
+            raise BackendUnavailable(
+                "capability_unavailable",
+                f"{backend_id} must declare advisory_result_schema: {ADVISORY_RESULT_SCHEMA}",
+            )
     # MB-GRILL-029 / MB-GRILL-033: an explicit continuation (initial OR resume)
     # requires the form to be declared AND a structured session identity
     # contract to exist.  Without the form check the request could be silently
@@ -961,42 +1069,13 @@ def _normalize_result(
     elif failure_category not in (None, ""):
         raise TerminalReviewFailure("schema_invalid", "PASS/FINDINGS cannot carry failure_category")
 
-    provider_readonly = _normalize_readonly(raw.get("readonly_confirmation"))
-    if status in {"PASS", "FINDINGS"}:
-        # The adapter/provider is not a read-only authority.  Eligibility has
-        # already matched the caller's backend-bound L6 proof; only the
-        # Router may turn that verified fact into the accepted result-side
-        # confirmation.  The proof itself never crosses the adapter boundary.
-        if not isinstance(validated_readonly_evidence, dict):
-            raise TerminalReviewFailure(
-                "readonly_violation",
-                "Router-side backend-bound L6 evidence is required before accepting a review result",
-            )
-        if (
-            validated_readonly_evidence.get("backend") != backend_id
-            or validated_readonly_evidence.get("level") != "L6"
-            or validated_readonly_evidence.get("confirmed") is not True
-            or not isinstance(validated_readonly_evidence.get("mode"), str)
-            or not validated_readonly_evidence.get("mode")
-            or not isinstance(validated_readonly_evidence.get("source"), str)
-            or not validated_readonly_evidence.get("source")
-        ):
-            raise TerminalReviewFailure(
-                "readonly_violation",
-                "Router-side backend-bound L6 evidence is invalid for the selected backend",
-            )
-        readonly = {
-            "confirmed": True,
-            "evidence": f"router-validated:{backend_id}:{validated_readonly_evidence['mode']}",
-        }
-    else:
-        # A BLOCKED result can never become an accepted review outcome, and
-        # eligibility (including the backend-bound L6 proof) was already
-        # enforced before invocation.  The adapter/provider confirmation is
-        # therefore only a non-authoritative observation here: it must not
-        # mint trust and must not overwrite the parsed terminal
-        # failure_category (OBS-L7-001).
-        readonly = provider_readonly
+    readonly = _resolve_readonly_confirmation(
+        frozenset({"PASS", "FINDINGS"}),
+        status,
+        backend_id,
+        validated_readonly_evidence,
+        _normalize_readonly(raw.get("readonly_confirmation")),
+    )
 
     lifecycle = raw.get("lifecycle", {})
     if lifecycle is not None and not isinstance(lifecycle, dict):
@@ -1007,6 +1086,42 @@ def _normalize_result(
     # Structured session identity (FR-MB-016).  Optional for a plain `initial`
     # dispatch; mandatory -- and mechanically verified against the caller's
     # handle -- whenever a `resume` continuation was requested (FR-MB-003.2).
+    session = _normalize_session_identity(raw, request)
+    if session is not None:
+        session.setdefault("verified", False)
+
+    completed_at = _utc_now()
+    return {
+        "schema": RESULT_SCHEMA,
+        "backend": backend_id,
+        "reviewer": reviewer,
+        "target": expected_target,
+        "baseline": {
+            **expected_target,
+            "verification": copy.deepcopy(request["verification"]),
+        },
+        "status": status,
+        "verdict": status,
+        "reviewed": list(reviewed),
+        "unreadable": list(unreadable),
+        "findings": normalized_findings,
+        "evidence": copy.deepcopy(evidence),
+        "started_at": started_at,
+        "completed_at": completed_at,
+        "lifecycle": {"started": True, "completed": status in {"PASS", "FINDINGS"}},
+        "session": session,
+        "failure_category": failure_category,
+        "fallback_eligible": False,
+        "readonly_confirmation": readonly,
+    }
+
+
+def _normalize_session_identity(raw: Dict[str, Any], request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Validate the result-side structured session identity (FR-MB-016).
+
+    Shared by the finding and advisory result normalizers: the continuation
+    contract is mode-independent control-plane state.
+    """
     raw_session = raw.get("session")
     session: Optional[Dict[str, Any]] = None
     if raw_session is not None:
@@ -1050,33 +1165,261 @@ def _normalize_result(
                     "an explicit initial invocation must return an initial session identity",
                 )
             session["verified"] = True
+    return session
+
+
+def _validate_advisory_decision_point(dp: Any) -> Dict[str, Any]:
+    """Validate one reviewer-answered decision point (advisory result side)."""
+    if not isinstance(dp, dict):
+        raise TerminalReviewFailure("schema_invalid", "advisory decision point must be a mapping")
+    for key in ("id", "recommendation", "rationale"):
+        if not isinstance(dp.get(key), str) or not dp[key]:
+            raise TerminalReviewFailure("schema_invalid", f"advisory decision point.{key} is required")
+    for key in ("risks", "info_gaps"):
+        value = dp.get(key)
+        if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+            raise TerminalReviewFailure(
+                "schema_invalid", f"advisory decision point.{key} must be a non-empty-string list (may be empty)"
+            )
+    if not isinstance(dp.get("information_sufficient"), bool):
+        raise TerminalReviewFailure(
+            "schema_invalid", "advisory decision point.information_sufficient must be a boolean"
+        )
+    return {
+        "id": dp["id"],
+        "recommendation": dp["recommendation"],
+        "rationale": dp["rationale"],
+        "risks": list(dp["risks"]),
+        "information_sufficient": dp["information_sufficient"],
+        "info_gaps": list(dp["info_gaps"]),
+    }
+
+
+def _validate_suggested_decision_point(dp: Any) -> Dict[str, Any]:
+    """Validate a reviewer-suggested open question.
+
+    Suggested decision points never carry a canonical DP id: the grilling
+    layer allocates one only after the user accepts them into the tracked
+    list, so a reviewer cannot mint canonical ids (LATER-20260907).
+    """
+    if not isinstance(dp, dict):
+        raise TerminalReviewFailure("schema_invalid", "suggested decision point must be a mapping")
+    if "id" in dp:
+        raise TerminalReviewFailure("schema_invalid", "suggested decision points must not carry a canonical id")
+    if not isinstance(dp.get("question"), str) or not dp["question"]:
+        raise TerminalReviewFailure("schema_invalid", "suggested decision point.question is required")
+    options = dp.get("options")
+    if not isinstance(options, list) or not options:
+        raise TerminalReviewFailure("schema_invalid", "suggested decision point.options must be a non-empty list")
+    normalized_options = []
+    for option in options:
+        if not isinstance(option, dict) or not isinstance(option.get("description"), str) or not option["description"]:
+            raise TerminalReviewFailure("schema_invalid", "suggested decision point option.description is required")
+        normalized_options.append({"description": option["description"]})
+    result = {"question": dp["question"], "options": normalized_options}
+    background = dp.get("background")
+    if background is not None:
+        if not isinstance(background, str) or not background:
+            raise TerminalReviewFailure("schema_invalid", "suggested decision point.background must be a non-empty string")
+        result["background"] = background
+    return result
+
+
+def _normalize_advisory_result(
+    raw: Any,
+    request: Dict[str, Any],
+    backend_id: str,
+    started_at: str,
+    validated_readonly_evidence: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Normalize one advisory dispatch result into dd-advisory-result/1.
+
+    Advisory outcomes never enter the finding closure vocabulary: a
+    successful result is `ADVISORY` (advice only, no closure authority) and
+    a failed one is `BLOCKED` with a known failure category.
+    """
+    if not isinstance(raw, dict):
+        raise TerminalReviewFailure("schema_invalid", "backend result must be a mapping")
+    if raw.get("schema") != ADVISORY_RESULT_SCHEMA:
+        raise TerminalReviewFailure("schema_invalid", f"backend result schema must be {ADVISORY_RESULT_SCHEMA}")
+    if raw.get("backend") != backend_id:
+        raise TerminalReviewFailure("schema_invalid", "backend result backend identity differs from request")
+    reviewer = raw.get("reviewer")
+    if not isinstance(reviewer, (str, dict)):
+        raise TerminalReviewFailure("schema_invalid", "backend result reviewer is required")
+    target = raw.get("target")
+    if not isinstance(target, dict):
+        raise TerminalReviewFailure("schema_invalid", "backend result target is required")
+    expected_target = _target(request)
+    if target.get("base_sha") != expected_target["base_sha"] or target.get("head_sha") != expected_target["head_sha"]:
+        raise TerminalReviewFailure("evidence_mismatch", "backend result baseline identity differs from request")
+    if target.get("scope") != expected_target["scope"]:
+        raise TerminalReviewFailure("evidence_mismatch", "backend result scope differs from request")
+
+    raw_status = raw.get("status")
+    if not isinstance(raw_status, str):
+        raise TerminalReviewFailure("schema_invalid", "backend result status is required")
+    status = raw_status.upper()
+    if status not in {"ADVISORY", "BLOCKED"}:
+        raise TerminalReviewFailure(
+            "schema_invalid",
+            f"unsupported advisory result status {raw_status!r}; advisory results never carry PASS/FINDINGS",
+        )
+
+    reviewed = raw.get("reviewed")
+    unreadable = raw.get("unreadable")
+    if not isinstance(reviewed, list) or not all(isinstance(item, str) for item in reviewed):
+        raise TerminalReviewFailure("schema_invalid", "reviewed must be a string list")
+    if not isinstance(unreadable, list) or not all(isinstance(item, str) for item in unreadable):
+        raise TerminalReviewFailure("schema_invalid", "unreadable must be a string list")
+    scope_set = set(expected_target["scope"])
+    if not set(reviewed).issubset(scope_set) or not set(unreadable).issubset(scope_set):
+        raise TerminalReviewFailure("evidence_mismatch", "reviewed/unreadable escapes requested scope")
+    if set(reviewed) & set(unreadable):
+        raise TerminalReviewFailure("schema_invalid", "reviewed and unreadable must not overlap")
+
+    failure_category = raw.get("failure_category")
+    evidence = raw.get("evidence")
+    normalized_dps: List[Dict[str, Any]] = []
+    suggested_dps: List[Dict[str, Any]] = []
+    if status == "ADVISORY":
+        if unreadable or set(reviewed) != scope_set:
+            raise TerminalReviewFailure(
+                "evidence_mismatch", "ADVISORY requires complete reviewed scope and no unreadable entries"
+            )
+        if not isinstance(evidence, list) or not evidence:
+            raise TerminalReviewFailure("schema_invalid", "result evidence must be a non-empty list")
+        if failure_category not in (None, ""):
+            raise TerminalReviewFailure("schema_invalid", "ADVISORY cannot carry failure_category")
+        requested_ids = [dp["id"] for dp in request.get("decision_points", [])]
+        dps = raw.get("decision_points")
+        if not isinstance(dps, list) or not dps:
+            raise TerminalReviewFailure("schema_invalid", "ADVISORY requires decision_points")
+        seen: set = set()
+        for dp in dps:
+            normalized = _validate_advisory_decision_point(dp)
+            if normalized["id"] in seen:
+                raise TerminalReviewFailure("schema_invalid", f"advisory decision point id duplicated: {normalized['id']!r}")
+            seen.add(normalized["id"])
+            normalized_dps.append(normalized)
+        missing = sorted(set(requested_ids) - seen)
+        unexpected = sorted(seen - set(requested_ids))
+        if missing or unexpected:
+            raise TerminalReviewFailure(
+                "evidence_mismatch",
+                f"advisory decision point coverage mismatch: missing={missing} unexpected={unexpected}",
+            )
+        suggested_raw = raw.get("suggested_decision_points", [])
+        if not isinstance(suggested_raw, list):
+            raise TerminalReviewFailure("schema_invalid", "suggested_decision_points must be a list")
+        suggested_dps = [_validate_suggested_decision_point(dp) for dp in suggested_raw]
+    else:
+        if not isinstance(failure_category, str) or failure_category not in KNOWN_FAILURE_CATEGORIES:
+            raise TerminalReviewFailure("schema_invalid", "BLOCKED requires a known failure_category")
+        if not isinstance(evidence, list) or not evidence:
+            raise TerminalReviewFailure("schema_invalid", "result evidence must be a non-empty list")
+        # A BLOCKED round may carry an empty decision_points list only: no DP
+        # has received advice, so none may be smuggled in as answered.
+        blocked_dps = raw.get("decision_points", [])
+        if blocked_dps:
+            raise TerminalReviewFailure("schema_invalid", "BLOCKED advisory payload must not carry answered decision_points")
+
+    readonly = _resolve_readonly_confirmation(
+        frozenset({"ADVISORY"}),
+        status,
+        backend_id,
+        validated_readonly_evidence,
+        _normalize_readonly(raw.get("readonly_confirmation")),
+    )
+    lifecycle = raw.get("lifecycle", {})
+    if lifecycle is not None and not isinstance(lifecycle, dict):
+        raise TerminalReviewFailure("schema_invalid", "lifecycle must be a mapping")
+    if isinstance(lifecycle, dict) and lifecycle.get("completed") is False and status == "ADVISORY":
+        raise TerminalReviewFailure("review_incomplete", "completed advisory cannot have completed=false")
+
+    session = _normalize_session_identity(raw, request)
     if session is not None:
         session.setdefault("verified", False)
 
     completed_at = _utc_now()
     return {
-        "schema": RESULT_SCHEMA,
+        "schema": ADVISORY_RESULT_SCHEMA,
         "backend": backend_id,
         "reviewer": reviewer,
         "target": expected_target,
         "baseline": {
             **expected_target,
-            "verification": copy.deepcopy(request["verification"]),
+            "verification": copy.deepcopy(request.get("verification")) if request.get("verification") is not None else [],
         },
         "status": status,
         "verdict": status,
         "reviewed": list(reviewed),
         "unreadable": list(unreadable),
-        "findings": normalized_findings,
+        "decision_points": normalized_dps,
+        "suggested_decision_points": suggested_dps,
         "evidence": copy.deepcopy(evidence),
         "started_at": started_at,
         "completed_at": completed_at,
-        "lifecycle": {"started": True, "completed": status in {"PASS", "FINDINGS"}},
+        "lifecycle": {"started": True, "completed": status == "ADVISORY"},
         "session": session,
         "failure_category": failure_category,
         "fallback_eligible": False,
         "readonly_confirmation": readonly,
     }
+
+
+def _resolve_readonly_confirmation(
+    accepted_statuses: frozenset,
+    normalized_status: str,
+    backend_id: str,
+    validated_readonly_evidence: Optional[Dict[str, Any]],
+    provider_readonly: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Bind the result-side readonly confirmation to the Router-validated L6 proof.
+
+    Shared by the finding and advisory normalizers: the adapter/provider is
+    never a read-only authority, so only a status in `accepted_statuses` may
+    receive the Router-side confirmation; every other status keeps the
+    non-authoritative provider observation (OBS-L7-001).  The decision uses
+    the caller's ALREADY-NORMALIZED status (case-folded, FAIL alias applied)
+    -- never a re-parse of the raw payload.
+    """
+    if not accepted_statuses:
+        raise AssertionError("accepted_statuses must not be empty")
+    if normalized_status in accepted_statuses:
+        # The adapter/provider is not a read-only authority.  Eligibility has
+        # already matched the caller's backend-bound L6 proof; only the
+        # Router may turn that verified fact into the accepted result-side
+        # confirmation.  The proof itself never crosses the adapter boundary.
+        if not isinstance(validated_readonly_evidence, dict):
+            raise TerminalReviewFailure(
+                "readonly_violation",
+                "Router-side backend-bound L6 evidence is required before accepting a review result",
+            )
+        if (
+            validated_readonly_evidence.get("backend") != backend_id
+            or validated_readonly_evidence.get("level") != "L6"
+            or validated_readonly_evidence.get("confirmed") is not True
+            or not isinstance(validated_readonly_evidence.get("mode"), str)
+            or not validated_readonly_evidence.get("mode")
+            or not isinstance(validated_readonly_evidence.get("source"), str)
+            or not validated_readonly_evidence.get("source")
+        ):
+            raise TerminalReviewFailure(
+                "readonly_violation",
+                "Router-side backend-bound L6 evidence is invalid for the selected backend",
+            )
+        return {
+            "confirmed": True,
+            "evidence": f"router-validated:{backend_id}:{validated_readonly_evidence['mode']}",
+        }
+    # A blocked result can never become an accepted review outcome, and
+    # eligibility (including the backend-bound L6 proof) was already
+    # enforced before invocation.  The adapter/provider confirmation is
+    # therefore only a non-authoritative observation here: it must not
+    # mint trust and must not overwrite the parsed terminal
+    # failure_category (OBS-L7-001).
+    return provider_readonly
 
 
 def _run_cli_backend(backend: Dict[str, Any], request: Dict[str, Any]) -> Dict[str, Any]:
@@ -1143,25 +1486,48 @@ def dispatch_review(
 
     request = copy.deepcopy(request)
     attempts: List[Dict[str, Any]] = []
+    try:
+        mode = _request_mode(request)
+    except RouterFailure as exc:
+        # An unresolvable mode is a malformed request; the finding envelope is
+        # the legacy fallback shape for router-level rejections.
+        return _blocked_result(request, policy, attempts, exc.category, exc.detail, mode="finding")
     config_errors = validate_registry_policy(registry, policy)
     if config_errors:
-        return _blocked_result(request, policy, attempts, "configuration_invalid", "; ".join(config_errors))
+        return _blocked_result(request, policy, attempts, "configuration_invalid", "; ".join(config_errors), mode=mode)
     try:
         _validate_request_shape(request)
         _verify_frozen_baseline(request)
     except RouterFailure as exc:
-        return _blocked_result(request, policy, attempts, exc.category, exc.detail)
+        return _blocked_result(request, policy, attempts, exc.category, exc.detail, mode=mode)
 
-    role_spec = policy.get("roles", {}).get(request["role"])
-    if not isinstance(role_spec, dict):
-        return _blocked_result(request, policy, attempts, "configuration_invalid", f"unknown review role {request['role']!r}")
-    candidates = role_spec.get("backends", [])
+    if mode == "advisory":
+        # Advisory advice is a grilling stateful activity: its candidate order
+        # is the canonical stateful sequence (no second ordering source), and
+        # every candidate must additionally declare the advisory capability
+        # and its wire contract (checked in _check_backend_eligibility).
+        stateful = policy.get("stateful_roles", {}).get("strong-reviewer-stateful")
+        if not isinstance(stateful, dict):
+            return _blocked_result(
+                request, policy, attempts, "configuration_invalid",
+                "advisory dispatch requires stateful_roles.strong-reviewer-stateful", mode=mode,
+            )
+        candidates = stateful.get("backends", [])
+        fallback_categories = set(stateful.get("fallback_on", FALLBACK_CATEGORIES))
+        max_hops = min(policy.get("max_hops", 1), 1)
+        capability_policy = stateful
+    else:
+        role_spec = policy.get("roles", {}).get(request["role"])
+        if not isinstance(role_spec, dict):
+            return _blocked_result(request, policy, attempts, "configuration_invalid", f"unknown review role {request['role']!r}", mode=mode)
+        candidates = role_spec.get("backends", [])
+        fallback_categories = set(role_spec.get("fallback_on", []))
+        max_hops = min(policy.get("max_hops", 1), role_spec.get("max_hops", 1))
+        capability_policy = role_spec
     backends = registry.get("backends", {})
     context = request["context"]
-    fallback_categories = set(role_spec.get("fallback_on", []))
-    max_hops = min(policy.get("max_hops", 1), role_spec.get("max_hops", 1))
     if context.get("hop_count", 0) >= max_hops:
-        return _blocked_result(request, policy, attempts, "recursion_violation", "review dispatch max_hops exceeded")
+        return _blocked_result(request, policy, attempts, "recursion_violation", "review dispatch max_hops exceeded", mode=mode)
 
     for candidate in candidates:
         backend_id = _backend_for_candidate(candidate, request["host"], policy, backends)
@@ -1177,6 +1543,7 @@ def dispatch_review(
                 "recursion_violation",
                 f"backend {backend_id} already appears in dispatch_chain",
                 backend_id,
+                mode=mode,
             )
         spec = backends.get(backend_id)
         if not isinstance(spec, dict):
@@ -1187,7 +1554,7 @@ def dispatch_review(
         try:
             readonly_evidence = _check_backend_eligibility(
                 request,
-                role_spec,
+                capability_policy,
                 backend_id,
                 backend,
             )
@@ -1203,28 +1570,44 @@ def dispatch_review(
             # remain workflow-local control data.
             adapter_request = {
                 "schema": request["schema"],
+                "mode": mode,
                 "role": request["role"],
                 "host": request["host"],
                 "repo": request["repo"],
                 "base_sha": request["base_sha"],
                 "head_sha": request["head_sha"],
                 "scope": list(request["scope"]),
-                "verification": copy.deepcopy(request["verification"]),
                 "routing_context": routing_context,
             }
+            if mode == "advisory":
+                adapter_request["decision_points"] = copy.deepcopy(request["decision_points"])
+            else:
+                adapter_request["verification"] = copy.deepcopy(request["verification"])
+            if request.get("verification") is not None and mode == "advisory":
+                # Supplementary context only (never an advisory admission gate).
+                adapter_request["verification"] = copy.deepcopy(request.get("verification"))
             # MB-GRILL-029: a continuation request must actually reach the
             # adapter, otherwise the adapter cannot honour the resume form.
             if isinstance(request.get("continuation"), dict):
                 adapter_request["continuation"] = copy.deepcopy(request["continuation"])
             started_at = _utc_now()
             raw = runner(backend, adapter_request) if runner is not None else _run_cli_backend(backend, adapter_request)
-            normalized = _normalize_result(
-                raw,
-                request,
-                backend_id,
-                started_at,
-                readonly_evidence,
-            )
+            if mode == "advisory":
+                normalized = _normalize_advisory_result(
+                    raw,
+                    request,
+                    backend_id,
+                    started_at,
+                    readonly_evidence,
+                )
+            else:
+                normalized = _normalize_result(
+                    raw,
+                    request,
+                    backend_id,
+                    started_at,
+                    readonly_evidence,
+                )
             if normalized["status"] == "BLOCKED" and normalized["failure_category"] in fallback_categories:
                 attempts.append({
                     "candidate": candidate,
@@ -1250,7 +1633,7 @@ def dispatch_review(
                 "failure_category": exc.category,
             })
             if exc.category not in fallback_categories:
-                return _blocked_result(request, policy, attempts, exc.category, exc.detail, backend_id, started=True)
+                return _blocked_result(request, policy, attempts, exc.category, exc.detail, backend_id, started=True, mode=mode)
             continue
         except TerminalReviewFailure as exc:
             attempts.append({
@@ -1259,7 +1642,7 @@ def dispatch_review(
                 "outcome": "blocked",
                 "failure_category": exc.category,
             })
-            return _blocked_result(request, policy, attempts, exc.category, exc.detail, backend_id, started=True)
+            return _blocked_result(request, policy, attempts, exc.category, exc.detail, backend_id, started=True, mode=mode)
 
     return _blocked_result(
         request,
@@ -1268,6 +1651,7 @@ def dispatch_review(
         "all_backends_unavailable",
         "no eligible backend completed the review",
         started=bool(attempts),
+        mode=mode,
     )
 
 
@@ -1288,13 +1672,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--policy", type=Path, default=AGENTS_DIR / "routing-policy.yaml")
     parser.add_argument("--model-bindings", type=Path, default=AGENTS_DIR / "model-bindings.yaml")
     args = parser.parse_args(argv)
+    mode = "finding"
     try:
         registry, policy = load_configuration(args.registry, args.policy, args.model_bindings)
         request = _read_json(args.request)
+        mode = _request_mode(request)
         result = dispatch_review(request, registry, policy)
     except RouterFailure as exc:
         result = {
-            "schema": RESULT_SCHEMA,
+            "schema": ADVISORY_RESULT_SCHEMA if mode == "advisory" else RESULT_SCHEMA,
             "backend": "router",
             "status": "BLOCKED",
             "verdict": "BLOCKED",
@@ -1303,8 +1689,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "evidence": [{"category": exc.category, "detail": exc.detail}],
             "lifecycle": {"started": False, "completed": False},
         }
+        if mode == "advisory":
+            result["decision_points"] = []
+            result["suggested_decision_points"] = []
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
-    return 0 if result.get("status") in {"PASS", "FINDINGS"} else 2
+    return 0 if result.get("status") in {"PASS", "FINDINGS", "ADVISORY"} else 2
 
 
 if __name__ == "__main__":

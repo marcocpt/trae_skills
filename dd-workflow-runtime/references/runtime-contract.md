@@ -105,6 +105,8 @@ external_review:
   authorization: none
   backend: null
   result_schema: dd-review-result/1
+  advisory_result_schema: null   # dd-advisory-result/1 when the round is advisory
+  mode: finding
   client_request_id: null
   provider_task_ref: null
   dispatch_status: not-started
