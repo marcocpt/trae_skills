@@ -42,6 +42,7 @@ invocation_form: advisory + finding
 scope: advisory-finding-forensic-matrix
 source: dd-workflow-runtime/tests/evidence/codex-advisory-readonly-evidence.yaml
 captured_at: 2026-09-07T17:32:45Z
+production_matrix_recaptured_at: 2026-09-07T18:10:00Z   # production _build_prompt shape, no forensic suffix
 superseded_capture_note: "The earlier single-round advisory capture (codex-recapture-advisory-*.json, pre-matrix) is superseded by this matrix; its initial raw and envelope came from different rounds (thread_id 01a07cec vs 01a07ce9) and must not be cited for continuity."
 codex_version: codex-cli 0.153.4
 probe_kind: advisory-finding-forensic-matrix
@@ -85,7 +86,8 @@ parent_process_verification:
 verdict:
   result_format_contract: event-backed   # all four rounds mode-correct, raw archived
   session_identity_continuity: event-backed   # BOTH modes: resume thread_id == initial handle, raw-verified
-  write_deny_continuity: agent-self-reported + parent-filesystem-verified   # per-round reviewer report + parent verification; OS-level mechanism separately event-backed by the L6 evidence
+  write_deny_mechanism: event-backed   # OS-level Seatbelt denial, codex-cli-l6-evidence.yaml 0.153.4
+  current_shape_no_mutation: parent-filesystem-verified   # production matrix independently verifies no mutation; no in-round write-denial claim
 limitations:
   - "Evidence is bounded to: backend=codex-cli, codex-cli=0.153.4, agent contracts strong-reviewer.toml (finding) / strong-reviewer-advisory.toml (advisory) injected via the adapter prompt, invocation forms `codex exec --sandbox read-only --json` (initial) and `codex exec resume <thread_id> --json` (resume).  It does not extrapolate to other versions, profiles, or invocation forms."
   - "The prompt-injection composition is an adapter-call-shape change per FR-MB-012; the entire matrix is captured on the new shape, so both output contracts are re-validated on it (finding PASS + advisory ADVISORY, raw archived)."
