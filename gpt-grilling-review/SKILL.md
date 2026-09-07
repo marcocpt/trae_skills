@@ -120,7 +120,7 @@ disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING 
 <HARD-GATE>
 - 仅对 HUMAN_DECISION_REQUIRED 类逐条裁决：每轮只处理一个、只提一个裁决问题；用户未回答不得继续下一个
 - 原子单位是"独立的人类决策点"，不是 finding 数量：若多个 finding 由同一产品决策控制，可作为一个决策组一次裁决，但须说明依赖关系（"此决定影响另外 N 个已发现事项，后续不会要求同时裁决"）
-- 不得提前列出后续 HUMAN_DECISION_REQUIRED 清单让用户批量决定
+- **展示与裁决分离**：允许一次性向用户展示全部待裁决项的只读清单（展示格式遵循「风险点展示格式」，供用户掌握全貌），但清单展示不是裁决请求——不得在一次裁决请求中捆绑多个独立决策点让用户批量拍板
 - FINDING / VERIFICATION_REQUIRED 不受逐条裁决约束
 </HARD-GATE>
 
@@ -240,7 +240,7 @@ reviewer 一轮输出先按 [transport.md](references/transport.md) 的「统一
 展示内容固定四段：**强审者意见**（含 SEVERITY 与建议分流）→ **本地核对结论**（引用属实/有误，逐条）→ **分流归类**（F/V/H + 一句理由）→ **建议处置**。
 
 - FINDING 批量展示时，多条可紧凑列出，每条仍含 ID+位置+问题+建议修复
-- HUMAN_DECISION_REQUIRED 单条展示时，在「建议处置」后接「逐条裁决提问」
+- HUMAN_DECISION_REQUIRED 的只读清单可一次展示全部待裁决项，清单中每项仍遵循本节的最小完整语义上下文与四段式展示要求，只是不附裁决提问；对当前正在裁决的单条 H 项，在「建议处置」后接「逐条裁决提问」（一次只含一个）
 
 ## 批量 finding 处置（FINDING 类）
 
@@ -276,7 +276,7 @@ reviewer 一轮输出先按 [transport.md](references/transport.md) 的「统一
 | "强审者说的肯定对，直接照改"；未核对引用就展示或执行其意见 | 引用可能错；先本地核对，再分流；引用有误走 DISPUTED，不得静默丢弃或作废 |
 | "低风险，测试过了我自己关掉"；改完不复审就宣称闭环；把 `FINDINGS` / `BLOCKED`、TODO/LATER/ACCEPTED_RISK，或其他未满足 CLOSED 判据的状态当作 CLOSED | 生产代码/测试语义修改必须经强审者针对性复查，再由关闭层按 CLOSED 判据四项落地；`PASS` 只是 CLOSED 候选，不等于 CLOSED |
 | "每个问题都得问用户才稳妥"；缺测试或只缺运行证据就让用户定夺 | 缺测试归 FINDING 并指出补什么测试；缺事实证据归 VERIFICATION_REQUIRED；只有缺正确行为定义才是 HUMAN_DECISION_REQUIRED；能客观判定的归 FINDING 批量处置 |
-| "问题都差不多，一起问了效率高"；一次列出全部 HUMAN_DECISION_REQUIRED 风险点 | HARD-GATE：原子单位=独立决策点，一次一个，一个提问不得捆绑多个独立决策 |
+| "问题都差不多，一起问了效率高"；把只读清单展示当成批量裁决请求，一次裁决请求捆绑多个独立决策点 | HARD-GATE：展示与裁决分离——可一次展示只读清单供掌握全貌，但裁决请求一次只含一个独立决策点，不得让用户批量拍板 |
 | "这个 H 其实是 FINDING，我直接重分类"；静默突破 CHANGE_RISK 下限降级 | 任何 F/V/H 重分类、以及突破 CHANGE_RISK 下限的降级，必须送强审者复核，不得静默更改 |
 | "引用有误，这 finding 作废" | 走 DISPUTED：附本地反证送强审者复核 |
 | "中风险给个摘要就行"；中高风险复查用"文件清单+摘要"替代真实 diff | MEDIUM/HIGH 必须让强审者取得真实 diff 与当前源码（**方式按 transport 对应分节，不等于粘贴**） |
