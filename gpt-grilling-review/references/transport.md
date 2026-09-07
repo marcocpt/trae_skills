@@ -73,14 +73,16 @@
 
 ### 结果双层分离（FR-MB-013）
 
-1. **传输层**：后端一轮只返回 `dd-review-result/1`（`PASS` / `FINDINGS` / `BLOCKED`），属主是 runtime。
+1. **传输层**：问题闭环审查的权威审查轮次（authoritative review turn）只返回 `dd-review-result/1`（`PASS` / `FINDINGS` / `BLOCKED`），属主是 runtime。
 2. **关闭层**：`CLOSED` / `REOPEN` / `VERIFICATION_REQUIRED` / `HUMAN_DECISION_REQUIRED` 由 [SKILL.md](../SKILL.md) 的状态机定义，属主是本 skill。
 3. 转换规则：`BLOCKED` **永不得** CLOSED；`FINDINGS` 必须逐条分流处置，不得整体视为 CLOSED；`PASS` 仅作为 targeted review 的 CLOSED 候选，仍须满足 CLOSED 判据四项。
 4. **不得把 `dd-review-result/1` 的 `PASS` 与 finding 的 `CLOSED` 等同。**
 
 #### 统一结果路径（MUST）
 
-**只有一个结论入口**：无论哪个后端，reviewer 一轮的输出都先归一为 `dd-review-result/1`，再交给关闭层状态机。**不得存在"某后端直接产出关闭层结论"的第二条路径。**
+**只有一个结论入口**：无论哪个后端，**问题闭环审查的权威审查轮次**（authoritative review turn）的输出都先归一为 `dd-review-result/1`，再交给关闭层状态机。**不得存在"某后端直接产出关闭层结论"的第二条路径。**
+
+**边界（决策建议审查）**：`chatgpt-tunnel` 的决策建议审查轮次（advisory turn）是**非关闭型的信息建议轮次**——不进入 `dd-review-result/1`，不进入关闭层，不产生 `PASS` / `CLOSED` 或任何关闭权，其输出由 [advisory-review.md](advisory-review.md) 的决策点模型处理。除此之外的后端轮次仍受本节全部约束。
 
 `chatgpt-tunnel` 的 `STATUS:` 首行是**线上格式，不是关闭层结论**，必须先归一：
 
@@ -221,6 +223,17 @@ ChatGPT 只能通过 **Tunnel 工具按 repo 名解析**到本地真实目录，
 ```
 请通过 Tunnel 工具读取仓库 "<repo>"（repo 名=work 下相对路径）的 <目录/文件> 及其测试，专门审核 <关注点>。
 输出结构化意见（问题、位置、建议）。
+```
+
+**决策建议审（开放决策点求建议）：**
+
+```
+请通过 Tunnel 工具按仓库名读取 "<repo>"（repo 名=work 下相对路径）的相关代码与文档，针对下列开放决策点逐条给出建议。
+每个决策点输出：推荐选项、理由、主要反对意见/风险、信息是否充足（缺什么材料）。只给建议与理由，不修改任何文件；如顺带发现疑似代码/文档缺陷，作为"待问题闭环审查的候选问题"单独附在末尾，不要输出为本轮 finding 或关闭结论。
+决策点清单：<DP-1、DP-2…每条含问题、背景约束、已知选项>
+权威依据：<可选>
+冻结 baseline：<HEAD 或明确的参考基线>
+最后声明实际已读范围 reviewed 与无法读取范围 unreadable；未完整读取不得宣称建议审查完成。
 ```
 
 #### 针对性复查模板（本后端线上格式）

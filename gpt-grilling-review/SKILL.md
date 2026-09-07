@@ -1,6 +1,6 @@
 ---
 name: gpt-grilling-review
-description: Use when 用户要求外部强审者审核指定文件/指定仓库、让强审者自行读取本地代码找问题并给修改意见、弱模型按意见修改后需要送回复审、需要用 ChatGPT 之外的复审后端（如 opencode、codex）做强审，或需要对审核发现做裁决处置。触发词：ChatGPT 文件审核、指定文件审核、gpt grilling、修改后复审、裁决、外部强审、强审者复审、多后端强审、opencode 复审、codex 复审。
+description: Use when 用户要求外部强审者审核指定文件/指定仓库、让强审者自行读取本地代码找问题并给修改意见、弱模型按意见修改后需要送回复审、需要用 ChatGPT 之外的复审后端（如 opencode、codex）做强审、对审核发现做裁决处置，或带一组开放决策点求外部建议后再自行裁决。触发词：ChatGPT 文件审核、指定文件审核、gpt grilling、修改后复审、裁决、外部强审、强审者复审、多后端强审、opencode 复审、codex 复审、开放问题外审、决策点求建议。
 ---
 
 # 强审 Grilling 审核
@@ -20,6 +20,15 @@ description: Use when 用户要求外部强审者审核指定文件/指定仓库
 | 用户（裁决人） | 对 HUMAN_DECISION_REQUIRED 逐条裁决；可一次启用或覆盖 FINDING 自动处置策略；对 VERIFICATION_REQUIRED 确认需要外部/真实环境的取证方式 | — |
 
 **违反规则的字面意思就是违反规则的精神。**
+
+## 意图路由
+
+进入任何流程前，先判断用户要强审者做什么：
+
+- **问题闭环审查（finding review，默认）**：审核代码/文档找问题、修改后复审、按意见闭环 → 按本文件主流程执行；审查中发现正确行为未定义 → 仍按主流程归入 HUMAN_DECISION_REQUIRED，不切换模式；
+- **决策建议审查（advisory review）**：用户带着一组已知的开放决策点（规格没有答案、需要人选的设计/参数/策略问题）求外部建议后再自行裁决，或要求"先列全貌再逐项裁决" → 按 [advisory-review.md](references/advisory-review.md) 执行，不进入 finding 生命周期。
+
+判定口诀：**用户带已知决策点来求建议 → 决策建议审查；要求审核实现/文档找问题 → 问题闭环审查。** 两类可并存：决策建议审查过程中强审者发现的疑似问题按 advisory-review.md 的「夹带缺陷」规则转回主流程。
 
 ## 自动化处置约定
 
