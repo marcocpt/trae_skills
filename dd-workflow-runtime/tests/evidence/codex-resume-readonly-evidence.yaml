@@ -70,7 +70,7 @@ groups:
     workspace_write_resume: "resume -c sandbox=\"workspace-write\" -> write ALSO denied (resume-ww.txt absent)"
     conclusion: "the -c sandbox override is NOT effective on `codex exec resume`; the sandbox is mechanically inherited from the original session.  A per-turn config re-assertion therefore CANNOT be the safety mechanism."
 verdict:
-  inheritance_mechanism: event-backed   # T0 denied vs T1 succeeded, same form, sandbox differing only via initial
+  inheritance_mechanism: event-backed-positive-control + parent-filesystem-verified-negative-control   # T1 write-succeeds side is event-backed (command_execution exit=0 + file on disk); T0 write-denied side is agent-reported with parent verification — the joint inference is mixed-evidence, stated per-side
   write_deny_continuity: agent-self-reported + parent-filesystem-verified   # T0 denial text has no engine event; filesystem unchanged
   allow_side_continuity: event-backed   # T0 read command_execution completed with exact content match
   session_identity_continuity: event-backed

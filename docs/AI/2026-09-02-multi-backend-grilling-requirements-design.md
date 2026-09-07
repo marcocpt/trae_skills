@@ -363,7 +363,7 @@ gpt-grilling-review
 | 既有测试 `test_dispatch_review.py` | 37 项通过（unittest） |
 | Codex 非交互续接 | 通过（句柄 `01a05fd7-…`，恢复埋点 7391） |
 | Codex `resume` 不接受 `--sandbox` | 复现（`unexpected argument '--sandbox' found`） |
-| Codex 只读开关有效性 | **未证实**（对照组同样被拦，证据不足） |
+| Codex 只读开关有效性 | **不生效**（2026-09-07 实测：T2 对照中 `-c sandbox=` 两种取值在 resume 上均被拒）；resume 实测机械继承 initial 沙箱（T0 拒 / T1 事件级写成功），安全机制改为 read-only thread 来源登记门禁——主审收口状态见 §8 #1 更新段与 `codex-resume-readonly-evidence.yaml` |
 | OpenCode `--session` 续接身份 | 通过（句柄 `ses_fa028e8e5ffe…`，恢复埋点 4826）；只读资格见下行 |
 | OpenCode 续接形态权限合同连续性（2026-09-03，两轮取证） | **CLOSED**：第一轮 write 侧 agent 自述被判不足（"engine-enforced" 过度断言被点名修正）；第二轮按最小补证方案补齐**事件级正向 read**（initial/resume 均 `read completed`）、sessionID 连续、编号复述准确——主审终确认，引用边界限定 opencode-cli + strong-reviewer-cli + 1.18.25 + resume 形态 |
 
