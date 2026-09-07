@@ -28,6 +28,9 @@ hosts:
       effort_key: model_reasoning_effort
       effort: high
       sandbox: read-only
+      # advisory 轮（决策建议，LATER-20260907）专用 profile：单模式契约，
+      # developer_instructions 由 adapter 注入 prompt（codex exec 无 agent 选择参数）
+      advisory_agent_file: codex/strong-reviewer-advisory.toml
     install: "~/.codex/config.toml direct canonical config_file; no duplicate ~/.codex/agents entry"
     status: installed-invoked-parent-override-guarded  # 正常父 L1-L7 pass；危险/未知父禁止 native Reviewer Gate
 

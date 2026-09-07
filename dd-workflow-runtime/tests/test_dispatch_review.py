@@ -1594,10 +1594,10 @@ class AdvisoryRegistryTests(unittest.TestCase):
             AGENTS_DIR / "model-bindings.yaml",
         )
         self.assertEqual(ROUTER.validate_registry_policy(registry, policy), [])
-        self.assertIn(ROUTER.ADVISORY_CAPABILITY, registry["backends"]["opencode-cli"]["capabilities"])
-        self.assertEqual(registry["backends"]["opencode-cli"]["advisory_result_schema"], ROUTER.ADVISORY_RESULT_SCHEMA)
-        # codex-cli has no advisory forensic evidence yet (FR-MB-012 gate)
-        self.assertNotIn(ROUTER.ADVISORY_CAPABILITY, registry["backends"]["codex-cli"]["capabilities"])
+        for backend_id in ("opencode-cli", "codex-cli"):
+            spec = registry["backends"][backend_id]
+            self.assertIn(ROUTER.ADVISORY_CAPABILITY, spec["capabilities"])
+            self.assertEqual(spec["advisory_result_schema"], ROUTER.ADVISORY_RESULT_SCHEMA)
         self.assertNotIn(ROUTER.ADVISORY_CAPABILITY, registry["backends"]["mcp-review"]["capabilities"])
 
     def test_readonly_confirmation_uses_normalized_status(self) -> None:
