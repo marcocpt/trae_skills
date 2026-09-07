@@ -92,4 +92,15 @@ limitations:
   - "Evidence is bounded to: backend=codex-cli, codex-cli=0.153.4, agent contracts strong-reviewer.toml (finding) / strong-reviewer-advisory.toml (advisory) injected via the adapter prompt, invocation forms `codex exec --sandbox read-only --json` (initial) and `codex exec resume <thread_id> --json` (resume).  It does not extrapolate to other versions, profiles, or invocation forms."
   - "The prompt-injection composition is an adapter-call-shape change per FR-MB-012; the entire matrix is captured on the new shape, so both output contracts are re-validated on it (finding PASS + advisory ADVISORY, raw archived)."
   - "Write-side readonly proof is NOT part of the matrix rounds (an earlier capture appended a forensic write probe to the prompt, which broke production-prompt fingerprint parity and was discarded).  It is carried by the OS-level Seatbelt denial in codex-cli-l6-evidence.yaml (0.153.4, `operation not permitted`, event-backed) plus parent-process verification after every matrix round; the prompt composition does not touch sandbox arguments."
-review_status: pending
+# 主审终确认（STATUS: CLOSED，2026-09-07，ChatGPT 会话 6a9e3cd4）：codex-cli
+# 0.153.4 的 advisory/finding FR-MB-012 取证收口——production
+# _build_prompt 形态 2x2 矩阵真机覆盖（finding dd-review-result/1 PASS x2、
+# advisory dd-advisory-result/1 ADVISORY x2），两 mode resume thread_id 均与
+# initial handle 一致（event-backed），写侧由同版本 L6 Seatbelt
+# operation-not-permitted 证据承担（event-backed），production 矩阵父进程
+# 验证无 mutation；旧 forensic-suffix capture 与错配 capture 均已弃用。
+# 边界仅覆盖 codex-cli 0.153.4 + 两个当前 profile + production prompt
+# composition + 已取证 invocation forms + 宿主信任边界；任一变化按
+# FR-MB-012 重新失效并取证。
+
+review_status: closed   # codex advisory forensic matrix CLOSED by reviewer terminal confirmation (ChatGPT conversation 6a9e3cd4, 2026-09-07)
