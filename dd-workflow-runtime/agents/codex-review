@@ -2,10 +2,14 @@
 """Thin adapter for codex-cli backend: Codex JSONL -> dd-review-result/1.
 
 Router owns selection/authorization/fallback. This process only:
-- validates dd-review-request/1
-- invokes `codex exec --sandbox read-only --json` with request as stdin
+- validates dd-review-request/1 (including the optional continuation contract)
+- invokes `codex exec --sandbox read-only --json` with request as stdin;
+  a resume continuation pins the invocation via `codex exec resume <handle>`
+  (FR-MB-015; the pinned form's readonly continuity is backend-bound evidence)
 - extracts final agent_message.text from JSONL event stream
-- strict-parses that text as dd-review-result/1 and validates
+- extracts the engine-proven thread identity from the `thread.started` event
+  and reports it under the canonical `session` field (FR-MB-016)
+- strict-parses the final text as dd-review-result/1 and validates
 - outputs single JSON object for Router normalization
 
 No retry, no second dispatch, no readonly authority.
@@ -48,6 +52,51 @@ def _blocked(request: Dict[str, Any], category: str, detail: str) -> Dict[str, A
         "readonly_confirmation": {"confirmed": False, "evidence": None},
         "lifecycle": {"started": True, "completed": False},
     }
+
+
+def _validate_continuation(req: Dict[str, Any]) -> str | None:
+    """Validate the optional continuation contract (FR-MB-015 / FR-MB-016).
+
+    Absent == a plain initial single-hop dispatch (legacy compatible).  An
+    explicit continuation must carry a known form; a resume must carry the
+    caller's session handle so the adapter can pin `codex exec resume` to it.
+    """
+    continuation = req.get("continuation")
+    if continuation is None:
+        return None
+    if not isinstance(continuation, dict):
+        return "request.continuation must be a mapping"
+    form = continuation.get("form")
+    if form not in ("initial", "resume"):
+        return "request.continuation.form must be 'initial' or 'resume'"
+    handle = continuation.get("handle")
+    if form == "resume" and (not isinstance(handle, str) or not handle):
+        return "request.continuation.handle is required for a resume form"
+    return None
+
+
+def _extract_session_id(stdout: str) -> str | None:
+    """Extract the codex thread identity from the JSONL event stream.
+
+    The engine mints and echoes the same `thread_id` on every `thread.started`
+    event, including each resume turn, so the first well-formed one is the
+    identity this invocation actually ran in (engine-proven, not self-reported
+    by the model).  Malformed lines are skipped; absence keeps the field off
+    the result (fail-closed, never fabricated).
+    """
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict) and event.get("type") == "thread.started":
+            tid = event.get("thread_id")
+            if isinstance(tid, str) and tid:
+                return tid
+    return None
 
 
 def _validate_request(req: Dict[str, Any]) -> str | None:
@@ -201,6 +250,12 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False))
         return 0
 
+    err = _validate_continuation(request)
+    if err:
+        result = _blocked(request, "schema_invalid", err)
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
+
     repo = Path(request["repo"])
     try:
         head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=10).stdout.strip()
@@ -218,7 +273,14 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False))
         return 0
 
-    cmd = ["codex", "exec", "--sandbox", "read-only", "--json"]
+    # Invoke codex CLI.  A resume continuation pins the invocation to the
+    # caller's thread (FR-MB-015); the sandbox cannot be re-specified on
+    # resume and is inherited from the original session (proven read-only).
+    continuation = request.get("continuation") if isinstance(request.get("continuation"), dict) else None
+    if continuation and continuation.get("form") == "resume":
+        cmd = ["codex", "exec", "resume", continuation["handle"], "--json"]
+    else:
+        cmd = ["codex", "exec", "--sandbox", "read-only", "--json"]
     env = {"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", str(Path.home()))}
     try:
         completed = subprocess.run(
@@ -261,6 +323,15 @@ def main() -> int:
         result = _blocked(request, "schema_invalid", err)
         print(json.dumps(result, ensure_ascii=False))
         return 0
+
+    # Structured session identity (FR-MB-015 / FR-MB-016): report the engine
+    # -proven thread this invocation actually ran in.  With no continuation
+    # there is no session contract to honour and the field stays absent;
+    # extraction failure keeps it absent too (Router fails closed on that).
+    if continuation is not None:
+        sid = _extract_session_id(completed.stdout)
+        if sid:
+            obj["session"] = {"form": continuation["form"], "handle": sid}
 
     # Re-output the validated object (ensure single JSON line)
     print(json.dumps(obj, ensure_ascii=False))

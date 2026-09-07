@@ -48,11 +48,24 @@ backends:
     executable: codex-review
     # Thin adapter: codex-review handles Codex JSONL event stream and strict JSON
     # validation. Underlying invocation is `codex exec --sandbox read-only --json`
-    # with the same read-only transport (L6 proof remains valid as pure wrapper).
+    # (initial) or `codex exec resume <handle> --json` (resume; sandbox policy is
+    # inherited from the original session, which was created read-only).
     command: [review]
     capabilities: [strong-review]
     readonly_required: true
     readonly_mode: codex-read-only-transport
+    # FR-MB-015 / FR-MB-016: continuation forms and the structured session
+    # identity contract.  codex-review maps a `resume` continuation onto
+    # `codex exec resume <handle>` and reports the engine-minted thread id
+    # (from the `thread.started` event, stable across resume turns) under the
+    # canonical result field `session`.
+    invocation_forms: [initial, resume]
+    session_identity:
+      field: session
+      owner: codex-review
+    # FR-MB-004.3 / FR-MB-012: continuation-form readonly evidence captured
+    # (tests/evidence/codex-resume-readonly-evidence.yaml, 2026-09-07).
+    continuation_readonly_evidence: true
     availability_exit_codes: [69]
     transient_exit_codes: [75]
     result_schema: dd-review-result/1

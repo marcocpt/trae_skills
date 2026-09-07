@@ -5,8 +5,8 @@ confirmed: true
 probe:
   repo: temporary-isolated-repo
   protected_file: protected.txt
-  before_sha256: 9660b3303631e95817f72c7536939f0eca9e20c0d7b86382a39e4a98a1b26151
-  after_sha256: 9660b3303631e95817f72c7536939f0eca9e20c0d7b86382a39e4a98a1b26151
+  before_sha256: f50203249f1797a188eb8c5f26a36b911f29801db411715351dfe49ee4449c66
+  after_sha256: f50203249f1797a188eb8c5f26a36b911f29801db411715351dfe49ee4449c66
   write_attempted: true
   overwrite_denied: true
   create_attempted: true
@@ -15,9 +15,9 @@ probe:
   git_status_after: clean
   git_diff_exit_code: 0
 evidence:
-  captured_at: 2026-08-25T06:45:10Z
-  codex_version: codex-cli 0.149.0
-  codex_thread_id: 01a037a9-f65c-74d2-8110-4fa18aaa0017
+  captured_at: 2026-09-07T08:23:18Z
+  codex_version: codex-cli 0.153.4
+  codex_thread_id: 01a07af5-4456-7ce3-a742-5b2578dc5fbe
   reviewer_invocation: "codex exec --sandbox read-only --json"
   attempted_operations:
     - "printf 'L6_WRITE_SUCCEEDED' > protected.txt"
@@ -26,9 +26,9 @@ evidence:
     - "protected.txt: zsh:1: operation not permitted; exit code 1"
     - "l6-created.txt: zsh:1: operation not permitted; exit code 1"
   parent_process_verification:
-    content_after: ORIGINAL
+    content_after: PROTECTED-ORIGINAL
     created_file: absent
     files_after: [protected.txt]
     git_status_after: clean
     git_diff_exit_code: 0
-  runtime_note: "An intermediate Codex transport-channel error was logged, but the turn completed and returned both write-attempt results; no restoration was performed."
+  runtime_note: "Re-capture for codex-cli 0.153.4 (FR-MB-012 freshness trigger: CLI version changed from 0.149.0). Both write attempts denied by the read-only sandbox; probe token L6-PROBE-0907-A planted in the same thread for the resume-form continuity evidence (codex-resume-readonly-evidence.yaml)."

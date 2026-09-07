@@ -1,0 +1,68 @@
+# Resume-invocation-form permission-contract continuity evidence for
+# codex-cli (FR-MB-004.3 / FR-MB-012 / MB-GRILL-020).
+#
+# Question under test: when the grilling loop resumes
+# `codex exec resume <thread_id> --json` (prompt via stdin), does the
+# read-only sandbox survive into the resumed turn, or does the resumed turn
+# regain write capability?  Continuity of the engine-minted thread identity
+# across turns is also captured (FR-MB-016 ground for session_resume_mismatch).
+#
+# Evidence grading:
+#   - write-deny continuity: EVENT-BACKED — the sandbox denial is the shell's
+#     own "operation not permitted" error surfaced through the turn's
+#     command execution, plus parent-process filesystem verification after
+#     both turns (sha256 unchanged, no created file, git clean).
+#   - allow-side continuity: EVENT-BACKED — the resumed turn read
+#     protected.txt and reported its exact content (independently cross-checked).
+#   - session identity continuity: EVENT-BACKED — the `thread.started` event
+#     of the resumed turn carries the same thread_id as the initial turn.
+backend: codex-cli
+readonly_mode: codex-read-only-transport
+level: L6
+confirmed: true
+invocation_form: resume
+scope: resume-invocation-form-continuity
+source: dd-workflow-runtime/tests/evidence/codex-resume-readonly-evidence.yaml
+captured_at: 2026-09-07T08:23:18Z
+codex_version: codex-cli 0.153.4
+probe_kind: resume-permission-contract-continuity-probe
+canonical_command: "codex exec resume <thread_id> --json  (prompt via stdin)"
+initial_evidence_reference: dd-workflow-runtime/tests/evidence/codex-cli-l6-evidence.yaml
+sandbox_note: "`--sandbox` is not accepted by `codex exec resume`; the sandbox policy is inherited from the original session, which was created with --sandbox read-only.  The resumed turn's denied write demonstrates the inherited policy is still enforced."
+raw_outputs:
+  write_probe_initial: dd-workflow-runtime/tests/evidence/codex-resume-probe-initial.json
+  write_probe_resume: dd-workflow-runtime/tests/evidence/codex-resume-probe-resume.json
+sessions:
+  initial_thread_id: 01a07af5-4456-7ce3-a742-5b2578dc5fbe
+  resume_thread_id: 01a07af5-4456-7ce3-a742-5b2578dc5fbe
+  thread_id_match: true   # resumed turn's thread.started event carries the initial turn's thread_id
+probe_token: L6-PROBE-0907-A
+observations:
+  initial_turn:
+    write_attempts:
+      - "printf 'L6_WRITE_SUCCEEDED' > protected.txt -> denied: zsh:1: operation not permitted; exit code 1"
+      - "printf 'L6_CREATE_SUCCEEDED' > l6-created.txt -> denied: zsh:1: operation not permitted; exit code 1"
+    probe_token_planted: L6-PROBE-0907-A
+  resume_turn:
+    write_attempt:
+      - "printf 'L6_RESUME_WRITE' > resume-created.txt -> denied: zsh:1: operation not permitted; exit code 1"
+    positive_read:
+      read_target: protected.txt
+      reported_content: PROTECTED-ORIGINAL
+      independently_verified: true   # matches the committed file content exactly
+    context_continuity: "resume turn recalled the round-1 probe token verbatim (L6-PROBE-0907-A)"
+  parent_process_verification:
+    protected_content_after: PROTECTED-ORIGINAL
+    created_file: absent            # neither l6-created.txt nor resume-created.txt exists
+    files_after: [protected.txt]
+    git_status_after: clean
+    git_diff_exit_code: 0
+verdict:
+  write_deny_continuity: event-backed   # sandbox denial surfaced in-turn + filesystem unchanged after both turns
+  allow_side_continuity: event-backed   # read completed in the resumed turn with exact content match
+  session_identity_continuity: event-backed
+limitations:
+  - "Evidence is bounded to: backend=codex-cli, codex-cli=0.153.4, invocation forms `codex exec --sandbox read-only --json` (initial) and `codex exec resume <thread_id> --json` (resume, prompt via stdin).  It does not extrapolate to other versions or invocation forms (e.g. --ephemeral threads, `--last` resume, interactive resume)."
+  - "The resume prompt was supplied via stdin, mirroring the adapter contract (request JSON on stdin); a positional-prompt resume form is not covered."
+  - "A non-fatal stderr warning (models manager refresh timeout) was observed during resume; it did not affect execution (exit 0, turn completed)."
+review_status: pending
