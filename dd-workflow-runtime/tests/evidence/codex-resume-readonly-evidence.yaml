@@ -1,21 +1,29 @@
 # Resume-invocation-form permission-contract continuity evidence for
-# codex-cli (FR-MB-004.3 / FR-MB-012 / MB-GRILL-020).
+# codex-cli (FR-MB-004.3 / FR-MB-012 / MB-GRILL-020 / §8 #1 of the
+# 2026-09-02 multi-backend grilling design).
 #
-# Question under test: when the grilling loop resumes
-# `codex exec resume <thread_id> --json` (prompt via stdin), does the
-# read-only sandbox survive into the resumed turn, or does the resumed turn
-# regain write capability?  Continuity of the engine-minted thread identity
-# across turns is also captured (FR-MB-016 ground for session_resume_mismatch).
+# Questions under test:
+#   Q1. Does the read-only sandbox survive into `codex exec resume
+#       <thread_id> --json` turns (grilling targeted-review form)?
+#   Q2. Does a `-c sandbox=` config override re-assert the policy on resume
+#       (proposed fail-safe), or is the policy mechanically inherited?
+#   Q3. Is the engine-minted thread identity stable across resume turns
+#       (FR-MB-016 ground for session_resume_mismatch)?
+#
+# Method: behavior contrast per §8 #1 — groups differ ONLY in the sandbox
+# configuration of the resumed invocation, all run in the same non-nested
+# host-terminal environment, with parent-process filesystem verification
+# after every group (content/hash, file list, git status/diff).
 #
 # Evidence grading:
-#   - write-deny continuity: EVENT-BACKED — the sandbox denial is the shell's
-#     own "operation not permitted" error surfaced through the turn's
-#     command execution, plus parent-process filesystem verification after
-#     both turns (sha256 unchanged, no created file, git clean).
-#   - allow-side continuity: EVENT-BACKED — the resumed turn read
-#     protected.txt and reported its exact content (independently cross-checked).
-#   - session identity continuity: EVENT-BACKED — the `thread.started` event
-#     of the resumed turn carries the same thread_id as the initial turn.
+#   - inheritance mechanism: EVENT-BACKED — the write-succeeds group carries a
+#     real command_execution event (exit 0) plus the created file on disk;
+#     the write-denied group leaves the filesystem untouched.
+#   - write-deny continuity (T0): AGENT-SELF-REPORTED + PARENT-FILESYSTEM-
+#     VERIFIED — the denial text is the agent's report; the raw JSONL has no
+#     write command_execution event.  Do NOT overstate as engine-enforced.
+#   - session identity continuity: EVENT-BACKED — thread.started carries the
+#     same thread_id across initial and resume turns.
 backend: codex-cli
 readonly_mode: codex-read-only-transport
 level: L6
@@ -24,45 +32,58 @@ invocation_form: resume
 scope: resume-invocation-form-continuity
 source: dd-workflow-runtime/tests/evidence/codex-resume-readonly-evidence.yaml
 captured_at: 2026-09-07T08:23:18Z
+supplemented_at: 2026-09-07T09:29:02Z
 codex_version: codex-cli 0.153.4
 probe_kind: resume-permission-contract-continuity-probe
 canonical_command: "codex exec resume <thread_id> --json  (prompt via stdin)"
 initial_evidence_reference: dd-workflow-runtime/tests/evidence/codex-cli-l6-evidence.yaml
-sandbox_note: "`--sandbox` is not accepted by `codex exec resume`; the sandbox policy is inherited from the original session, which was created with --sandbox read-only.  The resumed turn's denied write demonstrates the inherited policy is still enforced."
-raw_outputs:
-  write_probe_initial: dd-workflow-runtime/tests/evidence/codex-resume-probe-initial.json
-  write_probe_resume: dd-workflow-runtime/tests/evidence/codex-resume-probe-resume.json
-sessions:
-  initial_thread_id: 01a07af5-4456-7ce3-a742-5b2578dc5fbe
-  resume_thread_id: 01a07af5-4456-7ce3-a742-5b2578dc5fbe
-  thread_id_match: true   # resumed turn's thread.started event carries the initial turn's thread_id
+environment: "host user terminal, non-nested sandbox (§8 #1 environment requirement); sanity-checked by an initial --sandbox workspace-write probe that successfully wrote and created its file"
 probe_token: L6-PROBE-0907-A
-observations:
-  initial_turn:
-    write_attempts:
-      - "printf 'L6_WRITE_SUCCEEDED' > protected.txt -> denied: zsh:1: operation not permitted; exit code 1"
-      - "printf 'L6_CREATE_SUCCEEDED' > l6-created.txt -> denied: zsh:1: operation not permitted; exit code 1"
-    probe_token_planted: L6-PROBE-0907-A
-  resume_turn:
-    write_attempt:
-      - "printf 'L6_RESUME_WRITE' > resume-created.txt -> denied: zsh:1: operation not permitted; exit code 1"
-    positive_read:
-      read_target: protected.txt
-      reported_content: PROTECTED-ORIGINAL
-      independently_verified: true   # matches the committed file content exactly
-    context_continuity: "resume turn recalled the round-1 probe token verbatim (L6-PROBE-0907-A)"
-  parent_process_verification:
-    protected_content_after: PROTECTED-ORIGINAL
-    created_file: absent            # neither l6-created.txt nor resume-created.txt exists
-    files_after: [protected.txt]
-    git_status_after: clean
-    git_diff_exit_code: 0
+raw_outputs:
+  t0_readonly_write_probe_initial: dd-workflow-runtime/tests/evidence/codex-resume-probe-initial.json
+  t0_readonly_write_probe_resume: dd-workflow-runtime/tests/evidence/codex-resume-probe-resume.json
+  sanity_initial_workspace_write: dd-workflow-runtime/tests/evidence/codex-resume-probe-initial-ww.json
+  t1_inheritance_negative_control: dd-workflow-runtime/tests/evidence/codex-resume-probe-resume-inherit-ww.json
+  t2_config_override_readonly_resume: dd-workflow-runtime/tests/evidence/codex-resume-probe-resume-c-ro.json
+  t2_config_override_workspace_write_resume: dd-workflow-runtime/tests/evidence/codex-resume-probe-resume-c-ww.json
+groups:
+  T0_readonly_inheritance:
+    initial: "codex exec --sandbox read-only --json (thread 01a07af5-4456-7ce3-a742-5b2578dc5fbe)"
+    resume: "codex exec resume <thread_id> --json (no sandbox argument)"
+    write_attempt: "printf 'L6_RESUME_WRITE' > resume-created.txt"
+    outcome: denied   # "zsh:1: operation not permitted" reported by the agent; parent verified no file, hash unchanged, git clean
+    positive_read: "protected.txt content reported exactly (PROTECTED-ORIGINAL); independently cross-checked"
+    context_continuity: "resume turn recalled probe token L6-PROBE-0907-A verbatim"
+  sanity_initial_workspace_write:
+    invocation: "codex exec --sandbox workspace-write --json"
+    outcome: succeeded   # command_execution event exit=0, file created with expected content
+    purpose: "rules out an environment-wide write block (the §8 #1 confounder that invalidated the 2026-09-02 probe)"
+  T1_inheritance_negative_control:
+    initial: "codex exec --sandbox workspace-write --json (thread 01a07b2d-d12d-7c53-ac92-7b89a0d8064e)"
+    resume: "codex exec resume <thread_id> --json (no sandbox argument)"
+    write_attempt: "printf 'INHERIT_WW' > resume-inherit.txt"
+    outcome: succeeded   # command_execution event exit=0; file created with expected content; parent verified
+    purpose: "proves the resume invocation form CAN write when the inherited policy allows it — the T0 denial is attributable to the inherited read-only policy, not to the resume form or the environment"
+  T2_config_override_contrast:
+    method: "both groups resume threads created with --sandbox read-only; they differ ONLY in `-c sandbox=` value"
+    readonly_resume: "resume -c sandbox=\"read-only\" -> write denied (resume-ro.txt absent; exit 0 turn, no file)"
+    workspace_write_resume: "resume -c sandbox=\"workspace-write\" -> write ALSO denied (resume-ww.txt absent)"
+    conclusion: "the -c sandbox override is NOT effective on `codex exec resume`; the sandbox is mechanically inherited from the original session.  A per-turn config re-assertion therefore CANNOT be the safety mechanism."
 verdict:
-  write_deny_continuity: event-backed   # sandbox denial surfaced in-turn + filesystem unchanged after both turns
-  allow_side_continuity: event-backed   # read completed in the resumed turn with exact content match
+  inheritance_mechanism: event-backed   # T0 denied vs T1 succeeded, same form, sandbox differing only via initial
+  write_deny_continuity: agent-self-reported + parent-filesystem-verified   # T0 denial text has no engine event; filesystem unchanged
+  allow_side_continuity: event-backed   # T0 read command_execution completed with exact content match
   session_identity_continuity: event-backed
+  config_override_reassertion: not_effective_on_resume   # T2 both values denied
+  safety_mechanism: handle-provenance-registry   # adapter registers every thread it created read-only and refuses to resume any other handle (fail-closed before provider invocation)
+adapter_mechanism:
+  provenance_registry: "codex-review records each thread_id from its read-only initial invocations (CODEX_REVIEW_STATE_DIR, default ~/.cache/codex-review/threads.json) and blocks a resume whose handle is absent or not marked read-only with failure_category=session_resume_mismatch"
+  rationale: "since the sandbox is inherited and cannot be re-asserted per turn (T2), accepting arbitrary caller-supplied handles would let a workspace-write thread satisfy the identity check; the registry is the minimal mechanical provenance gate"
 limitations:
-  - "Evidence is bounded to: backend=codex-cli, codex-cli=0.153.4, invocation forms `codex exec --sandbox read-only --json` (initial) and `codex exec resume <thread_id> --json` (resume, prompt via stdin).  It does not extrapolate to other versions or invocation forms (e.g. --ephemeral threads, `--last` resume, interactive resume)."
+  - "T0's write denial is not engine-event-backed (no write command_execution event in the raw JSONL); it rests on the agent's reported denial plus parent-process filesystem verification, and gains force from T1's event-backed write success under the same invocation form."
+  - "The registry's integrity relies on host-local filesystem trust; an attacker able to write ~/.cache/codex-review/threads.json is already inside the trust boundary."
+  - "Evidence is bounded to: backend=codex-cli, codex-cli=0.153.4, invocation forms `codex exec --sandbox read-only --json` (initial) and `codex exec resume <thread_id> --json` (resume, prompt via stdin).  It does not extrapolate to other versions, config values, or invocation forms (e.g. --ephemeral threads, `--last` resume, interactive resume)."
   - "The resume prompt was supplied via stdin, mirroring the adapter contract (request JSON on stdin); a positional-prompt resume form is not covered."
-  - "A non-fatal stderr warning (models manager refresh timeout) was observed during resume; it did not affect execution (exit 0, turn completed)."
+  - "A non-fatal stderr warning (models manager refresh timeout) was observed in one early probe; it did not affect execution (exit 0, turn completed)."
+  - "First contrast attempt (17:06 local) hit the provider usage limit before any turn executed; it was discarded and re-captured after the limit reset."
 review_status: pending

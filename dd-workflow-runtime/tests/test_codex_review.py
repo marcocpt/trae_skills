@@ -187,6 +187,7 @@ class ExtractSessionIdTests(unittest.TestCase):
 class AdapterIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
+        self.state = tempfile.TemporaryDirectory()
         self.repo = Path(self.temp.name) / "repo"
         self.repo.mkdir()
         subprocess.run(["git", "-C", str(self.repo), "init", "-q"], check=True)
@@ -203,6 +204,22 @@ class AdapterIntegrationTests(unittest.TestCase):
 
     def tearDown(self):
         self.temp.cleanup()
+        self.state.cleanup()
+
+    def _register_thread(self, thread_id: str, sandbox: str = "read-only"):
+        state_file = Path(self.state.name) / "threads.json"
+        state_file.parent.mkdir(parents=True, exist_ok=True)
+        registry = {}
+        if state_file.exists():
+            registry = json.loads(state_file.read_text())
+        registry.setdefault("threads", {})[thread_id] = {"sandbox": sandbox, "registered_at": "fixture"}
+        state_file.write_text(json.dumps(registry))
+
+    def _registered_threads(self):
+        state_file = Path(self.state.name) / "threads.json"
+        if not state_file.exists():
+            return {}
+        return json.loads(state_file.read_text()).get("threads", {})
 
     def request(self):
         return {
@@ -228,7 +245,8 @@ class AdapterIntegrationTests(unittest.TestCase):
         mock_completed.stderr = ""
         mock_completed.returncode = exit_code
         orig_run = subprocess.run
-        with mock.patch("subprocess.run") as mocked:
+        with mock.patch("subprocess.run") as mocked, \
+                mock.patch.dict("os.environ", {"CODEX_REVIEW_STATE_DIR": self.state.name}):
             def side(cmd, **kw):
                 if cmd[0] == "codex":
                     return mock_completed
@@ -255,6 +273,9 @@ class AdapterIntegrationTests(unittest.TestCase):
         # No continuation -> legacy single-hop: no session contract, sandbox pinned
         self.assertNotIn("session", obj)
         self.assertEqual(_cmds, [["codex", "exec", "--sandbox", "read-only", "--json"]])
+        # Provenance: the thread this adapter just created is registered read-only
+        self.assertIn("t1", self._registered_threads())
+        self.assertEqual(self._registered_threads()["t1"]["sandbox"], "read-only")
 
     def _valid_stream(self):
         req = self.request()
@@ -263,17 +284,44 @@ class AdapterIntegrationTests(unittest.TestCase):
         return _codex_stream(json.dumps(result))
 
     def test_resume_pins_invocation_and_reports_session(self):
+        self._register_thread("t1")
         ret, out, cmds = self._run_adapter(
             self._valid_stream(),
             req_override={"continuation": {"form": "resume", "handle": "t1"}},
         )
         self.assertEqual(ret, 0)
         obj = json.loads(out)
-        # FR-MB-015: resume pins via `codex exec resume <handle>`; sandbox is
-        # inherited from the original session and cannot be re-specified.
+        # FR-MB-015: resume pins via `codex exec resume <handle>`.  --sandbox is
+        # not accepted on resume and the -c override is ineffective (contrast
+        # evidence), so the sandbox is inherited; acceptance rests on provenance.
         self.assertEqual(cmds, [["codex", "exec", "resume", "t1", "--json"]])
         # FR-MB-016: engine-proven session identity, matching the requested handle
         self.assertEqual(obj["session"], {"form": "resume", "handle": "t1"})
+        # A resume turn re-enters an existing thread and registers nothing new
+        self.assertEqual(list(self._registered_threads()), ["t1"])
+
+    def test_resume_unregistered_handle_blocked_before_invocation(self):
+        ret, out, cmds = self._run_adapter(
+            self._valid_stream(),
+            req_override={"continuation": {"form": "resume", "handle": "rogue"}},
+        )
+        self.assertEqual(ret, 0)
+        obj = json.loads(out)
+        self.assertEqual(obj["status"], "BLOCKED")
+        self.assertEqual(obj["failure_category"], "session_resume_mismatch")
+        self.assertEqual(cmds, [])
+
+    def test_resume_non_readonly_registration_blocked(self):
+        self._register_thread("t-ww", sandbox="workspace-write")
+        ret, out, cmds = self._run_adapter(
+            self._valid_stream(),
+            req_override={"continuation": {"form": "resume", "handle": "t-ww"}},
+        )
+        self.assertEqual(ret, 0)
+        obj = json.loads(out)
+        self.assertEqual(obj["status"], "BLOCKED")
+        self.assertEqual(obj["failure_category"], "session_resume_mismatch")
+        self.assertEqual(cmds, [])
 
     def test_explicit_initial_keeps_sandbox_form_and_reports_session(self):
         ret, out, cmds = self._run_adapter(

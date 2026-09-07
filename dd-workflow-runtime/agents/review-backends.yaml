@@ -48,8 +48,12 @@ backends:
     executable: codex-review
     # Thin adapter: codex-review handles Codex JSONL event stream and strict JSON
     # validation. Underlying invocation is `codex exec --sandbox read-only --json`
-    # (initial) or `codex exec resume <handle> --json` (resume; sandbox policy is
-    # inherited from the original session, which was created read-only).
+    # (initial) or `codex exec resume <handle> --json` (resume).  Resume accepts
+    # neither --sandbox nor an effective -c sandbox= override (contrast evidence:
+    # tests/evidence/codex-resume-readonly-evidence.yaml); the sandbox policy is
+    # mechanically inherited from the original session, so codex-review only
+    # resumes handles it registered as read-only at initial time (provenance
+    # registry, fail-closed before provider invocation).
     command: [review]
     capabilities: [strong-review]
     readonly_required: true

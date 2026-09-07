@@ -5,7 +5,9 @@ Router owns selection/authorization/fallback. This process only:
 - validates dd-review-request/1 (including the optional continuation contract)
 - invokes `codex exec --sandbox read-only --json` with request as stdin;
   a resume continuation pins the invocation via `codex exec resume <handle>`
-  (FR-MB-015; the pinned form's readonly continuity is backend-bound evidence)
+  (FR-MB-015).  Resume sandbox policy is inherited and cannot be re-specified,
+  so resume handles are accepted only from the adapter's read-only thread
+  provenance registry (fail-closed before provider invocation)
 - extracts final agent_message.text from JSONL event stream
 - extracts the engine-proven thread identity from the `thread.started` event
   and reports it under the canonical `session` field (FR-MB-016)
@@ -22,6 +24,7 @@ import os
 import re
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -97,6 +100,56 @@ def _extract_session_id(stdout: str) -> str | None:
             if isinstance(tid, str) and tid:
                 return tid
     return None
+
+
+def _state_file() -> Path:
+    """Path of the adapter's read-only thread provenance registry.
+
+    Overridable via CODEX_REVIEW_STATE_DIR (tests point it at a temp dir);
+    defaults to ~/.cache/codex-review/threads.json.
+    """
+    state_dir = os.environ.get("CODEX_REVIEW_STATE_DIR")
+    if not state_dir:
+        state_dir = str(Path.home() / ".cache" / "codex-review")
+    return Path(state_dir) / "threads.json"
+
+
+def _load_thread_registry() -> Dict[str, Any]:
+    try:
+        return json.loads(_state_file().read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _register_readonly_thread(thread_id: str) -> None:
+    """Record that this adapter created `thread_id` via a read-only initial.
+
+    Resume invocations only accept handles present here with
+    sandbox == "read-only" (mechanical provenance, see main()).  A registry
+    write failure must not fail the review itself: the thread simply stays
+    un-resumable, which is the fail-closed direction.
+    """
+    registry = _load_thread_registry()
+    threads = registry.get("threads") if isinstance(registry, dict) else None
+    if not isinstance(threads, dict):
+        threads = {}
+    threads[thread_id] = {"sandbox": "read-only", "registered_at": datetime.now(timezone.utc).isoformat()}
+    payload = json.dumps({"schema": "codex-review-thread-registry/1", "threads": threads}, ensure_ascii=False)
+    try:
+        path = _state_file()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(payload)
+        tmp.replace(path)
+    except OSError as exc:
+        print(f"codex-review: thread registry write failed: {exc}", file=sys.stderr)
+
+
+def _thread_is_registered_readonly(handle: str) -> bool:
+    registry = _load_thread_registry()
+    threads = registry.get("threads") if isinstance(registry, dict) else {}
+    entry = threads.get(handle) if isinstance(threads, dict) else None
+    return isinstance(entry, dict) and entry.get("sandbox") == "read-only"
 
 
 def _validate_request(req: Dict[str, Any]) -> str | None:
@@ -274,10 +327,25 @@ def main() -> int:
         return 0
 
     # Invoke codex CLI.  A resume continuation pins the invocation to the
-    # caller's thread (FR-MB-015); the sandbox cannot be re-specified on
-    # resume and is inherited from the original session (proven read-only).
+    # caller's thread (FR-MB-015).  `codex exec resume` accepts neither
+    # `--sandbox` nor an effective `-c sandbox=` override (proven by the
+    # contrast evidence: a `-c sandbox="workspace-write"` resume of a
+    # read-only thread is still denied while a plain resume of a
+    # workspace-write thread can write) — the sandbox policy is mechanically
+    # inherited from the original session.  Safety therefore rests on handle
+    # provenance: this adapter records every thread it created via a
+    # read-only initial invocation and refuses to resume any handle it did
+    # not register as read-only (fail-closed, before provider invocation).
     continuation = request.get("continuation") if isinstance(request.get("continuation"), dict) else None
     if continuation and continuation.get("form") == "resume":
+        if not _thread_is_registered_readonly(continuation["handle"]):
+            result = _blocked(
+                request,
+                "session_resume_mismatch",
+                "resume handle was not registered by a read-only initial invocation of this adapter",
+            )
+            print(json.dumps(result, ensure_ascii=False))
+            return 0
         cmd = ["codex", "exec", "resume", continuation["handle"], "--json"]
     else:
         cmd = ["codex", "exec", "--sandbox", "read-only", "--json"]
@@ -305,6 +373,15 @@ def main() -> int:
         result = _blocked(request, "backend_execution_failed", f"codex exit {completed.returncode}: {completed.stderr[:500]}")
         print(json.dumps(result, ensure_ascii=False))
         return 0
+
+    # Provenance bookkeeping: every thread this adapter just created via a
+    # read-only initial invocation becomes resumable.  A resume turn re-enters
+    # an existing thread and registers nothing.  Registry write failure only
+    # keeps the thread un-resumable (fail-closed direction).
+    if not (continuation and continuation.get("form") == "resume"):
+        tid = _extract_session_id(completed.stdout)
+        if tid:
+            _register_readonly_thread(tid)
 
     final_text, err = _extract_final_text(completed.stdout)
     if err:
