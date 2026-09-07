@@ -86,4 +86,16 @@ limitations:
   - "The resume prompt was supplied via stdin, mirroring the adapter contract (request JSON on stdin); a positional-prompt resume form is not covered."
   - "A non-fatal stderr warning (models manager refresh timeout) was observed in one early probe; it did not affect execution (exit 0, turn completed)."
   - "First contrast attempt (17:06 local) hit the provider usage limit before any turn executed; it was discarded and re-captured after the limit reset."
-review_status: pending
+# 主审终确认（2026-09-07，STATUS: CLOSED，ChatGPT 会话 6a9e3cd4）：
+# > 真机取证确认，在 codex-cli 0.153.4、调用形态 `codex exec --sandbox
+# > read-only --json` 创建 initial thread 并以 `codex exec resume
+# > <thread_id> --json`（prompt via stdin）续接的边界内，resume sandbox
+# > 行为与 initial sandbox 一致；workspace-write initial 的 resume 具有事件级
+# > 写成功证据，而 read-only initial 的 resume 写入未造成文件系统变化。
+# > `-c sandbox=` 在 resume 上不能重新声明 sandbox，因此只读安全由
+# > codex-review 的 read-only thread provenance registry 机械门禁保证：
+# > 未登记或非 read-only handle 在 provider 调用前以
+# > session_resume_mismatch fail-closed。该结论仅覆盖上述 backend、0.153.4、
+# > initial/resume 调用形态及本次证据中的宿主信任边界，不外推至其他
+# > Codex 版本、--last、interactive resume、--ephemeral 或其它调用形态。
+review_status: closed   # §8 #1 CLOSED by reviewer terminal confirmation (ChatGPT conversation 6a9e3cd4, 2026-09-07); citation boundary: codex-cli 0.153.4 + initial/resume invocation forms + host-local trust boundary only
