@@ -28,6 +28,8 @@ initial_evidence_reference: dd-workflow-runtime/tests/evidence/opencode-cli-l6-e
 raw_outputs:
   finding_initial: dd-workflow-runtime/tests/evidence/opencode-recapture-finding-initial.json
   finding_resume: dd-workflow-runtime/tests/evidence/opencode-recapture-finding-resume.json
+  finding_initial_read_events: dd-workflow-runtime/tests/evidence/opencode-recapture-finding-initial-read.json
+  finding_resume_read_events: dd-workflow-runtime/tests/evidence/opencode-recapture-finding-resume-read.json
 agent:
   requested_agent: strong-reviewer-cli
   effective_agent: strong-reviewer-cli
@@ -45,10 +47,11 @@ observations:
     probe_token_planted: PROBE-OC-0907-B   # planted in the host dir (not readable by the scoped agent); the model was asked and denied knowing it
     parent_filesystem_verified: true   # protected.txt sha256 unchanged, no created file, git clean, diff exit 0
   positive_read:
-    both_turns: "protected.txt content requested; initial turn read succeeded (see raw stream)"
+    both_turns: "tool_use(read) completed in BOTH turns (initial: 1 event; resume: 1 event; session ses_f83807146ffekDs7LKIYuIjIuf)"
+    content: "PROTECTED-ORIGINAL, exact match in both turns"
     independently_verified: true   # parent hash comparison matches the committed content
 verdict:
-  allow_side_continuity: event-backed
+  allow_side_continuity: event-backed   # tool_use(read, completed) present in BOTH raw NDJSON streams (finding-*-read.json)
   write_deny_continuity: agent-self-reported + parent-filesystem-verified
   session_identity_continuity: event-backed
 limitations:
