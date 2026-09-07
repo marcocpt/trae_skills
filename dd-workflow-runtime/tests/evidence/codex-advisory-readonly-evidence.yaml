@@ -27,9 +27,11 @@
 #     mode-correct strict JSON envelope (finding: dd-review-result/1 PASS;
 #     advisory: dd-advisory-result/1 ADVISORY) extracted from the archived
 #     raw streams.
-#   - session identity continuity: EVENT-BACKED -- the resume round's raw
-#     thread.started thread_id equals the initial round's handle, for BOTH
-#     modes (finding: 01a07cf6-a226...; advisory: 01a07cf8-04a3...).
+#   - session identity continuity: MIXED->EVENT-BACKED for accepted rounds --
+#     the resume round's raw thread.started thread_id equals the initial
+#     round's handle for BOTH modes (finding: 01a07d08-07e4...;
+#     advisory: 01a07d06-6396...).  See sessions.session_id_match for the
+#     observed fork anomaly and its mechanical mitigation.
 #   - write-deny: carried by the OS-level Seatbelt denial proven event-backed
 #     in codex-cli-l6-evidence.yaml (0.153.4); matrix rounds add
 #     parent-filesystem verification only (no in-prompt write probe, so the
