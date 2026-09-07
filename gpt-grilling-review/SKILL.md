@@ -1,6 +1,6 @@
 ---
 name: gpt-grilling-review
-description: Use when 用户要求外部强审者审核指定文件/指定仓库、让强审者自行读取本地代码找问题并给修改意见、弱模型按意见修改后需要送回复审、需要用 ChatGPT 之外的复审后端（如 opencode、codex）做强审，或需要对审核发现做裁决处置。触发词：ChatGPT 文件审核、指定文件审核、gpt grilling、修改后复审、裁决、外部强审、强审者复审、多后端强审、opencode 复审、codex 复审。
+description: Use when 用户要求外部强审者审核指定文件/指定仓库、让强审者自行读取本地代码找问题并给修改意见、弱模型按意见修改后需要送回复审、需要用 ChatGPT 之外的复审后端（如 opencode、codex）做强审、对审核发现做裁决处置，或带一组开放决策点求外部建议后再自行裁决。触发词：ChatGPT 文件审核、指定文件审核、gpt grilling、修改后复审、裁决、外部强审、强审者复审、多后端强审、opencode 复审、codex 复审、开放问题外审、决策点求建议。
 ---
 
 # 强审 Grilling 审核
@@ -20,6 +20,15 @@ description: Use when 用户要求外部强审者审核指定文件/指定仓库
 | 用户（裁决人） | 对 HUMAN_DECISION_REQUIRED 逐条裁决；可一次启用或覆盖 FINDING 自动处置策略；对 VERIFICATION_REQUIRED 确认需要外部/真实环境的取证方式 | — |
 
 **违反规则的字面意思就是违反规则的精神。**
+
+## 意图路由
+
+进入任何流程前，先判断用户要强审者做什么：
+
+- **问题闭环审查（finding review，默认）**：审核代码/文档找问题、修改后复审、按意见闭环 → 按本文件主流程执行；审查中发现正确行为未定义 → 仍按主流程归入 HUMAN_DECISION_REQUIRED，不切换模式；
+- **决策建议审查（advisory review）**：用户带着一组已知的开放决策点（规格没有答案、需要人选的设计/参数/策略问题）求外部建议后再自行裁决，或要求"先列全貌再逐项裁决" → 按 [advisory-review.md](references/advisory-review.md) 执行，不进入 finding 生命周期。
+
+判定口诀：**用户带已知决策点来求建议 → 决策建议审查；要求审核实现/文档找问题 → 问题闭环审查。** 两类可并存：决策建议审查过程中强审者发现的疑似问题按 advisory-review.md 的「夹带缺陷」规则转回主流程。
 
 ## 自动化处置约定
 
@@ -85,7 +94,7 @@ disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING 
 
 开始前必须确认（缺失则向用户提问，不得猜测）：
 
-1. **强审后端**（`backend`，可选）：按 [transport.md](references/transport.md)「后端选择」合同校验；**缺省** → `chatgpt-tunnel`；**不具资格** → 按该合同判 `configuration_invalid` 并 BLOCKED，**不得静默回退**。资格条件与候选顺序一律以 transport 与 runtime 为准，本文件不复制
+1. **强审后端**（`backend`，可选）：按 [transport.md](references/transport.md)「后端选择」合同校验；**缺省** → `chatgpt-tunnel`；**不具资格** → 按该合同判 `configuration_invalid` 并 BLOCKED，**不得静默回退**，随后按「BLOCKED 恢复动作」处理。资格条件与候选顺序一律以 transport 与 runtime 为准，本文件不复制
 2. **受审范围**：按已选 backend 在 [transport.md](references/transport.md) 对应分节的要求构造。**不得跨后端混用受审范围或 session 语义**；具体字段与形态按 transport 对应分节
 3. **可选权威依据**：需求/设计/规范文档路径
 4. **修改前 baseline**（修复阶段必记）：当前 HEAD、`git status --short`、已有 dirty diff、相关测试命令及既有失败。**禁止修改/覆盖用户已有变更**
@@ -95,7 +104,7 @@ disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING 
 ## 循环状态机
 
 1. 确认输入（后端 + 受审范围 + 权威依据）
-2. 解析并校验 `backend`（缺省走 `chatgpt-tunnel`，不具资格即 BLOCKED）
+2. 解析并校验 `backend`（缺省走 `chatgpt-tunnel`，不具资格即 BLOCKED，按「BLOCKED 恢复动作」处理，不得自行改选后端）
 3. 首次送审（按所选后端打开 [transport.md](references/transport.md) 对应分节），拿到强审者的 finding 清单（含 SEVERITY + 建议分流 + `reviewed`/`unreadable` 覆盖）
 4. **本地核对**：对强审者引用的每个文件、行号、结论，用 Read/Grep 当场验证
    - 引用属实 → 进入分流
@@ -111,9 +120,20 @@ disposition 不改变 lifecycle：TODO/LATER/ACCEPTED_RISK/VERIFICATION_PENDING 
 <HARD-GATE>
 - 仅对 HUMAN_DECISION_REQUIRED 类逐条裁决：每轮只处理一个、只提一个裁决问题；用户未回答不得继续下一个
 - 原子单位是"独立的人类决策点"，不是 finding 数量：若多个 finding 由同一产品决策控制，可作为一个决策组一次裁决，但须说明依赖关系（"此决定影响另外 N 个已发现事项，后续不会要求同时裁决"）
-- 不得提前列出后续 HUMAN_DECISION_REQUIRED 清单让用户批量决定
+- **展示与裁决分离**：允许一次性向用户展示全部待裁决项的只读清单（展示格式遵循「风险点展示格式」，供用户掌握全貌），但清单展示不是裁决请求——不得在一次裁决请求中捆绑多个独立决策点让用户批量拍板
 - FINDING / VERIFICATION_REQUIRED 不受逐条裁决约束
 </HARD-GATE>
+
+## BLOCKED 恢复动作（仅限后端选择）
+
+资格判定产生的 `configuration_invalid` BLOCKED 只终止**当前后端选择**，不等于任务终止：
+
+1. 报告权威原因：缺哪项资格条件、依据哪个属主文件；不得复制资格表，也不得自行维护资格快照；
+2. 按 [transport.md](references/transport.md)「后端选择」引用的规范属主，动态说明可供用户改选的后端；不得仅凭 `review-backends.yaml` 条目或 `routing-policy.yaml` 候选序列宣称后端可用，也不得在本文件维护当前可用名单；
+3. **不得自行改选后端继续执行**——是否允许自动降级及其失败分类以 `routing-policy.yaml` 的 `fallback_on` 为准，本节只允许报告原因并等待用户明确改选；
+4. 用户明确改选后，回到状态机步骤 2 重新校验新后端；用户也可终止任务。
+
+已产生 finding 之后的 BLOCKED 不适用本节，仍按 transport「降级与阻塞」的 ACTIVE_GRILLING_SESSION 规则处理。
 
 ## 风险分流规则
 
@@ -220,7 +240,7 @@ reviewer 一轮输出先按 [transport.md](references/transport.md) 的「统一
 展示内容固定四段：**强审者意见**（含 SEVERITY 与建议分流）→ **本地核对结论**（引用属实/有误，逐条）→ **分流归类**（F/V/H + 一句理由）→ **建议处置**。
 
 - FINDING 批量展示时，多条可紧凑列出，每条仍含 ID+位置+问题+建议修复
-- HUMAN_DECISION_REQUIRED 单条展示时，在「建议处置」后接「逐条裁决提问」
+- HUMAN_DECISION_REQUIRED 的只读清单可一次展示全部待裁决项，清单中每项仍遵循本节的最小完整语义上下文与四段式展示要求，只是不附裁决提问；对当前正在裁决的单条 H 项，在「建议处置」后接「逐条裁决提问」（一次只含一个）
 
 ## 批量 finding 处置（FINDING 类）
 
@@ -256,7 +276,7 @@ reviewer 一轮输出先按 [transport.md](references/transport.md) 的「统一
 | "强审者说的肯定对，直接照改"；未核对引用就展示或执行其意见 | 引用可能错；先本地核对，再分流；引用有误走 DISPUTED，不得静默丢弃或作废 |
 | "低风险，测试过了我自己关掉"；改完不复审就宣称闭环；把 `FINDINGS` / `BLOCKED`、TODO/LATER/ACCEPTED_RISK，或其他未满足 CLOSED 判据的状态当作 CLOSED | 生产代码/测试语义修改必须经强审者针对性复查，再由关闭层按 CLOSED 判据四项落地；`PASS` 只是 CLOSED 候选，不等于 CLOSED |
 | "每个问题都得问用户才稳妥"；缺测试或只缺运行证据就让用户定夺 | 缺测试归 FINDING 并指出补什么测试；缺事实证据归 VERIFICATION_REQUIRED；只有缺正确行为定义才是 HUMAN_DECISION_REQUIRED；能客观判定的归 FINDING 批量处置 |
-| "问题都差不多，一起问了效率高"；一次列出全部 HUMAN_DECISION_REQUIRED 风险点 | HARD-GATE：原子单位=独立决策点，一次一个，一个提问不得捆绑多个独立决策 |
+| "问题都差不多，一起问了效率高"；把只读清单展示当成批量裁决请求，一次裁决请求捆绑多个独立决策点 | HARD-GATE：展示与裁决分离——可一次展示只读清单供掌握全貌，但裁决请求一次只含一个独立决策点，不得让用户批量拍板 |
 | "这个 H 其实是 FINDING，我直接重分类"；静默突破 CHANGE_RISK 下限降级 | 任何 F/V/H 重分类、以及突破 CHANGE_RISK 下限的降级，必须送强审者复核，不得静默更改 |
 | "引用有误，这 finding 作废" | 走 DISPUTED：附本地反证送强审者复核 |
 | "中风险给个摘要就行"；中高风险复查用"文件清单+摘要"替代真实 diff | MEDIUM/HIGH 必须让强审者取得真实 diff 与当前源码（**方式按 transport 对应分节，不等于粘贴**） |

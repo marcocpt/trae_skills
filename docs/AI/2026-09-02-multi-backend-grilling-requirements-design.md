@@ -340,6 +340,11 @@ gpt-grilling-review
    - 待取证：`-c sandbox="read-only"` 的有效性。写入对照探测中，对照组（`--sandbox danger-full-access`）同样被 `sandbox-exec: sandbox_apply: Operation not permitted` 拦下，**当前环境无法区分两者**，故该开关有效性未证实。在取证前 `codex-cli` 的续接形态不可用。
    - 取证要求：必须在非嵌套沙箱环境（如 CI 或独立终端）做**行为正负对照**——正、负两组**都使用 resume 调用形态、只改变 sandbox 配置值**，不得把 `initial --sandbox` 与 `resume -c sandbox=` 两种形态混进同一对照；同时检查文件内容 / hash、文件列表与 Git 状态。配置解析或回读只能作辅助证据，**不能单独证明沙箱真正阻止写入**。
    - 结论边界：Codex 的 `initial` 形态可沿用既有 backend-bound 只读证据；`resume` 是新调用形态，在取得上述对照证据前**不得复用旧证据、不得启用**。
+   - **更新（2026-09-07，用户下令取证，supersede 2026-09-03「长期 fail-closed」裁决；主审收口 pending，见 evidence `review_status`）**：
+     - 已实测（codex-cli 0.153.4，宿主终端非嵌套沙箱，环境健全性由 initial `--sandbox workspace-write` 写成功佐证）：T0——read-only initial 后 resume（无 sandbox 参数）写被拒（agent 自报 + 父进程文件系统验证）且正向读取与 token 回忆连续；T1——workspace-write initial 后 resume（同形态）写**成功**（事件级 `command_execution` exit=0 + 文件落盘）。T0/T1 同形态只差 initial 沙箱 → **resume 沙箱 = initial 沙箱（机械继承）**。
+     - T2 对照（两组均 resume、只改 `-c sandbox=` 值）：`read-only` 与 `workspace-write` **双双写被拒** → `-c sandbox=` 覆盖在 resume 上**不生效**（:339 的设想不成立），按轮重申只读不可行。
+     - 结论：resume 形态的安全性只能落在**句柄来源**上。adapter（`codex-review`）落地**只读 thread 来源登记**：initial 成功即登记 thread_id，resume 仅接受登记为 read-only 的句柄，否则 `session_resume_mismatch` fail-closed（provider 调用前拦截）。
+     - 证据：`dd-workflow-runtime/tests/evidence/codex-resume-readonly-evidence.yaml`（T0/T1/T2 + sanity，6 份原始事件流）；`codex-cli-l6-evidence.yaml` 已按 0.153.4 重取（FR-MB-012 版本失效触发器）。
 2. **OpenCode 会话续接身份与权限合同连续性：CLOSED（2026-09-03，主审终确认）**
    - 已实测（2026-09-02，opencode 1.18.25）：`opencode run --format json` 输出 `sessionID`；`opencode run --session <sessionID> --format json` **续接有效**（恢复首轮埋点 4826，sessionID 一致）。
    - 第一轮取证（2026-09-03）：同 agent、只差 `--session` 的写探测——write 工具在两轮中均不存在于可用工具集（agent 自报）；主审核实为 `VERIFICATION_REQUIRED`：**agent 自述不构成引擎级证据**（无 tool schema、无拒绝事件、无成功 read 事件），evidence 中 "engine-enforced" 标注被点名为过度断言并已修正。
@@ -358,7 +363,7 @@ gpt-grilling-review
 | 既有测试 `test_dispatch_review.py` | 37 项通过（unittest） |
 | Codex 非交互续接 | 通过（句柄 `01a05fd7-…`，恢复埋点 7391） |
 | Codex `resume` 不接受 `--sandbox` | 复现（`unexpected argument '--sandbox' found`） |
-| Codex 只读开关有效性 | **未证实**（对照组同样被拦，证据不足） |
+| Codex 只读开关有效性 | **不生效**（2026-09-07 实测：T2 对照中 `-c sandbox=` 两种取值在 resume 上均被拒）；resume 实测机械继承 initial 沙箱（T0 拒 / T1 事件级写成功），安全机制改为 read-only thread 来源登记门禁——主审收口状态见 §8 #1 更新段与 `codex-resume-readonly-evidence.yaml` |
 | OpenCode `--session` 续接身份 | 通过（句柄 `ses_fa028e8e5ffe…`，恢复埋点 4826）；只读资格见下行 |
 | OpenCode 续接形态权限合同连续性（2026-09-03，两轮取证） | **CLOSED**：第一轮 write 侧 agent 自述被判不足（"engine-enforced" 过度断言被点名修正）；第二轮按最小补证方案补齐**事件级正向 read**（initial/resume 均 `read completed`）、sessionID 连续、编号复述准确——主审终确认，引用边界限定 opencode-cli + strong-reviewer-cli + 1.18.25 + resume 形态 |
 
@@ -713,5 +718,6 @@ FR-MB-019 采用哪种基线模型：
 **剩余（非 finding，待办）**：
 
 - **codex-cli 续接形态只读开关有效性（§8 #1）——用户裁决（2026-09-03）：不做取证，codex-cli 续接形态按 fail-closed 长期保持不启用**。数据安全可由 git + 方案 A 的每轮 baseline 复验兜底，但"reviewer 自证"的审计纯度问题与对 opencode 已取证的双标问题不成立豁免条件，故维持现状；将来实际需要 codex 多轮时再议"检测型取证 / 合同修订"（届时主审裁决）。
+  - **superseded（2026-09-07）：用户下令按补齐路径执行取证与合同补齐**。实测见 §8 #1 更新段（resume 沙箱机械继承 initial；`-c` 覆盖不生效；adapter 落地只读 thread 来源登记作为 provenance 门禁）；codex-cli 已加入 `routing-policy.yaml` 的 stateful 候选序列（第二位）。原始裁决保留如上，供追溯。
 - **chatgpt-tunnel 会话合同登记归属——用户裁决（2026-09-03，DEC-MB-04）：双层架构写死**。`chatgpt-tunnel` 归 grilling 传输层自管，不入 registry stateful 名册，无需 registry 侧会话档案与续接只读取证；该"待裁决"项**已销**。
 - 分支并入 develop 方式。

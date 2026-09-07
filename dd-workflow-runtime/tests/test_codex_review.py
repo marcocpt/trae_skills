@@ -139,9 +139,55 @@ class ValidateResultTests(unittest.TestCase):
         self.assertIsNotNone(ADAPTER_MOD._validate_result(obj, req))
 
 
+class ValidateContinuationTests(unittest.TestCase):
+    def test_absent_continuation_is_plain_initial(self):
+        self.assertIsNone(ADAPTER_MOD._validate_continuation({"schema": "dd-review-request/1"}))
+
+    def test_resume_requires_handle(self):
+        err = ADAPTER_MOD._validate_continuation({"continuation": {"form": "resume"}})
+        self.assertIsNotNone(err)
+        self.assertIn("handle", err)
+
+    def test_unknown_form_rejected(self):
+        err = ADAPTER_MOD._validate_continuation({"continuation": {"form": "fork"}})
+        self.assertIsNotNone(err)
+        self.assertIn("form", err)
+
+    def test_non_mapping_rejected(self):
+        err = ADAPTER_MOD._validate_continuation({"continuation": "resume"})
+        self.assertIsNotNone(err)
+
+    def test_explicit_initial_without_handle_ok(self):
+        self.assertIsNone(ADAPTER_MOD._validate_continuation({"continuation": {"form": "initial"}}))
+
+    def test_resume_with_handle_ok(self):
+        self.assertIsNone(ADAPTER_MOD._validate_continuation({"continuation": {"form": "resume", "handle": "t1"}}))
+
+
+class ExtractSessionIdTests(unittest.TestCase):
+    def test_thread_id_extracted_from_stream(self):
+        sid = ADAPTER_MOD._extract_session_id(_codex_stream('{"schema":"dd-review-result/1"}'))
+        self.assertEqual(sid, "t1")
+
+    def test_missing_thread_started_returns_none(self):
+        stream = "\n".join([
+            json.dumps({"type": "turn.started"}),
+            json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "{}"}}),
+        ])
+        self.assertIsNone(ADAPTER_MOD._extract_session_id(stream))
+
+    def test_malformed_lines_skipped(self):
+        stream = "not json\n" + _codex_stream('{}')
+        self.assertEqual(ADAPTER_MOD._extract_session_id(stream), "t1")
+
+    def test_empty_stdout_returns_none(self):
+        self.assertIsNone(ADAPTER_MOD._extract_session_id(""))
+
+
 class AdapterIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
+        self.state = tempfile.TemporaryDirectory()
         self.repo = Path(self.temp.name) / "repo"
         self.repo.mkdir()
         subprocess.run(["git", "-C", str(self.repo), "init", "-q"], check=True)
@@ -158,6 +204,22 @@ class AdapterIntegrationTests(unittest.TestCase):
 
     def tearDown(self):
         self.temp.cleanup()
+        self.state.cleanup()
+
+    def _register_thread(self, thread_id: str, sandbox: str = "read-only"):
+        state_file = Path(self.state.name) / "threads.json"
+        state_file.parent.mkdir(parents=True, exist_ok=True)
+        registry = {}
+        if state_file.exists():
+            registry = json.loads(state_file.read_text())
+        registry.setdefault("threads", {})[thread_id] = {"sandbox": sandbox, "registered_at": "fixture"}
+        state_file.write_text(json.dumps(registry))
+
+    def _registered_threads(self):
+        state_file = Path(self.state.name) / "threads.json"
+        if not state_file.exists():
+            return {}
+        return json.loads(state_file.read_text()).get("threads", {})
 
     def request(self):
         return {
@@ -172,8 +234,10 @@ class AdapterIntegrationTests(unittest.TestCase):
             "routing_context": {"dispatch_boundary": "single-backend", "router_authority": False, "hop_count": 1, "dispatch_chain": ["codex-cli"], "selected_backend": "codex-cli"},
         }
 
-    def _run_adapter(self, fake_stdout: str, exit_code: int = 0):
+    def _run_adapter(self, fake_stdout: str, exit_code: int = 0, req_override: dict | None = None):
         req = self.request()
+        if req_override:
+            req.update(req_override)
         # Patch target to match request SHAs for valid case
         # For generic tests, we use _valid_result with matching SHAs
         mock_completed = mock.Mock()
@@ -181,7 +245,8 @@ class AdapterIntegrationTests(unittest.TestCase):
         mock_completed.stderr = ""
         mock_completed.returncode = exit_code
         orig_run = subprocess.run
-        with mock.patch("subprocess.run") as mocked:
+        with mock.patch("subprocess.run") as mocked, \
+                mock.patch.dict("os.environ", {"CODEX_REVIEW_STATE_DIR": self.state.name}):
             def side(cmd, **kw):
                 if cmd[0] == "codex":
                     return mock_completed
@@ -192,7 +257,8 @@ class AdapterIntegrationTests(unittest.TestCase):
                 with mock.patch("sys.stdout", new_callable=io.StringIO) as fake_out:
                     with mock.patch.object(sys, "argv", ["codex-review", "review"]):
                         ret = ADAPTER_MOD.main()
-                        return ret, fake_out.getvalue()
+                        codex_cmds = [c.args[0] for c in mocked.call_args_list if c.args and c.args[0] and c.args[0][0] == "codex"]
+                        return ret, fake_out.getvalue(), codex_cmds
 
     def test_valid_findings_through_adapter(self):
         # Need to make the valid result's target match the request's SHAs
@@ -200,37 +266,131 @@ class AdapterIntegrationTests(unittest.TestCase):
         result = _valid_result("FINDINGS")
         result["target"] = {"base_sha": req["base_sha"], "head_sha": req["head_sha"], "scope": ["review.py"]}
         stream = _codex_stream(json.dumps(result))
-        ret, out = self._run_adapter(stream)
+        ret, out, _cmds = self._run_adapter(stream)
         self.assertEqual(ret, 0)
         obj = json.loads(out)
         self.assertEqual(obj["status"], "FINDINGS")
+        # No continuation -> legacy single-hop: no session contract, sandbox pinned
+        self.assertNotIn("session", obj)
+        self.assertEqual(_cmds, [["codex", "exec", "--sandbox", "read-only", "--json"]])
+        # Provenance: the thread this adapter just created is registered read-only
+        self.assertIn("t1", self._registered_threads())
+        self.assertEqual(self._registered_threads()["t1"]["sandbox"], "read-only")
+
+    def _valid_stream(self):
+        req = self.request()
+        result = _valid_result("FINDINGS")
+        result["target"] = {"base_sha": req["base_sha"], "head_sha": req["head_sha"], "scope": ["review.py"]}
+        return _codex_stream(json.dumps(result))
+
+    def test_resume_pins_invocation_and_reports_session(self):
+        self._register_thread("t1")
+        ret, out, cmds = self._run_adapter(
+            self._valid_stream(),
+            req_override={"continuation": {"form": "resume", "handle": "t1"}},
+        )
+        self.assertEqual(ret, 0)
+        obj = json.loads(out)
+        # FR-MB-015: resume pins via `codex exec resume <handle>`.  --sandbox is
+        # not accepted on resume and the -c override is ineffective (contrast
+        # evidence), so the sandbox is inherited; acceptance rests on provenance.
+        self.assertEqual(cmds, [["codex", "exec", "resume", "t1", "--json"]])
+        # FR-MB-016: engine-proven session identity, matching the requested handle
+        self.assertEqual(obj["session"], {"form": "resume", "handle": "t1"})
+        # A resume turn re-enters an existing thread and registers nothing new
+        self.assertEqual(list(self._registered_threads()), ["t1"])
+
+    def test_resume_unregistered_handle_blocked_before_invocation(self):
+        ret, out, cmds = self._run_adapter(
+            self._valid_stream(),
+            req_override={"continuation": {"form": "resume", "handle": "rogue"}},
+        )
+        self.assertEqual(ret, 0)
+        obj = json.loads(out)
+        self.assertEqual(obj["status"], "BLOCKED")
+        self.assertEqual(obj["failure_category"], "session_resume_mismatch")
+        self.assertEqual(cmds, [])
+
+    def test_resume_non_readonly_registration_blocked(self):
+        self._register_thread("t-ww", sandbox="workspace-write")
+        ret, out, cmds = self._run_adapter(
+            self._valid_stream(),
+            req_override={"continuation": {"form": "resume", "handle": "t-ww"}},
+        )
+        self.assertEqual(ret, 0)
+        obj = json.loads(out)
+        self.assertEqual(obj["status"], "BLOCKED")
+        self.assertEqual(obj["failure_category"], "session_resume_mismatch")
+        self.assertEqual(cmds, [])
+
+    def test_explicit_initial_keeps_sandbox_form_and_reports_session(self):
+        ret, out, cmds = self._run_adapter(
+            self._valid_stream(),
+            req_override={"continuation": {"form": "initial"}},
+        )
+        self.assertEqual(ret, 0)
+        obj = json.loads(out)
+        self.assertEqual(cmds, [["codex", "exec", "--sandbox", "read-only", "--json"]])
+        self.assertEqual(obj["session"], {"form": "initial", "handle": "t1"})
+
+    def test_resume_without_engine_identity_keeps_session_absent(self):
+        # Build a stream without thread.started: final agent_message is the valid result JSON
+        result = _valid_result("FINDINGS")
+        req = self.request()
+        result["target"] = {"base_sha": req["base_sha"], "head_sha": req["head_sha"], "scope": ["review.py"]}
+        stream = "\n".join([
+            json.dumps({"type": "turn.started"}),
+            json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps(result)}}),
+            json.dumps({"type": "turn.completed"}),
+        ])
+        ret, out, _cmds = self._run_adapter(
+            stream,
+            req_override={"continuation": {"form": "resume", "handle": "t1"}},
+        )
+        self.assertEqual(ret, 0)
+        obj = json.loads(out)
+        # Fail-closed: no fabricated identity; Router turns the absence into
+        # session_resume_mismatch for a requested resume continuation.
+        self.assertNotIn("session", obj)
 
     def test_code_fence_becomes_schema_invalid(self):
         stream = _codex_stream('```json\n{"schema":"dd-review-result/1"}\n```')
-        ret, out = self._run_adapter(stream)
+        ret, out, _ = self._run_adapter(stream)
         obj = json.loads(out)
         self.assertEqual(obj["status"], "BLOCKED")
         self.assertEqual(obj["failure_category"], "schema_invalid")
 
     def test_missing_final_text_becomes_review_incomplete(self):
         stream = json.dumps({"type": "item.completed", "item": {"type": "command_execution"}})
-        ret, out = self._run_adapter(stream)
+        ret, out, _ = self._run_adapter(stream)
         obj = json.loads(out)
         self.assertEqual(obj["status"], "BLOCKED")
         self.assertEqual(obj["failure_category"], "review_incomplete")
 
     def test_availability_exit_propagated(self):
-        ret, _ = self._run_adapter(_codex_stream('{}'), exit_code=69)
+        ret, _, _ = self._run_adapter(_codex_stream('{}'), exit_code=69)
         self.assertEqual(ret, 69)
 
     def test_transient_exit_propagated(self):
-        ret, _ = self._run_adapter(_codex_stream('{}'), exit_code=75)
+        ret, _, _ = self._run_adapter(_codex_stream('{}'), exit_code=75)
         self.assertEqual(ret, 75)
 
     def test_other_exit_becomes_execution_failed(self):
-        ret, out = self._run_adapter(_codex_stream('{}'), exit_code=1)
+        ret, out, _ = self._run_adapter(_codex_stream('{}'), exit_code=1)
         obj = json.loads(out)
         self.assertEqual(obj["failure_category"], "backend_execution_failed")
+
+    def test_invalid_continuation_blocked_without_invoking_codex(self):
+        ret, out, cmds = self._run_adapter(
+            self._valid_stream(),
+            req_override={"continuation": {"form": "resume"}},
+        )
+        self.assertEqual(ret, 0)
+        obj = json.loads(out)
+        self.assertEqual(obj["status"], "BLOCKED")
+        self.assertEqual(obj["failure_category"], "schema_invalid")
+        # Fail-closed before any provider invocation
+        self.assertEqual(cmds, [])
 
 
 if __name__ == "__main__":

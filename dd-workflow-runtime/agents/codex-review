@@ -2,10 +2,16 @@
 """Thin adapter for codex-cli backend: Codex JSONL -> dd-review-result/1.
 
 Router owns selection/authorization/fallback. This process only:
-- validates dd-review-request/1
-- invokes `codex exec --sandbox read-only --json` with request as stdin
+- validates dd-review-request/1 (including the optional continuation contract)
+- invokes `codex exec --sandbox read-only --json` with request as stdin;
+  a resume continuation pins the invocation via `codex exec resume <handle>`
+  (FR-MB-015).  Resume sandbox policy is inherited and cannot be re-specified,
+  so resume handles are accepted only from the adapter's read-only thread
+  provenance registry (fail-closed before provider invocation)
 - extracts final agent_message.text from JSONL event stream
-- strict-parses that text as dd-review-result/1 and validates
+- extracts the engine-proven thread identity from the `thread.started` event
+  and reports it under the canonical `session` field (FR-MB-016)
+- strict-parses the final text as dd-review-result/1 and validates
 - outputs single JSON object for Router normalization
 
 No retry, no second dispatch, no readonly authority.
@@ -18,6 +24,7 @@ import os
 import re
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -48,6 +55,101 @@ def _blocked(request: Dict[str, Any], category: str, detail: str) -> Dict[str, A
         "readonly_confirmation": {"confirmed": False, "evidence": None},
         "lifecycle": {"started": True, "completed": False},
     }
+
+
+def _validate_continuation(req: Dict[str, Any]) -> str | None:
+    """Validate the optional continuation contract (FR-MB-015 / FR-MB-016).
+
+    Absent == a plain initial single-hop dispatch (legacy compatible).  An
+    explicit continuation must carry a known form; a resume must carry the
+    caller's session handle so the adapter can pin `codex exec resume` to it.
+    """
+    continuation = req.get("continuation")
+    if continuation is None:
+        return None
+    if not isinstance(continuation, dict):
+        return "request.continuation must be a mapping"
+    form = continuation.get("form")
+    if form not in ("initial", "resume"):
+        return "request.continuation.form must be 'initial' or 'resume'"
+    handle = continuation.get("handle")
+    if form == "resume" and (not isinstance(handle, str) or not handle):
+        return "request.continuation.handle is required for a resume form"
+    return None
+
+
+def _extract_session_id(stdout: str) -> str | None:
+    """Extract the codex thread identity from the JSONL event stream.
+
+    The engine mints and echoes the same `thread_id` on every `thread.started`
+    event, including each resume turn, so the first well-formed one is the
+    identity this invocation actually ran in (engine-proven, not self-reported
+    by the model).  Malformed lines are skipped; absence keeps the field off
+    the result (fail-closed, never fabricated).
+    """
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict) and event.get("type") == "thread.started":
+            tid = event.get("thread_id")
+            if isinstance(tid, str) and tid:
+                return tid
+    return None
+
+
+def _state_file() -> Path:
+    """Path of the adapter's read-only thread provenance registry.
+
+    Overridable via CODEX_REVIEW_STATE_DIR (tests point it at a temp dir);
+    defaults to ~/.cache/codex-review/threads.json.
+    """
+    state_dir = os.environ.get("CODEX_REVIEW_STATE_DIR")
+    if not state_dir:
+        state_dir = str(Path.home() / ".cache" / "codex-review")
+    return Path(state_dir) / "threads.json"
+
+
+def _load_thread_registry() -> Dict[str, Any]:
+    try:
+        return json.loads(_state_file().read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _register_readonly_thread(thread_id: str) -> None:
+    """Record that this adapter created `thread_id` via a read-only initial.
+
+    Resume invocations only accept handles present here with
+    sandbox == "read-only" (mechanical provenance, see main()).  A registry
+    write failure must not fail the review itself: the thread simply stays
+    un-resumable, which is the fail-closed direction.
+    """
+    registry = _load_thread_registry()
+    threads = registry.get("threads") if isinstance(registry, dict) else None
+    if not isinstance(threads, dict):
+        threads = {}
+    threads[thread_id] = {"sandbox": "read-only", "registered_at": datetime.now(timezone.utc).isoformat()}
+    payload = json.dumps({"schema": "codex-review-thread-registry/1", "threads": threads}, ensure_ascii=False)
+    try:
+        path = _state_file()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(payload)
+        tmp.replace(path)
+    except OSError as exc:
+        print(f"codex-review: thread registry write failed: {exc}", file=sys.stderr)
+
+
+def _thread_is_registered_readonly(handle: str) -> bool:
+    registry = _load_thread_registry()
+    threads = registry.get("threads") if isinstance(registry, dict) else {}
+    entry = threads.get(handle) if isinstance(threads, dict) else None
+    return isinstance(entry, dict) and entry.get("sandbox") == "read-only"
 
 
 def _validate_request(req: Dict[str, Any]) -> str | None:
@@ -201,6 +303,12 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False))
         return 0
 
+    err = _validate_continuation(request)
+    if err:
+        result = _blocked(request, "schema_invalid", err)
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
+
     repo = Path(request["repo"])
     try:
         head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=10).stdout.strip()
@@ -218,7 +326,29 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False))
         return 0
 
-    cmd = ["codex", "exec", "--sandbox", "read-only", "--json"]
+    # Invoke codex CLI.  A resume continuation pins the invocation to the
+    # caller's thread (FR-MB-015).  `codex exec resume` accepts neither
+    # `--sandbox` nor an effective `-c sandbox=` override (proven by the
+    # contrast evidence: a `-c sandbox="workspace-write"` resume of a
+    # read-only thread is still denied while a plain resume of a
+    # workspace-write thread can write) — the sandbox policy is mechanically
+    # inherited from the original session.  Safety therefore rests on handle
+    # provenance: this adapter records every thread it created via a
+    # read-only initial invocation and refuses to resume any handle it did
+    # not register as read-only (fail-closed, before provider invocation).
+    continuation = request.get("continuation") if isinstance(request.get("continuation"), dict) else None
+    if continuation and continuation.get("form") == "resume":
+        if not _thread_is_registered_readonly(continuation["handle"]):
+            result = _blocked(
+                request,
+                "session_resume_mismatch",
+                "resume handle was not registered by a read-only initial invocation of this adapter",
+            )
+            print(json.dumps(result, ensure_ascii=False))
+            return 0
+        cmd = ["codex", "exec", "resume", continuation["handle"], "--json"]
+    else:
+        cmd = ["codex", "exec", "--sandbox", "read-only", "--json"]
     env = {"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", str(Path.home()))}
     try:
         completed = subprocess.run(
@@ -244,6 +374,15 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False))
         return 0
 
+    # Provenance bookkeeping: every thread this adapter just created via a
+    # read-only initial invocation becomes resumable.  A resume turn re-enters
+    # an existing thread and registers nothing.  Registry write failure only
+    # keeps the thread un-resumable (fail-closed direction).
+    if not (continuation and continuation.get("form") == "resume"):
+        tid = _extract_session_id(completed.stdout)
+        if tid:
+            _register_readonly_thread(tid)
+
     final_text, err = _extract_final_text(completed.stdout)
     if err:
         result = _blocked(request, "review_incomplete" if "missing" in err else "schema_invalid", err)
@@ -261,6 +400,15 @@ def main() -> int:
         result = _blocked(request, "schema_invalid", err)
         print(json.dumps(result, ensure_ascii=False))
         return 0
+
+    # Structured session identity (FR-MB-015 / FR-MB-016): report the engine
+    # -proven thread this invocation actually ran in.  With no continuation
+    # there is no session contract to honour and the field stays absent;
+    # extraction failure keeps it absent too (Router fails closed on that).
+    if continuation is not None:
+        sid = _extract_session_id(completed.stdout)
+        if sid:
+            obj["session"] = {"form": continuation["form"], "handle": sid}
 
     # Re-output the validated object (ensure single JSON line)
     print(json.dumps(obj, ensure_ascii=False))

@@ -815,8 +815,9 @@ class RoutingConfigTests(unittest.TestCase):
     def test_checked_in_registry_includes_grilling_backend_and_stateful_order(self) -> None:
         # MB-GRILL-021 / MB-GRILL-020：chatgpt-tunnel 入 registry 并作为默认
         # grilling 后端；routing-policy 提供 stateful 候选序列骨架。序列成员
-        # 为空属诚实过渡态（MB-GRILL-020：FR-MB-016 会话标识合同与续接只读
-        # 证据落地前，无 backend 满足 FR-MB-001 三项资格）。
+        # 须满足 FR-MB-001 三项资格（resume 形态 + 会话标识 + 续接只读取证）。
+        # opencode-cli 2026-09-03 合格；codex-cli 2026-09-07 合格（adapter
+        # resume 形态 + thread 身份 + 0.153.4 两形态只读取证）。
         registry, policy = ROUTER.load_configuration(
             AGENTS_DIR / "review-backends.yaml",
             AGENTS_DIR / "routing-policy.yaml",
@@ -826,7 +827,15 @@ class RoutingConfigTests(unittest.TestCase):
         tunnel = registry["backends"]["chatgpt-tunnel"]
         self.assertEqual(tunnel["readonly_mode"], ROUTER.TUNNEL_READONLY_MODE)
         self.assertIs(tunnel["router_selectable"], False)
-        self.assertEqual(policy["stateful_roles"]["strong-reviewer-stateful"]["backends"], ["opencode-cli"])
+        self.assertEqual(
+            policy["stateful_roles"]["strong-reviewer-stateful"]["backends"],
+            ["opencode-cli", "codex-cli"],
+        )
+        for backend_id in ("opencode-cli", "codex-cli"):
+            spec = registry["backends"][backend_id]
+            self.assertIn("resume", spec["invocation_forms"])
+            self.assertIsInstance(spec["session_identity"], dict)
+            self.assertIs(spec["continuation_readonly_evidence"], True)
 
     def test_stateful_roles_accept_empty_order_as_transitional_state(self) -> None:
         registry, policy = _configuration()
