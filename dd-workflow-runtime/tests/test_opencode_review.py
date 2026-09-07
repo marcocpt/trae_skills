@@ -434,5 +434,113 @@ class ContinuationIntegrationTests(unittest.TestCase):
         self.assertNotIn("session", result)
 
 
+class AdvisoryModeTests(unittest.TestCase):
+    """LATER-20260907: the adapter honours the advisory request mode.
+
+    An advisory round assembles the dd-advisory-result/1 envelope; a finding
+    shape in an advisory round (or the reverse) is rejected without any
+    silent conversion.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.temp.name) / "repo"
+        self.repo.mkdir()
+        subprocess.run(["git", "-C", str(self.repo), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "config", "user.email", "test@example.invalid"], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "config", "user.name", "Test"], check=True)
+        (self.repo / "review.py").write_text("print('base')\n")
+        subprocess.run(["git", "-C", str(self.repo), "add", "review.py"], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "commit", "-qm", "base"], check=True)
+        self.base = subprocess.run(["git", "-C", str(self.repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+        (self.repo / "review.py").write_text("print('head')\n")
+        subprocess.run(["git", "-C", str(self.repo), "add", "review.py"], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "commit", "-qm", "head"], check=True)
+        self.head = subprocess.run(["git", "-C", str(self.repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def advisory_request(self):
+        return {
+            "schema": "dd-review-request/1",
+            "mode": "advisory",
+            "role": "strong-reviewer",
+            "host": "opencode",
+            "repo": str(self.repo),
+            "base_sha": self.base,
+            "head_sha": self.head,
+            "scope": ["review.py"],
+            "decision_points": [
+                {"id": "DP-1", "question": "which ttl?", "options": [{"id": "A", "description": "60s"}, {"id": "B", "description": "300s"}]},
+            ],
+            "routing_context": {"dispatch_boundary": "single-backend", "router_authority": False, "hop_count": 1, "dispatch_chain": ["opencode-cli"], "selected_backend": "opencode-cli"},
+        }
+
+    @staticmethod
+    def advisory_payload(dp_ids=("DP-1",)):
+        return {
+            "status": "ADVISORY",
+            "reviewed": ["review.py"],
+            "unreadable": [],
+            "decision_points": [
+                {"id": i, "recommendation": "A", "rationale": "smallest surface", "risks": [], "information_sufficient": True, "info_gaps": []}
+                for i in dp_ids
+            ],
+            "suggested_decision_points": [],
+            "evidence": ["fixture advisory evidence"],
+            "failure_category": None,
+        }
+
+    def _run(self, fake_stdout: str, request_overrides: dict | None = None):
+        req = self.advisory_request()
+        if request_overrides:
+            req.update(request_overrides)
+        mock_completed = mock.Mock()
+        mock_completed.stdout = fake_stdout
+        mock_completed.stderr = ""
+        mock_completed.returncode = 0
+        original_run = subprocess.run
+        with mock.patch("subprocess.run") as mocked:
+            def side_effect(cmd, **kwargs):
+                if cmd[0] == "opencode":
+                    return mock_completed
+                return original_run(cmd, **kwargs)
+            mocked.side_effect = side_effect
+            import io
+            with mock.patch("sys.stdin", io.StringIO(json.dumps(req))):
+                with mock.patch("sys.stdout", new_callable=io.StringIO) as fake_out:
+                    with mock.patch.object(sys, "argv", ["opencode-review", "review"]):
+                        ret = ADAPTER_MOD.main()
+                        return ret, fake_out.getvalue()
+
+    def test_advisory_round_emits_advisory_envelope(self):
+        stream = _event_stream(json.dumps(self.advisory_payload()))
+        ret, out = self._run(stream)
+        self.assertEqual(ret, 0)
+        obj = json.loads(out)
+        self.assertEqual(obj["schema"], "dd-advisory-result/1")
+        self.assertEqual(obj["status"], "ADVISORY")
+        self.assertEqual(obj["decision_points"][0]["id"], "DP-1")
+        self.assertNotIn("findings", obj)
+
+    def test_advisory_round_rejects_finding_shape(self):
+        finding_payload = {
+            "status": "PASS",
+            "reviewed": ["review.py"],
+            "unreadable": [],
+            "findings": [],
+            "evidence": ["ok"],
+            "failure_category": None,
+        }
+        stream = _event_stream(json.dumps(finding_payload))
+        ret, out = self._run(stream)
+        obj = json.loads(out)
+        self.assertEqual(obj["status"], "BLOCKED")
+        self.assertEqual(obj["failure_category"], "schema_invalid")
+        # The failure envelope itself is advisory-shaped
+        self.assertEqual(obj["schema"], "dd-advisory-result/1")
+
+
 if __name__ == "__main__":
     unittest.main()

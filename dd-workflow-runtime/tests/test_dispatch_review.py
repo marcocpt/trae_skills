@@ -124,74 +124,82 @@ def _git(repo: Path, *args: str) -> str:
     return result.stdout.strip()
 
 
+def _init_fixture_repo(root) -> tuple[Path, str, str]:
+    repo = Path(getattr(root, "name", root)) / "repo"
+    repo.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.email", "test@example.invalid"], check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.name", "Router Test"], check=True)
+    (repo / "review.md").write_text("frozen review target\n")
+    subprocess.run(["git", "-C", str(repo), "add", "review.md"], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-qm", "fixture"], check=True)
+    head = _git(repo, "rev-parse", "HEAD")
+    return repo, head, head
+
+
+def _base_request(repo: Path, base: str, head: str) -> Dict[str, Any]:
+    return {
+        "schema": ROUTER.REQUEST_SCHEMA,
+        "role": "strong-reviewer",
+        "host": "codex",
+        "repo": str(repo),
+        "base_sha": base,
+        "head_sha": head,
+        "scope": ["review.md"],
+        "verification": [{"name": "unit", "status": "passed", "evidence": "fixture-pass"}],
+        "external_review": {"authorization": "approved", "scope": ["review.md"]},
+        "readonly_evidence": [
+            {
+                "backend": "mcp-review",
+                "mode": "snapshot-send-only",
+                "level": "L6",
+                "confirmed": True,
+                "source": "test-mcp-read-only",
+            },
+            {
+                "backend": "codex-cli",
+                "mode": "codex-read-only-transport",
+                "level": "L6",
+                "confirmed": True,
+                "source": "test-codex-read-only",
+            },
+            {
+                "backend": "codex-native",
+                "mode": "codex-route-guard",
+                "level": "L6",
+                "confirmed": True,
+                "source": "test-codex-native-read-only",
+            },
+            {
+                "backend": "opencode-cli",
+                "mode": "agent-read-only-contract",
+                "level": "L6",
+                "confirmed": True,
+                "source": "test-opencode-read-only",
+            },
+            {
+                "backend": "opencode-native",
+                "mode": "agent-read-only-contract",
+                "level": "L6",
+                "confirmed": True,
+                "source": "test-opencode-native-read-only",
+            },
+        ],
+        "context": {"hop_count": 0, "dispatch_chain": []},
+    }
+
+
 class ReviewRouterTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
-        self.repo = Path(self.temp.name) / "repo"
-        self.repo.mkdir()
-        subprocess.run(["git", "-C", str(self.repo), "init", "-q"], check=True)
-        subprocess.run(["git", "-C", str(self.repo), "config", "user.email", "test@example.invalid"], check=True)
-        subprocess.run(["git", "-C", str(self.repo), "config", "user.name", "Router Test"], check=True)
-        (self.repo / "review.md").write_text("frozen review target\n")
-        subprocess.run(["git", "-C", str(self.repo), "add", "review.md"], check=True)
-        subprocess.run(["git", "-C", str(self.repo), "commit", "-qm", "fixture"], check=True)
-        self.head = _git(self.repo, "rev-parse", "HEAD")
-        self.base = self.head
+        self.repo, self.head, self.base = _init_fixture_repo(self.temp)
         self.registry, self.policy = _configuration()
 
     def tearDown(self) -> None:
         self.temp.cleanup()
 
     def request(self, **overrides: Any) -> Dict[str, Any]:
-        request: Dict[str, Any] = {
-            "schema": ROUTER.REQUEST_SCHEMA,
-            "role": "strong-reviewer",
-            "host": "codex",
-            "repo": str(self.repo),
-            "base_sha": self.base,
-            "head_sha": self.head,
-            "scope": ["review.md"],
-            "verification": [{"name": "unit", "status": "passed", "evidence": "fixture-pass"}],
-            "external_review": {"authorization": "approved", "scope": ["review.md"]},
-            "readonly_evidence": [
-                {
-                    "backend": "mcp-review",
-                    "mode": "snapshot-send-only",
-                    "level": "L6",
-                    "confirmed": True,
-                    "source": "test-mcp-read-only",
-                },
-                {
-                    "backend": "codex-cli",
-                    "mode": "codex-read-only-transport",
-                    "level": "L6",
-                    "confirmed": True,
-                    "source": "test-codex-read-only",
-                },
-                {
-                    "backend": "codex-native",
-                    "mode": "codex-route-guard",
-                    "level": "L6",
-                    "confirmed": True,
-                    "source": "test-codex-native-read-only",
-                },
-                {
-                    "backend": "opencode-cli",
-                    "mode": "agent-read-only-contract",
-                    "level": "L6",
-                    "confirmed": True,
-                    "source": "test-opencode-read-only",
-                },
-                {
-                    "backend": "opencode-native",
-                    "mode": "agent-read-only-contract",
-                    "level": "L6",
-                    "confirmed": True,
-                    "source": "test-opencode-native-read-only",
-                },
-            ],
-            "context": {"hop_count": 0, "dispatch_chain": []},
-        }
+        request = _base_request(self.repo, self.base, self.head)
         request.update(overrides)
         return request
 
@@ -1360,6 +1368,203 @@ class ContinuationSessionIdentityTests(unittest.TestCase):
         self.assertEqual(result["session"]["form"], "initial")
         self.assertEqual(result["session"]["handle"], "ses_new")
         self.assertTrue(result["session"]["verified"])
+
+
+class AdvisoryDispatchTests(unittest.TestCase):
+    """Advisory dispatch contract (LATER-20260907): decision-point advice."""
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.repo, self.head, self.base = _init_fixture_repo(self.temp)
+        self.registry, self.policy = _configuration()
+        # Mirror the checked-in registry: both stateful CLI backends declare
+        # the advisory capability bound to its wire contract; codex-cli also
+        # carries the stateful qualification (resume + session identity +
+        # continuation readonly evidence, captured 2026-09-07).
+        for backend_id in ("opencode-cli", "codex-cli"):
+            self.registry["backends"][backend_id]["capabilities"] = ["strong-review", "advisory"]
+            self.registry["backends"][backend_id]["advisory_result_schema"] = ROUTER.ADVISORY_RESULT_SCHEMA
+        codex = self.registry["backends"]["codex-cli"]
+        codex["invocation_forms"] = ["initial", "resume"]
+        codex["session_identity"] = {"field": "session", "owner": "codex-review"}
+        codex["continuation_readonly_evidence"] = True
+        self.policy["stateful_roles"]["strong-reviewer-stateful"]["backends"] = ["opencode-cli", "codex-cli"]
+
+    def tearDown(self) -> None:
+        self.temp.cleanup()
+
+    def dispatch(self, request: Dict[str, Any], runner: Any = None) -> Dict[str, Any]:
+        return ROUTER.dispatch_review(request, self.registry, self.policy, runner)
+
+    def request(self, **overrides: Any) -> Dict[str, Any]:
+        request = _base_request(self.repo, self.base, self.head)
+        request.update(overrides)
+        return request
+
+    def advisory_request(self, **overrides: Any) -> Dict[str, Any]:
+        request = _base_request(self.repo, self.base, self.head)
+        request["mode"] = "advisory"
+        request.pop("verification", None)
+        request["decision_points"] = [
+            {
+                "id": "DP-1",
+                "question": "which fallback order?",
+                "background_constraints": "stateful loop only",
+                "options": [{"id": "A", "description": "opencode first"}, {"id": "B", "description": "codex first"}],
+            },
+            {
+                "id": "DP-2",
+                "question": "cache ttl?",
+                "options": [{"id": "A", "description": "60s"}, {"id": "B", "description": "300s"}],
+            },
+        ]
+        return request
+
+    def advisory_payload(self, request: Dict[str, Any], backend: str = "opencode-cli", **overrides: Any) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "schema": ROUTER.ADVISORY_RESULT_SCHEMA,
+            "backend": backend,
+            "reviewer": "strong-reviewer-cli/fixture",
+            "target": {
+                "base_sha": request["base_sha"],
+                "head_sha": request["head_sha"],
+                "scope": list(request["scope"]),
+            },
+            "status": "ADVISORY",
+            "reviewed": list(request["scope"]),
+            "unreadable": [],
+            "decision_points": [
+                {
+                    "id": dp["id"],
+                    "recommendation": "A",
+                    "rationale": "smallest surface",
+                    "risks": [],
+                    "information_sufficient": True,
+                    "info_gaps": [],
+                }
+                for dp in request["decision_points"]
+            ],
+            "suggested_decision_points": [],
+            "evidence": ["fixture advisory evidence"],
+            "failure_category": None,
+            "lifecycle": {"started": True, "completed": True},
+            "readonly_confirmation": {"confirmed": False, "evidence": None},
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_advisory_happy_path_uses_stateful_candidates(self) -> None:
+        request = self.advisory_request()
+        runner = BackendScriptRunner({"opencode-cli": self.advisory_payload(request)})
+        result = self.dispatch(request, runner)
+        self.assertEqual(result["status"], "ADVISORY")
+        self.assertEqual(result["schema"], ROUTER.ADVISORY_RESULT_SCHEMA)
+        self.assertEqual(runner.calls, ["opencode-cli"])
+        adapter_request = runner.requests[0]
+        self.assertEqual(adapter_request["mode"], "advisory")
+        self.assertEqual([dp["id"] for dp in adapter_request["decision_points"]], ["DP-1", "DP-2"])
+        self.assertNotIn("verification", adapter_request)
+        self.assertEqual(result["readonly_confirmation"]["confirmed"], True)
+        self.assertEqual(len(result["decision_points"]), 2)
+
+    def test_advisory_block_result_is_advisory_shaped(self) -> None:
+        request = self.advisory_request()
+        runner = BackendScriptRunner(
+            {"opencode-cli": ROUTER.TerminalReviewFailure("review_incomplete", "no final message")}
+        )
+        result = self.dispatch(request, runner)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["schema"], ROUTER.ADVISORY_RESULT_SCHEMA)
+        self.assertEqual(result["failure_category"], "review_incomplete")
+
+    def test_advisory_requires_decision_points(self) -> None:
+        request = self.advisory_request()
+        del request["decision_points"]
+        result = self.dispatch(request)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["failure_category"], "schema_invalid")
+
+    def test_finding_mode_rejects_decision_points(self) -> None:
+        request = self.request()
+        request["decision_points"] = [{"id": "DP-1", "question": "q", "options": [{"id": "A", "description": "d"}]}]
+        result = self.dispatch(request)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["failure_category"], "schema_invalid")
+
+    def test_unknown_mode_rejected(self) -> None:
+        request = self.request()
+        request["mode"] = "chat"
+        result = self.dispatch(request)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["failure_category"], "schema_invalid")
+
+    def test_advisory_dp_coverage_mismatch_blocked(self) -> None:
+        request = self.advisory_request()
+        payload = self.advisory_payload(request)
+        payload["decision_points"] = payload["decision_points"][:1]
+        runner = BackendScriptRunner({"opencode-cli": payload})
+        result = self.dispatch(request, runner)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["failure_category"], "evidence_mismatch")
+
+    def test_advisory_without_verification_passes_shape(self) -> None:
+        request = self.advisory_request()
+        runner = BackendScriptRunner({"opencode-cli": self.advisory_payload(request)})
+        result = self.dispatch(request, runner)
+        self.assertEqual(result["status"], "ADVISORY")
+
+    def test_advisory_backend_without_capability_falls_back(self) -> None:
+        self.registry["backends"]["opencode-cli"]["capabilities"] = ["strong-review"]
+        request = self.advisory_request()
+        runner = BackendScriptRunner({"codex-cli": self.advisory_payload(request, backend="codex-cli")})
+        result = self.dispatch(request, runner)
+        self.assertEqual(result["status"], "ADVISORY")
+        # opencode fails eligibility before invocation; codex takes over
+        self.assertEqual(runner.calls, ["codex-cli"])
+        self.assertEqual(
+            [a["failure_category"] for a in result["routing"]["attempted"] if a.get("backend") == "opencode-cli"],
+            ["capability_unavailable"],
+        )
+
+    def finding_payload(self, request: Dict[str, Any], backend: str = "opencode-cli") -> Dict[str, Any]:
+        return {
+            "schema": ROUTER.RESULT_SCHEMA,
+            "backend": backend,
+            "reviewer": f"{backend}/strong-reviewer",
+            "target": {
+                "base_sha": request["base_sha"],
+                "head_sha": request["head_sha"],
+                "scope": list(request["scope"]),
+            },
+            "status": "PASS",
+            "reviewed": list(request["scope"]),
+            "unreadable": [],
+            "findings": [],
+            "evidence": ["reviewed frozen target"],
+            "lifecycle": {"started": True, "completed": True},
+            "failure_category": None,
+            "readonly_confirmation": {"confirmed": True, "evidence": "probe-no-write"},
+        }
+
+    def test_advisory_rejects_finding_shaped_result(self) -> None:
+        request = self.advisory_request()
+        runner = BackendScriptRunner({"opencode-cli": self.finding_payload(request)})
+        result = self.dispatch(request, runner)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["failure_category"], "schema_invalid")
+
+    def test_advisory_suggested_decision_points_have_no_canonical_id(self) -> None:
+        request = self.advisory_request()
+        payload = self.advisory_payload(
+            request,
+            suggested_decision_points=[
+                {"id": "DP-99", "question": "sneaky", "options": [{"description": "x"}]},
+            ],
+        )
+        runner = BackendScriptRunner({"opencode-cli": payload})
+        result = self.dispatch(request, runner)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["failure_category"], "schema_invalid")
 
 
 if __name__ == "__main__":

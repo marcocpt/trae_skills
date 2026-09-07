@@ -25,17 +25,40 @@ from typing import Any, Dict, List
 BACKEND_ID = "opencode-cli"
 REQUEST_SCHEMA = "dd-review-request/1"
 RESULT_SCHEMA = "dd-review-result/1"
+ADVISORY_RESULT_SCHEMA = "dd-advisory-result/1"
 AGENT_NAME = "strong-reviewer-cli"
 FINDING_KEYS = ("id", "severity", "classification", "change_risk", "location", "evidence", "required_fix")
 SHA_RE = re.compile(r"^[0-9a-fA-F]{7,64}$")
 
 
 def _blocked_result(request: Dict[str, Any], category: str, detail: str) -> Dict[str, Any]:
+    """Adapter-side terminal failure, shape-matched to the request mode.
+
+    An advisory request must never receive a finding-shaped failure envelope:
+    the Router's advisory normalizer would otherwise misreport it as
+    schema_invalid instead of surfacing the real failure category.
+    """
     target = {
         "base_sha": request.get("base_sha"),
         "head_sha": request.get("head_sha"),
         "scope": list(request.get("scope", [])),
     }
+    if request.get("mode", "finding") == "advisory":
+        return {
+            "schema": ADVISORY_RESULT_SCHEMA,
+            "backend": BACKEND_ID,
+            "reviewer": f"{AGENT_NAME}/unknown",
+            "target": target,
+            "status": "BLOCKED",
+            "reviewed": [],
+            "unreadable": list(request.get("scope", [])),
+            "decision_points": [],
+            "suggested_decision_points": [],
+            "evidence": [detail],
+            "failure_category": category,
+            "readonly_confirmation": {"confirmed": False, "evidence": None},
+            "lifecycle": {"started": True, "completed": False},
+        }
     return {
         "schema": RESULT_SCHEMA,
         "backend": BACKEND_ID,
@@ -111,8 +134,19 @@ def _validate_request(req: Dict[str, Any]) -> str | None:
     for forbidden in ("native_guard", "external_review", "readonly_evidence"):
         if forbidden in req:
             return f"request.{forbidden} must not be forwarded to adapter"
-    # verification is required but we don't enforce its content here; Router already did
-    if "verification" not in req:
+    # Mode-aware gates (LATER-20260907): advisory rounds answer open design
+    # questions and never gate on a green test suite; their input is the
+    # decision-point list instead.
+    mode = req.get("mode", "finding")
+    if mode not in ("finding", "advisory"):
+        return f"unsupported request mode {mode!r}"
+    if mode == "advisory":
+        decision_points = req.get("decision_points")
+        if not isinstance(decision_points, list) or not decision_points:
+            return "advisory requests require a non-empty decision_points list"
+        if "verification" in req and not isinstance(req.get("verification"), list):
+            return "request.verification must be a list when supplied"
+    elif "verification" not in req:
         return "request.verification is required"
     return None
 
@@ -157,15 +191,104 @@ def _strict_json_parse(text: str) -> tuple[Any, str | None]:
     return obj, None
 
 
-def _validate_reviewer_json(obj: Dict[str, Any], scope: List[str]) -> str | None:
+def _validate_advisory_decision_point(dp: Any) -> str | None:
+    if not isinstance(dp, dict):
+        return "decision point must be a mapping"
+    for key in ("id", "recommendation", "rationale"):
+        if not isinstance(dp.get(key), str) or not dp[key]:
+            return f"decision point.{key} is required"
+    for key in ("risks", "info_gaps"):
+        value = dp.get(key)
+        if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+            return f"decision point.{key} must be a string list"
+    if not isinstance(dp.get("information_sufficient"), bool):
+        return "decision point.information_sufficient must be a boolean"
+    return None
+
+
+def _validate_suggested_decision_point(dp: Any) -> str | None:
+    if not isinstance(dp, dict):
+        return "suggested decision point must be a mapping"
+    if "id" in dp:
+        return "suggested decision points must not carry a canonical id"
+    if not isinstance(dp.get("question"), str) or not dp["question"]:
+        return "suggested decision point.question is required"
+    options = dp.get("options")
+    if not isinstance(options, list) or not options:
+        return "suggested decision point.options must be a non-empty list"
+    for option in options:
+        if not isinstance(option, dict) or not isinstance(option.get("description"), str) or not option["description"]:
+            return "suggested decision point option.description is required"
+    background = dp.get("background")
+    if background is not None and (not isinstance(background, str) or not background):
+        return "suggested decision point.background must be a non-empty string"
+    return None
+
+
+def _validate_reviewer_json(obj: Dict[str, Any], scope: List[str], mode: str = "finding") -> str | None:
+    """Validate the reviewer's bare JSON payload for the request mode.
+
+    Mode/shape cross-validation is a hard gate (LATER-20260907): a finding
+    request can never accept an advisory payload and vice versa; no silent
+    conversion exists in either direction.
+    """
     status = obj.get("status")
     if not isinstance(status, str):
         return "status is required"
     ustatus = status.upper()
+
+    if mode == "advisory":
+        if ustatus not in ("ADVISORY", "BLOCKED"):
+            return (
+                f"unsupported advisory status {status!r}: an advisory round never carries "
+                "PASS/FINDINGS; the reviewer must answer in advisory shape"
+            )
+        reviewed = obj.get("reviewed")
+        unreadable = obj.get("unreadable")
+        if not isinstance(reviewed, list) or not all(isinstance(x, str) for x in reviewed):
+            return "reviewed must be string list"
+        if not isinstance(unreadable, list) or not all(isinstance(x, str) for x in unreadable):
+            return "unreadable must be string list"
+        scope_set = set(scope)
+        if not set(reviewed).issubset(scope_set) or not set(unreadable).issubset(scope_set):
+            return "reviewed/unreadable escapes scope"
+        if set(reviewed) & set(unreadable):
+            return "reviewed and unreadable must not overlap"
+        if ustatus == "ADVISORY" and (unreadable or set(reviewed) != scope_set):
+            return "ADVISORY requires complete reviewed scope and no unreadable entries"
+        decision_points = obj.get("decision_points")
+        if not isinstance(decision_points, list) or not decision_points:
+            return "ADVISORY requires decision_points"
+        seen = set()
+        for dp in decision_points:
+            error = _validate_advisory_decision_point(dp)
+            if error:
+                return error
+            if dp["id"] in seen:
+                return f"decision point id duplicated: {dp['id']!r}"
+            seen.add(dp["id"])
+        suggested = obj.get("suggested_decision_points", [])
+        if not isinstance(suggested, list):
+            return "suggested_decision_points must be a list"
+        for dp in suggested:
+            error = _validate_suggested_decision_point(dp)
+            if error:
+                return error
+        evidence = obj.get("evidence")
+        if not isinstance(evidence, list) or not evidence:
+            return "evidence must be non-empty list"
+        fc = obj.get("failure_category")
+        if ustatus == "ADVISORY" and fc not in (None, ""):
+            return "ADVISORY cannot carry failure_category"
+        return None
+
     if ustatus == "FAIL":
         ustatus = "FINDINGS"
     if ustatus not in ("PASS", "FINDINGS", "BLOCKED"):
-        return f"unsupported status {status!r}"
+        return (
+            f"unsupported status {status!r}: a finding round never carries ADVISORY; "
+            "the reviewer must answer in finding shape"
+        )
     reviewed = obj.get("reviewed")
     unreadable = obj.get("unreadable")
     if not isinstance(reviewed, list) or not all(isinstance(x, str) for x in reviewed):
@@ -322,20 +445,17 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False))
         return 0
 
-    err = _validate_reviewer_json(obj, request["scope"])
+    mode = request.get("mode", "finding")
+    if mode not in ("finding", "advisory"):
+        result = _blocked_result(request, "schema_invalid", f"unsupported request mode {mode!r}")
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
+
+    err = _validate_reviewer_json(obj, request["scope"], mode=mode)
     if err:
         result = _blocked_result(request, "schema_invalid", err)
         print(json.dumps(result, ensure_ascii=False))
         return 0
-
-    # Build transport result for Router
-    status = obj["status"].upper()
-    if status == "FAIL":
-        status = "FINDINGS"
-    # Normalize findings via required keys only
-    findings = []
-    for f in obj.get("findings", []):
-        findings.append({k: f[k] for k in FINDING_KEYS})
 
     # Structured session identity (FR-MB-015 / FR-MB-016): report the engine
     # -proven session this invocation actually ran in.  With no continuation
@@ -345,6 +465,57 @@ def main() -> int:
         sid = _extract_session_id(completed.stdout)
         if sid:
             session = {"form": continuation["form"], "handle": sid}
+
+    # Build transport result for Router
+    status = obj["status"].upper()
+    if mode == "advisory":
+        # Advisory envelope (LATER-20260907): advice never enters the finding
+        # closure vocabulary; a successful round is ADVISORY, never PASS.
+        result = {
+            "schema": ADVISORY_RESULT_SCHEMA,
+            "backend": BACKEND_ID,
+            "reviewer": f"{AGENT_NAME}/muse-spark-1.2-contributor-free",
+            "target": {
+                "base_sha": request["base_sha"],
+                "head_sha": request["head_sha"],
+                "scope": list(request["scope"]),
+            },
+            "status": status,
+            "reviewed": list(obj["reviewed"]),
+            "unreadable": list(obj["unreadable"]),
+            "decision_points": [
+                {
+                    "id": dp["id"],
+                    "recommendation": dp["recommendation"],
+                    "rationale": dp["rationale"],
+                    "risks": list(dp["risks"]),
+                    "information_sufficient": dp["information_sufficient"],
+                    "info_gaps": list(dp["info_gaps"]),
+                }
+                for dp in obj["decision_points"]
+            ],
+            "suggested_decision_points": [
+                {
+                    key: dp[key]
+                    for key in (("question", "background", "options") if "background" in dp else ("question", "options"))
+                }
+                for dp in obj.get("suggested_decision_points", [])
+            ],
+            "evidence": list(obj["evidence"]),
+            "failure_category": obj.get("failure_category") if status == "BLOCKED" else None,
+            "readonly_confirmation": {"confirmed": False, "evidence": None},
+            "lifecycle": {"started": True, "completed": status == "ADVISORY"},
+        }
+        if session is not None:
+            result["session"] = session
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
+    if status == "FAIL":
+        status = "FINDINGS"
+    # Normalize findings via required keys only
+    findings = []
+    for f in obj.get("findings", []):
+        findings.append({k: f[k] for k in FINDING_KEYS})
 
     result = {
         "schema": RESULT_SCHEMA,

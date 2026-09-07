@@ -31,16 +31,39 @@ from typing import Any, Dict, List
 BACKEND_ID = "codex-cli"
 REQUEST_SCHEMA = "dd-review-request/1"
 RESULT_SCHEMA = "dd-review-result/1"
+ADVISORY_RESULT_SCHEMA = "dd-advisory-result/1"
 SHA_RE = re.compile(r"^[0-9a-fA-F]{7,64}$")
 FINDING_KEYS = ("id", "severity", "classification", "change_risk", "location", "evidence", "required_fix")
 
 
 def _blocked(request: Dict[str, Any], category: str, detail: str) -> Dict[str, Any]:
+    """Adapter-side terminal failure, shape-matched to the request mode.
+
+    An advisory request must never receive a finding-shaped failure envelope:
+    the Router's advisory normalizer would otherwise misreport it as
+    schema_invalid instead of surfacing the real failure category.
+    """
     target = {
         "base_sha": request.get("base_sha"),
         "head_sha": request.get("head_sha"),
         "scope": list(request.get("scope", [])),
     }
+    if request.get("mode", "finding") == "advisory":
+        return {
+            "schema": ADVISORY_RESULT_SCHEMA,
+            "backend": BACKEND_ID,
+            "reviewer": "strong-reviewer/codex-cli",
+            "target": target,
+            "status": "BLOCKED",
+            "reviewed": [],
+            "unreadable": list(request.get("scope", [])),
+            "decision_points": [],
+            "suggested_decision_points": [],
+            "evidence": [detail],
+            "failure_category": category,
+            "readonly_confirmation": {"confirmed": False, "evidence": None},
+            "lifecycle": {"started": True, "completed": False},
+        }
     return {
         "schema": RESULT_SCHEMA,
         "backend": BACKEND_ID,
@@ -167,7 +190,19 @@ def _validate_request(req: Dict[str, Any]) -> str | None:
     for forbidden in ("native_guard",):
         if forbidden in req:
             return f"request.{forbidden} must not be forwarded"
-    if "verification" not in req:
+    # Mode-aware gates (LATER-20260907): advisory rounds answer open design
+    # questions and never gate on a green test suite; their input is the
+    # decision-point list instead.
+    mode = req.get("mode", "finding")
+    if mode not in ("finding", "advisory"):
+        return f"unsupported request mode {mode!r}"
+    if mode == "advisory":
+        decision_points = req.get("decision_points")
+        if not isinstance(decision_points, list) or not decision_points:
+            return "advisory requests require a non-empty decision_points list"
+        if "verification" in req and not isinstance(req.get("verification"), list):
+            return "request.verification must be a list when supplied"
+    elif "verification" not in req:
         return "request.verification is required"
     return None
 
@@ -230,7 +265,81 @@ def _strict_json_parse(text: str) -> tuple[Any, str | None]:
     return obj, None
 
 
+def _validate_advisory_result(obj: Dict[str, Any], request: Dict[str, Any]) -> str | None:
+    """Validate the reviewer's advisory envelope (mode/shape cross-gate).
+
+    A finding round can never produce this shape and an advisory round can
+    never produce dd-review-result/1; no silent conversion exists.
+    """
+    if obj.get("schema") != ADVISORY_RESULT_SCHEMA:
+        return f"result schema must be {ADVISORY_RESULT_SCHEMA} for an advisory request"
+    if obj.get("backend") != BACKEND_ID:
+        return "backend must be codex-cli"
+    target = obj.get("target")
+    if not isinstance(target, dict):
+        return "target is required"
+    if target.get("base_sha") != request.get("base_sha") or target.get("head_sha") != request.get("head_sha"):
+        return "target mismatch"
+    if target.get("scope") != request.get("scope"):
+        return "scope mismatch"
+    status = obj.get("status")
+    if not isinstance(status, str) or status.upper() not in ("ADVISORY", "BLOCKED"):
+        return f"unsupported advisory status {status!r}"
+    reviewed = obj.get("reviewed")
+    unreadable = obj.get("unreadable")
+    if not isinstance(reviewed, list) or not isinstance(unreadable, list):
+        return "reviewed/unreadable must be lists"
+    scope_set = set(request.get("scope", []))
+    if not set(reviewed).issubset(scope_set) or not set(unreadable).issubset(scope_set):
+        return "reviewed/unreadable escapes scope"
+    if set(reviewed) & set(unreadable):
+        return "reviewed and unreadable must not overlap"
+    if status.upper() == "ADVISORY" and (unreadable or set(reviewed) != scope_set):
+        return "ADVISORY requires complete reviewed scope and no unreadable entries"
+    decision_points = obj.get("decision_points")
+    if not isinstance(decision_points, list) or not decision_points:
+        return "ADVISORY requires decision_points"
+    seen = set()
+    for dp in decision_points:
+        if not isinstance(dp, dict):
+            return "decision point must be mapping"
+        for key in ("id", "recommendation", "rationale"):
+            if not isinstance(dp.get(key), str) or not dp[key]:
+                return f"decision point missing {key}"
+        for key in ("risks", "info_gaps"):
+            value = dp.get(key)
+            if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+                return f"decision point.{key} must be a string list"
+        if not isinstance(dp.get("information_sufficient"), bool):
+            return "decision point.information_sufficient must be a boolean"
+        if dp["id"] in seen:
+            return f"decision point id duplicated: {dp['id']!r}"
+        seen.add(dp["id"])
+    requested_ids = {dp["id"] for dp in request.get("decision_points", [])}
+    if seen != requested_ids:
+        return (
+            "advisory decision point coverage mismatch: "
+            f"missing={sorted(requested_ids - seen)} unexpected={sorted(seen - requested_ids)}"
+        )
+    suggested = obj.get("suggested_decision_points", [])
+    if not isinstance(suggested, list):
+        return "suggested_decision_points must be a list"
+    for dp in suggested:
+        if not isinstance(dp, dict):
+            return "suggested decision point must be mapping"
+        if "id" in dp:
+            return "suggested decision points must not carry a canonical id"
+        if not isinstance(dp.get("question"), str) or not dp["question"]:
+            return "suggested decision point.question is required"
+    evidence = obj.get("evidence")
+    if not isinstance(evidence, list) or not evidence:
+        return "evidence must be non-empty list"
+    return None
+
+
 def _validate_result(obj: Dict[str, Any], request: Dict[str, Any]) -> str | None:
+    if request.get("mode", "finding") == "advisory":
+        return _validate_advisory_result(obj, request)
     if obj.get("schema") != RESULT_SCHEMA:
         return f"result schema must be {RESULT_SCHEMA}"
     if obj.get("backend") != BACKEND_ID:
