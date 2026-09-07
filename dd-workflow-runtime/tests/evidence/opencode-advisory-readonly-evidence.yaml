@@ -100,4 +100,17 @@ limitations:
   - "The earlier 'readonly_permission_bound: event-backed' claim was corrected: the observed engine-level denial was a cross-scope READ bound by the permission policy (adapter-initial.json session), not a WRITE denial; write-side evidence is graded as above."
   - "Evidence is bounded to: backend=opencode-cli, opencode=1.18.29, agent=strong-reviewer-advisory-cli (dedicated single-mode advisory profile), model=muse-spark-1.2-contributor-free, invocation form `opencode run --session <sessionID> --agent strong-reviewer-advisory-cli --format json`.  It does not extrapolate to the finding profile, other versions, or other invocation forms."
   - "The advisory install symlink (~/.config/opencode/agents/strong-reviewer-advisory-cli.md) pointed at the worktree copy during capture; after merge it must be re-pointed at the develop checkout (same file content)."
-review_status: pending
+# 主审终确认（2026-09-07，STATUS: CLOSED，ChatGPT 会话 6a9e3cd4）：FR-MB-012
+# 当前 backend-bound 证据复核通过——opencode-cli 1.18.29 下 finding
+# （strong-reviewer-cli）与 advisory（strong-reviewer-advisory-cli）两 profile
+# 均取得与当前调用形态匹配的只读/正向读取证据；finding initial/resume 两轮
+# 均有原始 tool_use(read, completed) 且内容精确匹配；写侧按
+# agent-self-reported + parent-filesystem-verified 分级，未发现 mutation。
+# advisory resume 取证中观察到一次 session fork，已降级为
+# session_identity_continuity: mixed；该异常由 Router 的
+# actual_session_id == requested_handle 机械门 fail-closed，不阻止 capability
+# active。确认边界仅限 opencode-cli 1.18.29 + 两个当前 profile + 各已取证的
+# initial/resume/advisory invocation forms + 宿主本机信任边界；任何变化按
+# FR-MB-012 重新失效并取证。
+
+review_status: closed   # advisory result contract & permission evidence CLOSED by reviewer terminal confirmation (ChatGPT conversation 6a9e3cd4, 2026-09-07); citation boundary: opencode-cli 1.18.29 + strong-reviewer-advisory-cli + advisory invocation form + host-local trust boundary only

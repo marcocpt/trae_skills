@@ -57,4 +57,17 @@ verdict:
 limitations:
   - "Write-deny continuity rests on consistent agent-self-reported refusal plus parent-process filesystem verification; the permission frontmatter exposes no write tool so no engine denial event can exist."
   - "Evidence is bounded to: backend=opencode-cli, agent=strong-reviewer-cli, opencode=1.18.29, invocation form `opencode run --session <sessionID> --agent strong-reviewer-cli --format json`.  It does not extrapolate to the advisory profile, other agents, versions, or invocation forms (advisory is covered by opencode-advisory-readonly-evidence.yaml)."
-review_status: pending
+# 主审终确认（2026-09-07，STATUS: CLOSED，ChatGPT 会话 6a9e3cd4）：FR-MB-012
+# 当前 backend-bound 证据复核通过——opencode-cli 1.18.29 下 finding
+# （strong-reviewer-cli）与 advisory（strong-reviewer-advisory-cli）两 profile
+# 均取得与当前调用形态匹配的只读/正向读取证据；finding initial/resume 两轮
+# 均有原始 tool_use(read, completed) 且内容精确匹配；写侧按
+# agent-self-reported + parent-filesystem-verified 分级，未发现 mutation。
+# advisory resume 取证中观察到一次 session fork，已降级为
+# session_identity_continuity: mixed；该异常由 Router 的
+# actual_session_id == requested_handle 机械门 fail-closed，不阻止 capability
+# active。确认边界仅限 opencode-cli 1.18.29 + 两个当前 profile + 各已取证的
+# initial/resume/advisory invocation forms + 宿主本机信任边界；任何变化按
+# FR-MB-012 重新失效并取证。
+
+review_status: closed   # §8 #2 recapture CLOSED by reviewer terminal confirmation (ChatGPT conversation 6a9e3cd4, 2026-09-07); citation boundary: opencode-cli 1.18.29 + strong-reviewer-cli + canonical resume invocation form only
