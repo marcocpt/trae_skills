@@ -22,8 +22,9 @@
 # Evidence grading (same discipline as the 2026-09-03 finding capture):
 #   - result-format contract: EVENT-BACKED -- real ADVISORY envelopes produced
 #     end-to-end by the adapter on real muse-spark runs, raw NDJSON archived.
-#   - session identity continuity: EVENT-BACKED -- the raw NDJSON of both
-#     turns carries the same sessionID.
+#   - session identity continuity: MIXED -- successful same-session resume is
+#     event-backed, but one event-backed fork was also observed; the Router
+#     mechanically rejects mismatched session IDs (session_resume_mismatch).
 #   - write-deny continuity: AGENT-SELF-REPORTED + PARENT-FILESYSTEM-VERIFIED
 #     -- the permission frontmatter exposes no write tool, so no engine
 #     denial event can exist; the parent process verified no mutation after
