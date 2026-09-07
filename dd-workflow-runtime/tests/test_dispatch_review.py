@@ -1377,14 +1377,15 @@ class AdvisoryDispatchTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.repo, self.head, self.base = _init_fixture_repo(self.temp)
         self.registry, self.policy = _configuration()
-        # Mirror the checked-in registry: opencode-cli declares the advisory
-        # capability bound to its wire contract (forensically proven,
-        # opencode-advisory-readonly-evidence.yaml); codex-cli does NOT yet
-        # (advisory forensic run pending, FR-MB-012 gate) — but it does carry
-        # the stateful qualification (resume + session identity + continuation
-        # readonly evidence, captured 2026-09-07).
-        self.registry["backends"]["opencode-cli"]["capabilities"] = ["strong-review", "advisory"]
-        self.registry["backends"]["opencode-cli"]["advisory_result_schema"] = ROUTER.ADVISORY_RESULT_SCHEMA
+        # Mirror the checked-in registry: both stateful CLI backends declare
+        # the advisory capability bound to its wire contract (forensically
+        # proven: opencode-advisory-readonly-evidence.yaml /
+        # codex-advisory-readonly-evidence.yaml) and carry the stateful
+        # qualification (resume + session identity + continuation readonly
+        # evidence).
+        for backend_id in ("opencode-cli", "codex-cli"):
+            self.registry["backends"][backend_id]["capabilities"] = ["strong-review", "advisory"]
+            self.registry["backends"][backend_id]["advisory_result_schema"] = ROUTER.ADVISORY_RESULT_SCHEMA
         codex = self.registry["backends"]["codex-cli"]
         codex["invocation_forms"] = ["initial", "resume"]
         codex["session_identity"] = {"field": "session", "owner": "codex-review"}
@@ -1517,7 +1518,8 @@ class AdvisoryDispatchTests(unittest.TestCase):
     def test_advisory_skips_candidates_without_capability(self) -> None:
         # Both stateful candidates declare no advisory capability: both are
         # skipped (capability_unavailable) and the dispatch blocks honestly.
-        self.registry["backends"]["opencode-cli"]["capabilities"] = ["strong-review"]
+        for backend_id in ("opencode-cli", "codex-cli"):
+            self.registry["backends"][backend_id]["capabilities"] = ["strong-review"]
         request = self.advisory_request()
         result = self.dispatch(request)
         self.assertEqual(result["status"], "BLOCKED")
@@ -1528,8 +1530,8 @@ class AdvisoryDispatchTests(unittest.TestCase):
 
     def test_advisory_happy_path_after_capability_fallback(self) -> None:
         # opencode (first candidate) loses its advisory capability -> the
-        # dispatch falls through to codex-cli, which the fixture grants the
-        # advisory capability to mirror a future post-forensics state.
+        # dispatch falls through to codex-cli (which mirrors the checked-in
+        # registry's advisory declaration).
         self.registry["backends"]["opencode-cli"]["capabilities"] = ["strong-review"]
         request = self.advisory_request()
         self.registry["backends"]["codex-cli"]["capabilities"] = ["strong-review", "advisory"]

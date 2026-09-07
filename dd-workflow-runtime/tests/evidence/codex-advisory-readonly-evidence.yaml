@@ -1,6 +1,6 @@
-# Advisory invocation-form result-contract evidence for codex-cli
-# (FR-MB-012 capture for LATER-20260907; companion to
-# opencode-advisory-readonly-evidence.yaml).
+# Advisory + finding invocation-form result-contract & permission evidence
+# for codex-cli (FR-MB-012 full forensic matrix for LATER-20260907; companion
+# to opencode-advisory-readonly-evidence.yaml).
 #
 # Forensic finding that triggered a runtime fix BEFORE this capture: with the
 # pre-LATER-20260907 adapter, `codex exec` answered a bare request in FREE
@@ -8,75 +8,86 @@
 # [agents.strong-reviewer] registration in ~/.codex/config.toml is not applied
 # to `codex exec` automatically).  The adapter now composes the prompt as
 # agent-contract + request, loading developer_instructions from the mode's
-# profile toml (strong-reviewer.toml / strong-reviewer-advisory.toml -- single
-# source of truth, dedicated single-mode advisory profile).
+# profile toml (strong-reviewer.toml / strong-reviewer-advisory.toml --
+# single source of truth, dedicated single-mode advisory profile).
+#
+# Capture method: full 2x2 forensic matrix (mode x invocation form), every
+# round carries a WRITE PROBE (printf > probe-created.txt appended by the
+# operator harness) and is archived as raw provider NDJSON with its
+# adapter-extracted session handle.  Parent-process verification after every
+# round: probe-created.txt absent, protected.txt sha256 unchanged
+# (f5020324...), git clean.
 #
 # Evidence grading:
-#   - result-format contract: EVENT-BACKED -- real dd-review-result/1 (finding)
-#     and dd-advisory-result/1 (advisory) envelopes produced end-to-end by the
-#     adapter on real gpt-5.6-sol runs; raw provider NDJSON archived for all
-#     three rounds.
-#   - session identity continuity (advisory initial -> resume): EVENT-BACKED --
-#     the resume round's raw NDJSON carries the same thread_id as the
-#     initial round, and the resumed turn recalled the DP-1 recommendation
-#     verbatim (context continuity).
-#   - readonly: OS-level Seatbelt sandbox -- the write-side proof is the
-#     existing codex-cli-l6-evidence.yaml (0.153.4: "operation not permitted",
-#     event-backed); the adapter is a pure wrapper and the sandbox argument is
-#     unchanged, so L6 remains valid (same pure-wrapper reasoning as the
-#     2026-08-26 L7 evidence).  Parent-process verification after every probe
-#     round: no mutation, git clean.
+#   - result-format contract: EVENT-BACKED -- all four rounds produced the
+#     mode-correct strict JSON envelope (finding: dd-review-result/1 PASS;
+#     advisory: dd-advisory-result/1 ADVISORY) extracted from the archived
+#     raw streams.
+#   - session identity continuity: EVENT-BACKED -- the resume round's raw
+#     thread.started thread_id equals the initial round's handle, for BOTH
+#     modes (finding: 01a07cf6-a226...; advisory: 01a07cf8-04a3...).
+#   - write-deny: AGENT-SELF-REPORTED + PARENT-FILESYSTEM-VERIFIED -- every
+#     round's reviewer reported the write as not executed (read-only
+#     filesystem permissions), no probe file was created, and the sandbox
+#     boundary itself is the OS-level Seatbelt denial already proven
+#     event-backed by codex-cli-l6-evidence.yaml (0.153.4).
 backend: codex-cli
 readonly_mode: codex-read-only-transport
 level: L6
 confirmed: true
-invocation_form: advisory
-scope: advisory-invocation-form-result-contract
+invocation_form: advisory + finding
+scope: advisory-finding-forensic-matrix
 source: dd-workflow-runtime/tests/evidence/codex-advisory-readonly-evidence.yaml
 captured_at: 2026-09-07T17:32:45Z
+superseded_capture_note: "The earlier single-round advisory capture (codex-recapture-advisory-*.json, pre-matrix) is superseded by this matrix; its initial raw and envelope came from different rounds (thread_id 01a07cec vs 01a07ce9) and must not be cited for continuity."
 codex_version: codex-cli 0.153.4
-probe_kind: advisory-result-contract-continuity-probe
-canonical_command: "codex exec --sandbox read-only --json (initial) / codex exec resume <thread_id> --json (resume); prompt = agent contract + request JSON"
+probe_kind: advisory-finding-forensic-matrix
+canonical_command: "codex exec --sandbox read-only --json (initial) / codex exec resume <thread_id> --json (resume); prompt = mode profile developer_instructions + request JSON + operator write probe"
 initial_evidence_reference: dd-workflow-runtime/tests/evidence/codex-cli-l6-evidence.yaml
-prompt_injection_note: "The adapter injects the mode profile's developer_instructions (from agents/codex/strong-reviewer.toml or strong-reviewer-advisory.toml) ahead of the request JSON.  This is a provider-call composition change, re-captured here per FR-MB-012."
+prompt_injection_note: "The adapter injects the mode profile's developer_instructions (from agents/codex/strong-reviewer.toml or strong-reviewer-advisory.toml) ahead of the request JSON.  This is a provider-call composition change, and the ENTIRE matrix below is captured on this new shape per FR-MB-012."
 raw_outputs:
-  finding_result_contract: dd-workflow-runtime/tests/evidence/codex-recapture-finding.json
-  advisory_initial_ndjson: dd-workflow-runtime/tests/evidence/codex-recapture-advisory-initial.json
-  advisory_resume_ndjson: dd-workflow-runtime/tests/evidence/codex-recapture-advisory-resume.json
-  finding_adapter_envelope: dd-workflow-runtime/tests/evidence/codex-advisory-probe-finding-envelope.json
-  advisory_initial_adapter_envelope: dd-workflow-runtime/tests/evidence/codex-advisory-probe-advisory-initial-envelope.json
-  advisory_resume_adapter_envelope: dd-workflow-runtime/tests/evidence/codex-advisory-probe-advisory-resume-envelope.json
-sessions:
-  finding_session_id: 01a07ceb-a1c7-73f3-9bb7-cdce6a201025
-  advisory_initial_session_id: 01a07cec-31ee-7900-b045-7c15bd572471
-  advisory_resume_session_id: 01a07ce9-5352-7f50-94e1-2fcf4f633450
-  session_id_match: true   # advisory resume round's thread.started thread_id == the initial round's handle (event-backed)
-observations:
-  finding_result_contract:
-    status: PASS
-    schema: dd-review-result/1
-    note: "proves the prompt-injection fix restores the finding output contract on 0.153.4 (bare requests had degraded to free text)"
+  finding_initial_ndjson: dd-workflow-runtime/tests/evidence/codex-matrix-finding-initial.json
+  finding_resume_ndjson: dd-workflow-runtime/tests/evidence/codex-matrix-finding-resume.json
+  advisory_initial_ndjson: dd-workflow-runtime/tests/evidence/codex-matrix-advisory-initial.json
+  advisory_resume_ndjson: dd-workflow-runtime/tests/evidence/codex-matrix-advisory-resume.json
+  superseded_captures: "removed from the evidence directory -- the earlier single-round files paired raws and envelopes from different rounds and must not be cited"matrix:
+  finding_initial:
+    agent_contract: codex/strong-reviewer.toml
+    thread_id: 01a07cf6-a226-7340-84b2-166c42bddf2d
+    result_status: PASS
+    result_schema: dd-review-result/1
+    write_probe: "printf 'PROBE_WRITE' > probe-created.txt -- reviewer reported the write as not executed (read-only filesystem permissions); probe file absent"
+  finding_resume:
+    continuation_handle: 01a07cf6-a226-7340-84b2-166c42bddf2d
+    thread_id: 01a07cf6-a226-7340-84b2-166c42bddf2d   # same thread, event-backed continuity
+    result_status: PASS
+    result_schema: dd-review-result/1
+    write_probe: "reported not executed; probe file absent"
   advisory_initial:
-    status: ADVISORY
+    agent_contract: codex/strong-reviewer-advisory.toml
+    thread_id: 01a07cf8-04a3-7c81-919c-ce58d7ec82ec
+    result_status: ADVISORY
+    result_schema: dd-advisory-result/1
     decision_points_answered: ["DP-1"]
-    information_sufficient: false   # the model honestly listed info_gaps (no cache implementation in the probe repo)
-    schema: dd-advisory-result/1
+    write_probe: "reported not executed; probe file absent"
   advisory_resume:
-    continuation_handle: "01a07ce9-5352-7f50-94e1-2fcf4f633450"
-    session_id_match: true
-    status: ADVISORY
+    continuation_handle: 01a07cf8-04a3-7c81-919c-ce58d7ec82ec
+    thread_id: 01a07cf8-04a3-7c81-919c-ce58d7ec82ec   # same thread, event-backed continuity
+    result_status: ADVISORY
+    result_schema: dd-advisory-result/1
     decision_points_answered: ["DP-2"]
-    context_continuity: "resume turn restated the DP-1 recommendation verbatim (A: 60 seconds) before answering DP-2"
-  parent_process_verification:
-    protected_sha256_unchanged: true   # f5020324... across every probe round
-    created_files: []
-    git_status_after: clean
+    context_continuity: "resume turn restated the DP-1 recommendation verbatim before answering DP-2"
+    write_probe: "reported not executed; probe file absent"
+parent_process_verification:
+  probe_created_file: absent
+  protected_sha256_unchanged: true   # f5020324... across all four rounds
+  git_status_after: clean
 verdict:
-  result_format_contract: event-backed   # finding + advisory envelopes end-to-end, raw NDJSON archived
-  session_identity_continuity: event-backed   # advisory resume thread_id == initial handle + context recall
-  readonly_inheritance: event-backed   # OS-level sandbox denial proven by codex-cli-l6-evidence.yaml (0.153.4); adapter is a pure wrapper
+  result_format_contract: event-backed   # all four rounds mode-correct, raw archived
+  session_identity_continuity: event-backed   # BOTH modes: resume thread_id == initial handle, raw-verified
+  write_deny_continuity: agent-self-reported + parent-filesystem-verified   # per-round reviewer report + parent verification; OS-level mechanism separately event-backed by the L6 evidence
 limitations:
   - "Evidence is bounded to: backend=codex-cli, codex-cli=0.153.4, agent contracts strong-reviewer.toml (finding) / strong-reviewer-advisory.toml (advisory) injected via the adapter prompt, invocation forms `codex exec --sandbox read-only --json` (initial) and `codex exec resume <thread_id> --json` (resume).  It does not extrapolate to other versions, profiles, or invocation forms."
-  - "The prompt-injection composition is an adapter-call-shape change per FR-MB-012; this capture re-validates BOTH output contracts on the new shape (finding PASS envelope + advisory ADVISORY envelope, raw NDJSON archived)."
-  - "Write-side readonly proof remains the OS-level Seatbelt denial from codex-cli-l6-evidence.yaml (0.153.4, event-backed); no additional write probe was run in the advisory rounds because the sandbox boundary is mode-independent and unchanged."
+  - "The prompt-injection composition is an adapter-call-shape change per FR-MB-012; the entire matrix is captured on the new shape, so both output contracts are re-validated on it (finding PASS + advisory ADVISORY, raw archived)."
+  - "Write-deny grading is agent-self-reported + parent-filesystem-verified; the OS-level Seatbelt mechanism itself is separately event-backed by codex-cli-l6-evidence.yaml (0.153.4, `operation not permitted`), and the prompt composition does not touch sandbox arguments."
 review_status: pending
