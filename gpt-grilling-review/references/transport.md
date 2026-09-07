@@ -82,7 +82,7 @@
 
 **只有一个结论入口**：无论哪个后端，**问题闭环审查的权威审查轮次**（authoritative review turn）的输出都先归一为 `dd-review-result/1`，再交给关闭层状态机。**不得存在"某后端直接产出关闭层结论"的第二条路径。**
 
-**边界（决策建议审查）**：决策建议审查轮次（advisory turn）是**非关闭型的信息建议轮次**——不进入 `dd-review-result/1`，不进入关闭层，不产生 `PASS` / `CLOSED` 或任何关闭权。`chatgpt-tunnel` 的 advisory 输出由 [advisory-review.md](advisory-review.md) 的决策点模型处理（自由文本）；声明了 `advisory` capability 与 `advisory_result_schema: dd-advisory-result/1` 的 CLI 后端则经 dispatch 的 advisory 路径产出 `dd-advisory-result/1`（`status ∈ {ADVISORY, BLOCKED}`），同样非关闭型。除此之外的后端轮次仍受本节全部约束。
+**边界（决策建议审查）**：决策建议审查轮次（advisory turn）是**非关闭型的信息建议轮次**——不进入 `dd-review-result/1`，不进入关闭层，不产生 `PASS` / `CLOSED` 或任何关闭权。`chatgpt-tunnel` 的 advisory 输出由 [advisory-review.md](advisory-review.md) 的决策点模型处理（自由文本）；声明了 `advisory` capability 与 `advisory_result_schema: dd-advisory-result/1` 的 CLI 后端则经 dispatch 的 advisory 路径产出 `dd-advisory-result/1`（`status ∈ {ADVISORY, BLOCKED}`），同样非关闭型。advisory 结果中的 `base_sha` / `head_sha` / `scope` 仅用于冻结建议上下文与结果可重复性，属于 **context identity**：它不取得 FR-MB-019 的 finding CLOSED candidate identity 语义，advisory 也不存在进入 CLOSED 前的二次候选复验。除此之外的后端轮次仍受本节全部约束。
 
 `chatgpt-tunnel` 的 `STATUS:` 首行是**线上格式，不是关闭层结论**，必须先归一：
 

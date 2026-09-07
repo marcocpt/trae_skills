@@ -64,6 +64,9 @@ hosts:
       # external opencode-cli backend 的 invocation profile（primary-mode，同模型同权限，
       # 非新模型角色）；validate-bindings.py 机械校验其与 registry --agent 目标一致
       cli_agent_file: opencode/strong-reviewer-cli.md
+      # advisory 轮（决策建议，LATER-20260907）专用 profile：单模式契约，规避
+      # muse-spark 双模合同遵循失败（决策建议被包装成 finding 的实测）
+      advisory_cli_agent_file: opencode/strong-reviewer-advisory-cli.md
     install: "~/.config/opencode/agents/"
     status: installed-discovered      # L3 已过；换绑 muse-spark-1.2-contributor-free 后 L6 由 opencode-cli backend 重新取证
 

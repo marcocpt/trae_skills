@@ -13,8 +13,11 @@ roles:
 
 # Grilling first-round candidate order (FR-MB-018 / MB-GRILL-020).  Consumed by
 # gpt-grilling-review for PRE_INITIAL_REVIEW fallback ordering; NOT consumed by
-# the Router's dispatch loop, so members MAY be grilling-only backends that are
-# router_selectable: false.  Members must satisfy the FR-MB-001 qualification
+# the Router's finding dispatch loop, so members MAY be grilling-only backends
+# that are router_selectable: false.  Since LATER-20260907 the Router's ADVISORY
+# dispatch loop (request.mode: "advisory") also consumes this same sequence --
+# candidates must then additionally declare the advisory capability bound to
+# advisory_result_schema.  Members must satisfy the FR-MB-001 qualification
 # contract: a runtime-owned structured session identity (FR-MB-016), an
 # adapter-provided continuation form (FR-MB-015), and a backend-bound readonly
 # proof covering that exact invocation form (FR-MB-001.3 / FR-MB-004.3).

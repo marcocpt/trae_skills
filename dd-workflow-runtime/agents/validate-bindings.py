@@ -250,6 +250,20 @@ def check_opencode_cli_agent(bindings: dict) -> list[str]:
         errors.append(
             f"opencode/reviewer: cli_agent_file {declared!r} 与 registry --agent 目标 {target!r} 不一致"
         )
+    # LATER-20260907: advisory rounds pin a dedicated single-mode profile; the
+    # adapter resolves its name via the AGENT_NAME_ADVISORY constant.
+    advisory_declared = reviewer.get("advisory_cli_agent_file")
+    advisory_target: str | None = None
+    if adapter_path.is_file():
+        m_adv = re.search(r'AGENT_NAME_ADVISORY\s*=\s*["\']([^"\']+)["\']', adapter_path.read_text())
+        advisory_target = m_adv.group(1) if m_adv else None
+    if advisory_target is not None:
+        if advisory_declared is None:
+            errors.append("opencode/reviewer: adapter 声明了 advisory agent，但 model-bindings 缺少 advisory_cli_agent_file")
+        elif advisory_declared != f"opencode/{advisory_target}.md":
+            errors.append(
+                f"opencode/reviewer: advisory_cli_agent_file {advisory_declared!r} 与 adapter advisory agent {advisory_target!r} 不一致"
+            )
 
     native_path = AGENTS_DIR / str(reviewer.get("file", ""))
     if native_path.is_file() and native_path.suffix == ".md":

@@ -1070,10 +1070,11 @@ def _normalize_result(
         raise TerminalReviewFailure("schema_invalid", "PASS/FINDINGS cannot carry failure_category")
 
     readonly = _resolve_readonly_confirmation(
-        raw,
         frozenset({"PASS", "FINDINGS"}),
+        status,
         backend_id,
         validated_readonly_evidence,
+        _normalize_readonly(raw.get("readonly_confirmation")),
     )
 
     lifecycle = raw.get("lifecycle", {})
@@ -1317,12 +1318,18 @@ def _normalize_advisory_result(
             raise TerminalReviewFailure("schema_invalid", "BLOCKED requires a known failure_category")
         if not isinstance(evidence, list) or not evidence:
             raise TerminalReviewFailure("schema_invalid", "result evidence must be a non-empty list")
+        # A BLOCKED round may carry an empty decision_points list only: no DP
+        # has received advice, so none may be smuggled in as answered.
+        blocked_dps = raw.get("decision_points", [])
+        if blocked_dps:
+            raise TerminalReviewFailure("schema_invalid", "BLOCKED advisory payload must not carry answered decision_points")
 
     readonly = _resolve_readonly_confirmation(
-        raw,
         frozenset({"ADVISORY"}),
+        status,
         backend_id,
         validated_readonly_evidence,
+        _normalize_readonly(raw.get("readonly_confirmation")),
     )
     lifecycle = raw.get("lifecycle", {})
     if lifecycle is not None and not isinstance(lifecycle, dict):
@@ -1362,22 +1369,24 @@ def _normalize_advisory_result(
 
 
 def _resolve_readonly_confirmation(
-    raw: Dict[str, Any],
     accepted_statuses: frozenset,
+    normalized_status: str,
     backend_id: str,
     validated_readonly_evidence: Optional[Dict[str, Any]],
+    provider_readonly: Dict[str, Any],
 ) -> Dict[str, Any]:
     """Bind the result-side readonly confirmation to the Router-validated L6 proof.
 
     Shared by the finding and advisory normalizers: the adapter/provider is
     never a read-only authority, so only a status in `accepted_statuses` may
     receive the Router-side confirmation; every other status keeps the
-    non-authoritative provider observation (OBS-L7-001).
+    non-authoritative provider observation (OBS-L7-001).  The decision uses
+    the caller's ALREADY-NORMALIZED status (case-folded, FAIL alias applied)
+    -- never a re-parse of the raw payload.
     """
-    provider_readonly = _normalize_readonly(raw.get("readonly_confirmation"))
     if not accepted_statuses:
         raise AssertionError("accepted_statuses must not be empty")
-    if raw.get("status") in accepted_statuses or raw.get("verdict") in accepted_statuses:
+    if normalized_status in accepted_statuses:
         # The adapter/provider is not a read-only authority.  Eligibility has
         # already matched the caller's backend-bound L6 proof; only the
         # Router may turn that verified fact into the accepted result-side

@@ -18,7 +18,7 @@
 |---|---|---|
 | DEC-MB-01 | **续接能力由 canonical adapter 提供**：扩展 `codex-review` / `opencode-review`（及 ChatGPT 通道）使其具备 `initial` 与 `resume` 两种调用形态；grilling 只编排轮次，不自行拼装 provider 命令行 | FR-MB-015、§7.1 |
 | DEC-MB-02 | **两个 ChatGPT 通道拆名各归其位**：grilling 使用 `chatgpt-tunnel`（审核方经 Tunnel 自读 + 多轮续接），Router 单跳使用 `mcp-review`（快照发送、无读取能力）。行为不变，只对齐名字与事实 | FR-MB-001、FR-MB-004、FR-MB-005 |
-| DEC-MB-03 | **结果合同双层分离**：后端一轮只返回 `dd-review-result/1`；grilling 在其上定义从属的 closure 合同，并写死转换规则；关闭权仍归 grilling | FR-MB-013 |
+| DEC-MB-03 | **结果合同双层分离**：后端一轮只返回 `dd-review-result/1`；grilling 在其上定义从属的 closure 合同，并写死转换规则；关闭权仍归 grilling。**2026-09-07 advisory extension（LATER-20260907）**：「一轮只返回 `dd-review-result/1`」限定为 finding 权威审查轮次；决策建议审查是非关闭型独立结果合同（`dd-advisory-result/1`，`ADVISORY`/`BLOCKED`），同样属 runtime，同样不进入关闭层 | FR-MB-013 |
 | DEC-MB-04 | **传输双层架构（2026-09-03 用户裁决）**：`chatgpt-tunnel` 归 grilling 传输层（`gpt-grilling-review/references/transport.md`）直连自管——会话身份（`conversation_id`）与 Tunnel 只读规则均属 transport 合同；runtime registry 名册只登记 **Router 可程序化派发**的后端。**`chatgpt-tunnel` 不入 registry stateful 名册**，不需要 registry 侧 continuation 只读取证；将来若让多轮候选顺序改由 registry 消费，再按届时形态补建档（DEC-MB-04 不排斥该演进） | FR-MB-018、§11.14 |
 
 ---
@@ -201,7 +201,7 @@ SKILL.md 的 finding 生命周期、三字段、CLOSED 判据、DISPUTED、HARD-
 
 ### FR-MB-013：结果合同双层分离（DEC-MB-03）
 
-1. **传输层结果**：后端一轮只返回 `dd-review-result/1`（`PASS` / `FINDINGS` / `BLOCKED`），属主为 runtime。
+1. **传输层结果**：finding 权威审查轮次的后端一轮只返回 `dd-review-result/1`（`PASS` / `FINDINGS` / `BLOCKED`），属主为 runtime。**2026-09-07 advisory extension（LATER-20260907）**：决策建议审查轮次返回 `dd-advisory-result/1`（`ADVISORY` / `BLOCKED`），同为 runtime 属主、同为非关闭型；`ADVISORY` 不是 `PASS`，不取得任何关闭权。
 2. **关闭层结果**：grilling 在其上定义从属 closure 合同（`CLOSED` / `REOPEN` / `VERIFICATION_REQUIRED` / `HUMAN_DECISION_REQUIRED`），属主为 `gpt-grilling-review`。
 3. 转换规则（写死）：
    - `BLOCKED` → **永不得** CLOSED；

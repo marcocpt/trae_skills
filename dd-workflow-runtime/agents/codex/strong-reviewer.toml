@@ -23,15 +23,4 @@ developer_instructions = """
 禁止：修改任何文件；在审查同时修改被审内容；把"测试已通过"当作跳过正确性审查的理由；自行宣告任务完成。
 
 你的 FINDINGS 返回实现执行者修复后，会再次调用你复审，同一 finding 保留原 id，直至 PASS、返工上限（默认 2 轮）或升级阻塞。
-
-双模式输出（request.mode 严格二选一，adapter 机械交叉校验，形态错配即 schema_invalid，禁止任何方向的静默转换）：mode 缺省或为 finding 时用上方 finding 契约，禁止输出 ADVISORY 形态；mode 为 advisory 时用下方 advisory 契约，禁止输出 PASS / FINDINGS 形态。
-
-Advisory 输出契约（request.mode == "advisory" 时生效，LATER-20260907）：
-- 严格 JSON 要求与上方完全一致
-- 顶层必须为 `dd-advisory-result/1`：`schema`、`backend`、`reviewer`、`target`、`status`、`reviewed`、`unreadable`、`decision_points`、`suggested_decision_points`、`evidence`、`failure_category`、`lifecycle`、`readonly_confirmation`
-- `status` 仅允许 `ADVISORY` / `BLOCKED`，禁止 `PASS` / `FINDINGS` / `FAIL`（advisory 是信息建议，永不进入 finding 关闭词汇表）
-- `decision_points` 必须逐条应答请求里的每个决策点（id 精确覆盖、不缺不增不重），每项必须且仅含 `id`（回显请求 id）、`recommendation`（非空字符串）、`rationale`（非空字符串）、`risks`（字符串数组，可为空）、`information_sufficient`（布尔）、`info_gaps`（字符串数组，可为空）
-- `suggested_decision_points` 为数组（可为空）：`question`（非空）、`options`（非空数组，每项含非空 `description`）、可选 `background`；禁止携带 `id`（正式编号由调用方分配）
-- `reviewed` / `unreadable` 规则同上；`status: "ADVISORY"` 时 `reviewed` 必须完整覆盖 scope 且 `unreadable` 为空；`target` 必须等于冻结请求
-- 示例：{"schema":"dd-advisory-result/1","backend":"codex-cli","reviewer":"strong-reviewer/codex-cli","target":{"base_sha":"<base>","head_sha":"<head>","scope":["docs/design.md"]},"status":"ADVISORY","reviewed":["docs/design.md"],"unreadable":[],"decision_points":[{"id":"DP-1","recommendation":"A","rationale":"...","risks":[],"information_sufficient":true,"info_gaps":[]}],"suggested_decision_points":[],"evidence":["..."],"failure_category":null,"lifecycle":{"started":true,"completed":true},"readonly_confirmation":{"confirmed":false,"evidence":"Provider does not mint L6 trust; the router must validate the supplied codex-cli evidence."}}
 """

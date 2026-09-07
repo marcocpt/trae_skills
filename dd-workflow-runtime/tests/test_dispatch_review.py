@@ -1377,13 +1377,14 @@ class AdvisoryDispatchTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.repo, self.head, self.base = _init_fixture_repo(self.temp)
         self.registry, self.policy = _configuration()
-        # Mirror the checked-in registry: both stateful CLI backends declare
-        # the advisory capability bound to its wire contract; codex-cli also
-        # carries the stateful qualification (resume + session identity +
-        # continuation readonly evidence, captured 2026-09-07).
-        for backend_id in ("opencode-cli", "codex-cli"):
-            self.registry["backends"][backend_id]["capabilities"] = ["strong-review", "advisory"]
-            self.registry["backends"][backend_id]["advisory_result_schema"] = ROUTER.ADVISORY_RESULT_SCHEMA
+        # Mirror the checked-in registry: opencode-cli declares the advisory
+        # capability bound to its wire contract (forensically proven,
+        # opencode-advisory-readonly-evidence.yaml); codex-cli does NOT yet
+        # (advisory forensic run pending, FR-MB-012 gate) — but it does carry
+        # the stateful qualification (resume + session identity + continuation
+        # readonly evidence, captured 2026-09-07).
+        self.registry["backends"]["opencode-cli"]["capabilities"] = ["strong-review", "advisory"]
+        self.registry["backends"]["opencode-cli"]["advisory_result_schema"] = ROUTER.ADVISORY_RESULT_SCHEMA
         codex = self.registry["backends"]["codex-cli"]
         codex["invocation_forms"] = ["initial", "resume"]
         codex["session_identity"] = {"field": "session", "owner": "codex-review"}
@@ -1513,18 +1514,30 @@ class AdvisoryDispatchTests(unittest.TestCase):
         result = self.dispatch(request, runner)
         self.assertEqual(result["status"], "ADVISORY")
 
-    def test_advisory_backend_without_capability_falls_back(self) -> None:
+    def test_advisory_skips_candidates_without_capability(self) -> None:
+        # Both stateful candidates declare no advisory capability: both are
+        # skipped (capability_unavailable) and the dispatch blocks honestly.
         self.registry["backends"]["opencode-cli"]["capabilities"] = ["strong-review"]
         request = self.advisory_request()
+        result = self.dispatch(request)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["failure_category"], "all_backends_unavailable")
+        attempted = {a.get("backend"): a.get("failure_category") for a in result["routing"]["attempted"] if a.get("backend")}
+        self.assertEqual(attempted.get("opencode-cli"), "capability_unavailable")
+        self.assertEqual(attempted.get("codex-cli"), "capability_unavailable")
+
+    def test_advisory_happy_path_after_capability_fallback(self) -> None:
+        # opencode (first candidate) loses its advisory capability -> the
+        # dispatch falls through to codex-cli, which the fixture grants the
+        # advisory capability to mirror a future post-forensics state.
+        self.registry["backends"]["opencode-cli"]["capabilities"] = ["strong-review"]
+        request = self.advisory_request()
+        self.registry["backends"]["codex-cli"]["capabilities"] = ["strong-review", "advisory"]
+        self.registry["backends"]["codex-cli"]["advisory_result_schema"] = ROUTER.ADVISORY_RESULT_SCHEMA
         runner = BackendScriptRunner({"codex-cli": self.advisory_payload(request, backend="codex-cli")})
         result = self.dispatch(request, runner)
         self.assertEqual(result["status"], "ADVISORY")
-        # opencode fails eligibility before invocation; codex takes over
         self.assertEqual(runner.calls, ["codex-cli"])
-        self.assertEqual(
-            [a["failure_category"] for a in result["routing"]["attempted"] if a.get("backend") == "opencode-cli"],
-            ["capability_unavailable"],
-        )
 
     def finding_payload(self, request: Dict[str, Any], backend: str = "opencode-cli") -> Dict[str, Any]:
         return {
@@ -1565,6 +1578,55 @@ class AdvisoryDispatchTests(unittest.TestCase):
         result = self.dispatch(request, runner)
         self.assertEqual(result["status"], "BLOCKED")
         self.assertEqual(result["failure_category"], "schema_invalid")
+
+
+class AdvisoryRegistryTests(unittest.TestCase):
+    """The CHECKED-IN registry must carry the advisory contract (LATER-20260907).
+
+    Guards against a duplicate YAML key silently overwriting the advisory
+    capability (a capabilities key written later in the same mapping wins).
+    """
+
+    def test_checked_in_registry_declares_advisory_on_stateful_cli_backends(self) -> None:
+        registry, policy = ROUTER.load_configuration(
+            AGENTS_DIR / "review-backends.yaml",
+            AGENTS_DIR / "routing-policy.yaml",
+            AGENTS_DIR / "model-bindings.yaml",
+        )
+        self.assertEqual(ROUTER.validate_registry_policy(registry, policy), [])
+        self.assertIn(ROUTER.ADVISORY_CAPABILITY, registry["backends"]["opencode-cli"]["capabilities"])
+        self.assertEqual(registry["backends"]["opencode-cli"]["advisory_result_schema"], ROUTER.ADVISORY_RESULT_SCHEMA)
+        # codex-cli has no advisory forensic evidence yet (FR-MB-012 gate)
+        self.assertNotIn(ROUTER.ADVISORY_CAPABILITY, registry["backends"]["codex-cli"]["capabilities"])
+        self.assertNotIn(ROUTER.ADVISORY_CAPABILITY, registry["backends"]["mcp-review"]["capabilities"])
+
+    def test_readonly_confirmation_uses_normalized_status(self) -> None:
+        # Regression for the case-folded / FAIL-alias path: the Router-validated
+        # readonly confirmation must mint for every accepted spelling, and
+        # never for BLOCKED.
+        evidence = {"backend": "codex-cli", "level": "L6", "confirmed": True, "mode": "codex-read-only-transport", "source": "test"}
+        raw = {"readonly_confirmation": {"confirmed": False, "evidence": None}}
+        for status in ("PASS", "FINDINGS", "pass", "FINDINGS", "FAIL"):
+            normalized = status.upper()
+            if normalized == "FAIL":
+                normalized = "FINDINGS"
+            confirmation = ROUTER._resolve_readonly_confirmation(
+                frozenset({"PASS", "FINDINGS"}),
+                normalized,
+                "codex-cli",
+                evidence,
+                {"confirmed": False, "evidence": None},
+            )
+            self.assertEqual(confirmation["confirmed"], True, msg=status)
+        for status in ("BLOCKED", "blocked"):
+            confirmation = ROUTER._resolve_readonly_confirmation(
+                frozenset({"PASS", "FINDINGS"}),
+                status.upper(),
+                "codex-cli",
+                evidence,
+                {"confirmed": True, "evidence": "provider-self-report"},
+            )
+            self.assertEqual(confirmation, {"confirmed": True, "evidence": "provider-self-report"})
 
 
 if __name__ == "__main__":

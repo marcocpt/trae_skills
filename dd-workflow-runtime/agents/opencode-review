@@ -27,6 +27,11 @@ REQUEST_SCHEMA = "dd-review-request/1"
 RESULT_SCHEMA = "dd-review-result/1"
 ADVISORY_RESULT_SCHEMA = "dd-advisory-result/1"
 AGENT_NAME = "strong-reviewer-cli"
+# Advisory rounds pin a dedicated single-mode profile: muse-spark could not
+# reliably honour a dual-mode contract (it wrapped decision advice into
+# findings during the LATER-20260907 forensic probes), so advisory invocations
+# select the advisory profile by name instead (fail-closed by construction).
+AGENT_NAME_ADVISORY = "strong-reviewer-advisory-cli"
 FINDING_KEYS = ("id", "severity", "classification", "change_risk", "location", "evidence", "required_fix")
 SHA_RE = re.compile(r"^[0-9a-fA-F]{7,64}$")
 
@@ -146,8 +151,13 @@ def _validate_request(req: Dict[str, Any]) -> str | None:
             return "advisory requests require a non-empty decision_points list"
         if "verification" in req and not isinstance(req.get("verification"), list):
             return "request.verification must be a list when supplied"
-    elif "verification" not in req:
-        return "request.verification is required"
+    else:
+        # Cross-mode forbidden field (LATER-20260907): a direct adapter
+        # invocation in finding mode can never carry advisory input.
+        if "decision_points" in req:
+            return "finding requests must not carry decision_points"
+        if "verification" not in req:
+            return "request.verification is required"
     return None
 
 
@@ -238,6 +248,10 @@ def _validate_reviewer_json(obj: Dict[str, Any], scope: List[str], mode: str = "
     ustatus = status.upper()
 
     if mode == "advisory":
+        if "findings" in obj:
+            # Cross-mode forbidden field (LATER-20260907): an advisory payload
+            # can never carry finding vocabulary; no silent dropping.
+            return "advisory payload must not carry findings"
         if ustatus not in ("ADVISORY", "BLOCKED"):
             return (
                 f"unsupported advisory status {status!r}: an advisory round never carries "
@@ -257,16 +271,21 @@ def _validate_reviewer_json(obj: Dict[str, Any], scope: List[str], mode: str = "
         if ustatus == "ADVISORY" and (unreadable or set(reviewed) != scope_set):
             return "ADVISORY requires complete reviewed scope and no unreadable entries"
         decision_points = obj.get("decision_points")
-        if not isinstance(decision_points, list) or not decision_points:
-            return "ADVISORY requires decision_points"
-        seen = set()
-        for dp in decision_points:
-            error = _validate_advisory_decision_point(dp)
-            if error:
-                return error
-            if dp["id"] in seen:
-                return f"decision point id duplicated: {dp['id']!r}"
-            seen.add(dp["id"])
+        if ustatus == "ADVISORY":
+            # Only a successful advisory round must have answered every DP; a
+            # BLOCKED round legitimately carries an empty list.
+            if not isinstance(decision_points, list) or not decision_points:
+                return "ADVISORY requires decision_points"
+            seen = set()
+            for dp in decision_points:
+                error = _validate_advisory_decision_point(dp)
+                if error:
+                    return error
+                if dp["id"] in seen:
+                    return f"decision point id duplicated: {dp['id']!r}"
+                seen.add(dp["id"])
+        elif decision_points:  # a BLOCKED round may carry an empty list only
+            return "BLOCKED advisory payload must not carry decision_points"
         suggested = obj.get("suggested_decision_points", [])
         if not isinstance(suggested, list):
             return "suggested_decision_points must be a list"
@@ -289,6 +308,10 @@ def _validate_reviewer_json(obj: Dict[str, Any], scope: List[str], mode: str = "
             f"unsupported status {status!r}: a finding round never carries ADVISORY; "
             "the reviewer must answer in finding shape"
         )
+    # Cross-mode forbidden fields (LATER-20260907): a finding payload can
+    # never carry advisory vocabulary; no silent dropping.
+    if "decision_points" in obj or "suggested_decision_points" in obj:
+        return "finding payload must not carry decision_points / suggested_decision_points"
     reviewed = obj.get("reviewed")
     unreadable = obj.get("unreadable")
     if not isinstance(reviewed, list) or not all(isinstance(x, str) for x in reviewed):
@@ -397,7 +420,9 @@ def main() -> int:
     # caller's session (FR-MB-015); the pinned form's readonly continuity is
     # proven by tests/evidence/opencode-resume-readonly-evidence.yaml.
     continuation = request.get("continuation") if isinstance(request.get("continuation"), dict) else None
-    cmd = ["opencode", "run", "--agent", AGENT_NAME, "--format", "json"]
+    advisory_mode = request.get("mode", "finding") == "advisory"
+    agent_name = AGENT_NAME_ADVISORY if advisory_mode else AGENT_NAME
+    cmd = ["opencode", "run", "--agent", agent_name, "--format", "json"]
     if continuation and continuation.get("form") == "resume":
         cmd += ["--session", continuation["handle"]]
     env = {"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", str(Path.home()))}
@@ -474,7 +499,7 @@ def main() -> int:
         result = {
             "schema": ADVISORY_RESULT_SCHEMA,
             "backend": BACKEND_ID,
-            "reviewer": f"{AGENT_NAME}/muse-spark-1.2-contributor-free",
+            "reviewer": f"{agent_name}/muse-spark-1.2-contributor-free",
             "target": {
                 "base_sha": request["base_sha"],
                 "head_sha": request["head_sha"],
