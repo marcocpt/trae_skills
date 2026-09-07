@@ -62,6 +62,9 @@ matrix:
     result_schema: dd-review-result/1
   finding_resume:
     continuation_handle: 01a07d08-07e4-7bf3-b591-0c06363ab1f2
+    thread_id: 01a07d08-07e4-7bf3-b591-0c06363ab1f2   # same thread, event-backed continuity
+    result_status: PASS
+    result_schema: dd-review-result/1
   advisory_initial:
     agent_contract: codex/strong-reviewer-advisory.toml
     thread_id: 01a07d06-6396-77b0-8f59-e7ed4da87a98
