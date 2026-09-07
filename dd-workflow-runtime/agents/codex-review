@@ -24,6 +24,7 @@ import os
 import re
 import subprocess
 import sys
+import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
@@ -32,6 +33,15 @@ BACKEND_ID = "codex-cli"
 REQUEST_SCHEMA = "dd-review-request/1"
 RESULT_SCHEMA = "dd-review-result/1"
 ADVISORY_RESULT_SCHEMA = "dd-advisory-result/1"
+# Agent contract files (single source of truth for the provider prompt).
+# `codex exec` has no agent-selection flag, so the adapter injects the
+# profile's developer_instructions into the prompt itself; without this the
+# provider answers in free text instead of the mode's strict JSON contract
+# (LATER-20260907 codex advisory forensics).
+AGENT_CONTRACT_FILES = {
+    "finding": Path(__file__).resolve().parent / "codex" / "strong-reviewer.toml",
+    "advisory": Path(__file__).resolve().parent / "codex" / "strong-reviewer-advisory.toml",
+}
 SHA_RE = re.compile(r"^[0-9a-fA-F]{7,64}$")
 FINDING_KEYS = ("id", "severity", "classification", "change_risk", "location", "evidence", "required_fix")
 
@@ -173,6 +183,26 @@ def _thread_is_registered_readonly(handle: str) -> bool:
     threads = registry.get("threads") if isinstance(registry, dict) else {}
     entry = threads.get(handle) if isinstance(threads, dict) else None
     return isinstance(entry, dict) and entry.get("sandbox") == "read-only"
+
+
+def _build_prompt(request: Dict[str, Any]) -> tuple[str, str | None]:
+    """Compose the provider prompt: agent contract + request payload.
+
+    Returns (prompt, error).  The contract is loaded from the mode's profile
+    toml so the finding and advisory contracts each keep exactly one owner.
+    """
+    mode = request.get("mode", "finding")
+    profile = AGENT_CONTRACT_FILES.get(mode, AGENT_CONTRACT_FILES["finding"])
+    try:
+        contract = tomllib.loads(profile.read_text()).get("developer_instructions", "")
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        return "", f"agent contract unavailable: {profile}: {exc}"
+    if not contract:
+        return "", f"agent contract has no developer_instructions: {profile}"
+    return (
+        f"{contract}\n\n---\n\nREQUEST (dd-review-request/1 -- follow the contract above exactly):\n"
+        f"{json.dumps(request, ensure_ascii=False)}"
+    ), None
 
 
 def _validate_request(req: Dict[str, Any]) -> str | None:
@@ -453,6 +483,12 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False))
         return 0
 
+    prompt, err = _build_prompt(request)
+    if err:
+        result = _blocked(request, "configuration_invalid", err)
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
+
     # Invoke codex CLI.  A resume continuation pins the invocation to the
     # caller's thread (FR-MB-015).  `codex exec resume` accepts neither
     # `--sandbox` nor an effective `-c sandbox=` override (proven by the
@@ -480,7 +516,7 @@ def main() -> int:
     try:
         completed = subprocess.run(
             cmd,
-            input=json.dumps(request, ensure_ascii=False),
+            input=prompt,
             capture_output=True,
             text=True,
             timeout=600,

@@ -87,6 +87,20 @@ def check_native(bindings: dict) -> list[str]:
                     errors.append(f"{host}/{role}: {ek} 漂移 {data.get(ek)!r} != {spec['effort']!r}")
                 if "sandbox" in spec and data.get("sandbox_mode") != spec["sandbox"]:
                     errors.append(f"{host}/{role}: sandbox_mode 漂移")
+                # LATER-20260907: advisory profile 产物与契约一致性（codex 侧）。
+                # advisory_agent_file 声明即要求产物存在且为单模 advisory 契约。
+                advisory_file = spec.get("advisory_agent_file")
+                if advisory_file is not None:
+                    apath = AGENTS_DIR / advisory_file
+                    if not apath.exists():
+                        errors.append(f"{host}/{role}: 缺少 advisory 产物 {advisory_file}")
+                    else:
+                        adata = tomllib.loads(apath.read_text())
+                        if adata.get("model") != spec["model"]:
+                            errors.append(f"{host}/{role}: advisory model 漂移 {adata.get('model')!r} != {spec['model']!r}")
+                        instructions = adata.get("developer_instructions", "")
+                        if "dd-advisory-result/1" not in instructions:
+                            errors.append(f"{host}/{role}: advisory 契约缺少 dd-advisory-result/1 输出合同")
                 for req in ("name", "description"):
                     if req not in data:
                         errors.append(f"{host}/{role}: 缺必需字段 {req}")

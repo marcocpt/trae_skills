@@ -30,7 +30,7 @@ DP 内部 status 取值：`OPEN`（待送审或待建议）→ `ADVISED`（已�
 ## 送审
 
 1. 后端解析与校验按 [SKILL.md](../SKILL.md)「输入」与传输合同「后端选择」执行；后端自身不具资格 → 按 [SKILL.md](../SKILL.md)「BLOCKED 恢复动作」处理；
-2. **模式边界（按 runtime 合同动态判定，LATER-20260907 起放开）**：后端支持本模式的机械条件是——registry 声明 `advisory` capability 与 `advisory_result_schema: dd-advisory-result/1`，且该调用形态有 backend-bound 只读/结果格式证据（FR-MB-012），经 dispatch 的 advisory 路径（`request.mode: "advisory"`，候选来自 `stateful_roles`）产出 `dd-advisory-result/1`。当前满足条件者：`opencode-cli`（专用 advisory profile，证据 `opencode-advisory-readonly-evidence.yaml`）；`codex-cli` 的 advisory 取证未做、registry 未声明，显式指定时报告「codex-cli 决策建议审查待取证启用」，请用户改选 `opencode-cli` / `chatgpt-tunnel` 或终止；**不得**谎报为资格失败，**不得**把决策点建议伪装成 finding 或塞进 evidence 字段；
+2. **模式边界（按 runtime 合同动态判定，LATER-20260907 起放开）**：后端支持本模式的机械条件是——registry 声明 `advisory` capability 与 `advisory_result_schema: dd-advisory-result/1`，且该调用形态有 backend-bound 只读/结果格式证据（FR-MB-012），经 dispatch 的 advisory 路径（`request.mode: "advisory"`，候选来自 `stateful_roles`）产出 `dd-advisory-result/1`。当前满足条件者：`opencode-cli`（证据 `opencode-advisory-readonly-evidence.yaml`）与 `codex-cli`（专用 advisory profile 注入 prompt，证据 `codex-advisory-readonly-evidence.yaml`）；**不得**谎报为资格失败，**不得**把决策点建议伪装成 finding 或塞进 evidence 字段；
 3. 受审范围与请求按所选通道构造：CLI 后端经 `dispatch-review.py` 发 `mode: "advisory"` 请求（`decision_points` 必填，含每点的 id/问题/背景约束/已知选项；`verification` 仅是补充上下文，**不是** admission gate）；`chatgpt-tunnel` 的 content 按 transport「决策建议审」模板构造，覆盖：全部决策点、每点的背景/约束/已知选项、可选权威依据、冻结 baseline；
 4. 明确要求强审者对**每个**决策点输出：推荐项、理由、反对意见/风险、信息是否充足；并声明覆盖情况（`reviewed` / `unreadable`），未完整读取即不得宣称审核完成；`status: ADVISORY` 的结果必须完整覆盖 scope 与全部请求的 DP，reviewer 新提的开放问题出现在 `suggested_decision_points`（无正式 id，由本层登记后分配）；
 5. 强审者提出新的开放问题（用户没列到的）→ 从 `suggested_decision_points` 或自由文本中登记为新 DP 并标注来源。

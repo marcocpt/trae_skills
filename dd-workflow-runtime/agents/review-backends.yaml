@@ -55,11 +55,11 @@ backends:
     # resumes handles it registered as read-only at initial time (provenance
     # registry, fail-closed before provider invocation).
     command: [review]
-    # LATER-20260907: advisory capability is NOT yet declared for codex-cli —
-    # the advisory invocation form has no backend-bound readonly/result-format
-    # evidence yet (FR-MB-012 gate).  Declare it only after a forensic run of
-    # the dedicated advisory profile (mirror opencode-advisory-readonly-evidence.yaml).
-    capabilities: [strong-review]
+    # LATER-20260907: advisory dispatch proven on 0.153.4 (see
+    # codex-advisory-readonly-evidence.yaml); the adapter injects the mode
+    # profile's developer_instructions into the prompt.
+    capabilities: [strong-review, advisory]
+    advisory_result_schema: dd-advisory-result/1
     readonly_required: true
     readonly_mode: codex-read-only-transport
     # FR-MB-015 / FR-MB-016: continuation forms and the structured session
