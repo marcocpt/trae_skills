@@ -1,0 +1,1322 @@
+#!/usr/bin/env bash
+#
+# branchctl — multi-agent-branch-integration 的唯一主要运行入口。
+#
+# 安装到项目后统一调用：
+#
+#     ./scripts/branchctl <command>
+#
+# Agent 不得自行选择 rebase / merge，一律由本工具按分支可见性决定。
+# 本工具只做判断、同步、检查；绝不重写共享历史，绝不猜测未知可见性。
+#
+# 退出码合同：
+#   0  成功 / 允许 / 就绪为真
+#   10 参数用法错误
+#   20 需要上层采取行动（需要同步、需要提交、需要初始化等）
+#   30 可见性不安全（unknown 时拒绝一切改写历史的操作）
+#   40 仓库 / worktree / 分支状态非法
+#   50 就绪检查未通过（review/gate/merge/ci 返回 false）
+#
+set -euo pipefail
+
+BRANCHCTL_VERSION="1.0.0"
+
+E_OK=0
+E_USAGE=10
+E_ACTION=20
+E_VISIBILITY=30
+E_STATE=40
+E_READINESS=50
+
+# ---------------------------------------------------------------------------
+# 基础输出
+# ---------------------------------------------------------------------------
+
+warn() { printf 'branchctl: %s\n' "$*" >&2; }
+die() {
+  local code="$1"
+  shift
+  printf 'branchctl: ERROR: %s\n' "$*" >&2
+  exit "$code"
+}
+
+# ---------------------------------------------------------------------------
+# 仓库根目录与策略文件定位
+# ---------------------------------------------------------------------------
+# 必须使用 Git 命令定位真实位置：worktree 中的 .git 可能是文件，
+# 绝不直接读取 .git/config。
+
+locate_root() {
+  if [ -n "${BRANCHCTL_ROOT:-}" ]; then
+    printf '%s' "$BRANCHCTL_ROOT"
+    return 0
+  fi
+  local top=""
+  top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  if [ -n "$top" ]; then
+    printf '%s' "$top"
+  else
+    printf '%s' "$PWD"
+  fi
+}
+
+ROOT="$(locate_root)"
+POLICY_FILE="${BRANCHCTL_POLICY:-$ROOT/.agent/branch-policy.yaml}"
+
+# ---------------------------------------------------------------------------
+# 极小 YAML 子集读取
+# ---------------------------------------------------------------------------
+# 不依赖 yq / PyYAML / ruby，只读取本策略已知的「顶层段.键: 标量值」。
+# 支持两级缩进、# 注释、单双引号包裹的值。
+
+_trim() {
+  local s="$1"
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
+}
+
+_strip_comment() {
+  # 删除「空格 + #」开始的行尾注释；行首注释整行丢弃由调用方处理。
+  # 注：刻意不用 case 模式匹配注释（bash 3.2 对模式中的 #' 相邻写法解析异常）。
+  local s="$1"
+  s="${s%% #*}"
+  printf '%s' "$s"
+}
+
+_unquote() {
+  local s="$1"
+  case "$s" in
+    \'*\')
+      s="${s#\'}"
+      s="${s%\'}"
+      ;;
+    \"*\")
+      s="${s#\"}"
+      s="${s%\"}"
+      ;;
+  esac
+  printf '%s' "$s"
+}
+
+# policy_get <dotted.key> [默认值]：如 feature.default_visibility
+# 只识别「顶层段.键: 标量值」两级结构，用原始缩进区分层级，
+# 同一 section 内键的顺序不影响匹配（F-MABI-004 修复）。
+policy_get() {
+  local dotted="$1"
+  local default="${2:-}"
+  local want_section="" want_key=""
+  case "$dotted" in
+    *.*)
+      want_section="${dotted%%.*}"
+      want_key="${dotted#*.}"
+      ;;
+    *)
+      want_section=""
+      want_key="$dotted"
+      ;;
+  esac
+  if [ ! -f "$POLICY_FILE" ]; then
+    printf '%s' "$default"
+    return 0
+  fi
+  local raw nospace indent_len line cur_top="" key value
+  while IFS= read -r raw || [ -n "$raw" ]; do
+    # 用原始缩进定层级：先算缩进，再处理内容（绝不在 trim 后猜 section）。
+    nospace="${raw#"${raw%%[![:space:]]*}"}"
+    indent_len=$((${#raw} - ${#nospace}))
+    line="$(_strip_comment "$nospace")"
+    line="$(_trim "$line")"
+    [ -n "$line" ] || continue
+    case "$line" in
+      '#'*) continue ;;
+    esac
+    case "$line" in
+      *:*)
+        ;;
+      *)
+        continue
+        ;;
+    esac
+    key="$(_trim "${line%%:*}")"
+    value="$(_trim "${line#*:}")"
+    if [ "$indent_len" -eq 0 ]; then
+      if [ -z "$value" ]; then
+        # 顶层段声明（如 "feature:"）。
+        cur_top="$key"
+      else
+        # 顶层标量键：只服务无段查询，并结束当前段上下文。
+        if [ -z "$want_section" ] && [ "$key" = "$want_key" ]; then
+          printf '%s' "$(_unquote "$value")"
+          return 0
+        fi
+        cur_top=""
+      fi
+      continue
+    fi
+    # 缩进键：只在当前段等于目标段时匹配；不匹配也不得清除上下文。
+    if [ -n "$want_section" ] && [ "$cur_top" = "$want_section" ] && [ "$key" = "$want_key" ]; then
+      printf '%s' "$(_unquote "$value")"
+      return 0
+    fi
+  done <"$POLICY_FILE"
+  printf '%s' "$default"
+  return 0
+}
+
+policy_bool() {
+  # policy_bool <dotted.key> <默认值true|false>：统一小写后只认 true/false。
+  local v=""
+  v="$(policy_get "$1" "$2")"
+  v="$(printf '%s' "$v" | tr '[:upper:]' '[:lower:]')"
+  case "$v" in
+    true|false) printf '%s' "$v" ;;
+    *) printf '%s' "$2" ;;
+  esac
+}
+
+policy_int() {
+  local v=""
+  v="$(policy_get "$1" "$2")"
+  case "$v" in
+    ''|*[!0-9]*) printf '%s' "$2" ;;
+    *) printf '%s' "$v" ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# 策略读取（带安全默认）
+# ---------------------------------------------------------------------------
+
+integration_branch() {
+  local v=""
+  v="$(policy_get "integration_branch" "develop")"
+  case "$v" in
+    ''|*[[:space:]]*) printf 'develop' ;;
+    *) printf '%s' "$v" ;;
+  esac
+}
+
+# 项目策略默认值：只在 init 时用来「显式落盘」，绝不直接当作当前可见性。
+policy_default_visibility() {
+  local v=""
+  v="$(policy_get "feature.default_visibility" "")"
+  v="$(printf '%s' "$v" | tr '[:upper:]' '[:lower:]')"
+  case "$v" in
+    private|shared) printf '%s' "$v" ;;
+    *) printf '' ;;
+  esac
+}
+
+allow_direct_on_integration() { policy_bool "protection.allow_direct_on_integration" "false"; }
+warn_behind_commits() { policy_int "sync.warning_behind_commits" "20"; }
+warn_age_days() { policy_int "branch_lifetime.warning_days" "3"; }
+hard_age_days() { policy_int "branch_lifetime.hard_days" "7"; }
+
+require_for_stage() {
+  # review|gate|merge|push|ci -> true|false（push/ci 沿用 merge 要求）
+  case "$1" in
+    review) policy_bool "sync.require_before_review" "true" ;;
+    gate) policy_bool "sync.require_before_gate" "true" ;;
+    *) policy_bool "sync.require_before_merge" "true" ;;
+  esac
+}
+
+extra_critical_paths() { policy_get "sync.critical_paths" ""; }
+
+# ---------------------------------------------------------------------------
+# Git 基础
+# ---------------------------------------------------------------------------
+
+require_repo() {
+  git rev-parse --git-dir >/dev/null 2>&1 || die "$E_STATE" "当前目录不是 Git 仓库：$PWD"
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "$E_STATE" "当前目录不在有效 worktree 内：$PWD"
+}
+
+current_branch() {
+  git branch --show-current 2>/dev/null || true
+}
+
+is_dirty() {
+  [ -n "$(git status --porcelain 2>/dev/null || true)" ]
+}
+
+worktree_kind() {
+  local gd common top
+  gd="$(git rev-parse --absolute-git-dir 2>/dev/null || true)"
+  if [ -z "$gd" ]; then
+    gd="$(git rev-parse --git-dir 2>/dev/null || true)"
+  fi
+  common="$(git rev-parse --git-common-dir 2>/dev/null || true)"
+  if [ -z "$gd" ] || [ -z "$common" ]; then
+    printf 'unknown'
+    return 0
+  fi
+  # 不同 Git 版本返回相对/绝对路径不一致，统一按绝对路径比较。
+  top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  case "$gd" in
+    /*) ;;
+    *) gd="$top/$gd" ;;
+  esac
+  case "$common" in
+    /*) ;;
+    *) common="$top/$common" ;;
+  esac
+  if [ "$gd" = "$common" ]; then
+    printf 'main'
+  else
+    printf 'linked'
+  fi
+}
+
+ref_sha() {
+  git rev-parse --verify --quiet "$1^{commit}" 2>/dev/null || true
+}
+
+# 集成基线引用：优先使用远端跟踪分支，回退本地集成分支。
+integration_ref() {
+  local ib="$1"
+  if [ -n "$(ref_sha "refs/remotes/origin/$ib")" ]; then
+    printf 'refs/remotes/origin/%s' "$ib"
+    return 0
+  fi
+  if [ -n "$(ref_sha "refs/heads/$ib")" ]; then
+    printf 'refs/heads/%s' "$ib"
+    return 0
+  fi
+  if [ -n "$(ref_sha "$ib")" ]; then
+    printf '%s' "$ib"
+    return 0
+  fi
+  printf ''
+}
+
+is_feature_branch_name() {
+  # $1 待判分支名；合法 feature = 非空，且不是集成分支 / main / master。
+  local name="$1" ib="$2"
+  [ -n "$name" ] || return 1
+  case "$name" in
+    '('* ) return 1 ;;
+  esac
+  [ "$name" != "$ib" ] || return 1
+  [ "$name" != "main" ] || return 1
+  [ "$name" != "master" ] || return 1
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# 可见性：第一优先级永远是显式 branch config
+# ---------------------------------------------------------------------------
+
+explicit_visibility() {
+  local branch="$1" v=""
+  v="$(git config --get "branch.${branch}.agentShared" 2>/dev/null || true)"
+  v="$(printf '%s' "$v" | tr '[:upper:]' '[:lower:]')"
+  case "$v" in
+    true|yes|on|1) printf 'shared' ;;
+    false|no|off|0) printf 'private' ;;
+    *) printf '' ;;
+  esac
+}
+
+# resolve_visibility：只返回 explicit 结果；无显式配置即 unknown。
+# 项目策略默认值不直接充当当前可见性，它只决定 init 落盘什么。
+resolve_visibility() {
+  local v=""
+  v="$(explicit_visibility "$1")"
+  if [ -n "$v" ]; then
+    printf '%s' "$v"
+  else
+    printf 'unknown'
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# 同步判定：behind 数 × 分支年龄 × 路径重叠 × 关键公共文件 × 阶段
+# ---------------------------------------------------------------------------
+
+counts_vs() {
+  # counts_vs <head-ref> <base-ref>：输出 "BEHIND AHEAD"
+  local behind ahead
+  behind="$(git rev-list --count "$1..$2" 2>/dev/null || printf '0')"
+  ahead="$(git rev-list --count "$2..$1" 2>/dev/null || printf '0')"
+  printf '%s %s' "$behind" "$ahead"
+}
+
+branch_age_days() {
+  # branch_age_days <head-ref> <base-ref>：自 merge-base 起的天数，算不出返回 unknown。
+  local mb ct now
+  mb="$(git merge-base "$2" "$1" 2>/dev/null || true)"
+  [ -n "$mb" ] || { printf 'unknown'; return 0; }
+  ct="$(git log -1 --format=%ct "$mb" 2>/dev/null || true)"
+  case "$ct" in
+    ''|*[!0-9]*) printf 'unknown'; return 0 ;;
+  esac
+  now="$(date +%s)"
+  printf '%s' "$(( (now - ct) / 86400 ))"
+}
+
+is_critical_path() {
+  local p="$1" extra="$2" pat=""
+  case "$p" in
+    .agent/branch-policy.yaml|package.json|package-lock.json|pnpm-lock.yaml|yarn.lock|\
+    go.mod|go.sum|Cargo.toml|Cargo.lock|pyproject.toml|poetry.lock|Pipfile|Pipfile.lock|\
+    Gemfile|Gemfile.lock|build.gradle|build.gradle.kts|settings.gradle|pom.xml|\
+    Dockerfile|Dockerfile.*|Makefile|CMakeLists.txt|configure|configure.ac) return 0 ;;
+    .github/workflows/*|.githooks/*|scripts/branchctl) return 0 ;;
+  esac
+  if [ -n "$extra" ]; then
+    for pat in $extra; do
+      # shellcheck disable=SC2053
+      case "$p" in
+        $pat) return 0 ;;
+      esac
+    done
+  fi
+  return 1
+}
+
+develop_side_changed_critical() {
+  # develop 相对 merge-base 是否动了关键公共文件。
+  local mb="$1" ibref="$2" f
+  local extra=""
+  extra="$(extra_critical_paths)"
+  while IFS= read -r f || [ -n "$f" ]; do
+    [ -n "$f" ] || continue
+    if is_critical_path "$f" "$extra"; then
+      return 0
+    fi
+  done < <(git diff --name-only "$mb" "$ibref" 2>/dev/null || true)
+  return 1
+}
+
+sides_overlap() {
+  # feature 与 develop 相对 merge-base 是否存在路径重叠。
+  local mb="$1" head="$2" ibref="$3"
+  local tmp f1_ok f2_ok
+  tmp="$(mktemp -d 2>/dev/null || printf '')"
+  [ -n "$tmp" ] || return 1
+  git diff --name-only "$mb" "$head" 2>/dev/null | sort -u >"$tmp/feat" || true
+  git diff --name-only "$mb" "$ibref" 2>/dev/null | sort -u >"$tmp/dev" || true
+  f1_ok="false"
+  f2_ok="false"
+  if [ -s "$tmp/feat" ]; then f1_ok="true"; fi
+  if [ -s "$tmp/dev" ]; then f2_ok="true"; fi
+  if [ "$f1_ok" = "true" ] && [ "$f2_ok" = "true" ]; then
+    if [ -n "$(comm -12 "$tmp/feat" "$tmp/dev" 2>/dev/null || true)" ]; then
+      rm -rf "$tmp"
+      return 0
+    fi
+  fi
+  rm -rf "$tmp"
+  return 1
+}
+
+must_sync_raw_for_ref() {
+  # must_sync_raw_for_ref <head-ref>：不看阶段开关的纯同步需求判定。
+  # preflight（before_work）与各阶段共用同一内核，语义永不分叉。
+  local head="$1"
+  local ib ibref mb behind warn hard age
+  ib="$(integration_branch)"
+  ibref="$(integration_ref "$ib")"
+  [ -n "$ibref" ] || return 1
+  mb="$(git merge-base "$ibref" "$head" 2>/dev/null || true)"
+  [ -n "$mb" ] || return 1
+  behind="$(git rev-list --count "$head..$ibref" 2>/dev/null || printf '0')"
+  [ "$behind" -gt 0 ] 2>/dev/null || return 1
+  warn="$(warn_behind_commits)"
+  hard="$(hard_age_days)"
+  if [ "$behind" -ge "$warn" ] 2>/dev/null; then
+    return 0
+  fi
+  if sides_overlap "$mb" "$head" "$ibref"; then
+    return 0
+  fi
+  if develop_side_changed_critical "$mb" "$ibref"; then
+    return 0
+  fi
+  age="$(branch_age_days "$head" "$ibref")"
+  if [ "$age" != "unknown" ] && [ "$age" -ge "$hard" ] 2>/dev/null; then
+    return 0
+  fi
+  return 1
+}
+
+must_sync_for_ref() {
+  # must_sync_for_ref <stage> <head-ref>：必须同步返回 0，否则返回 1。
+  # 基线缺失时返回 1，调用方另行报告 NO_BASELINE。
+  local stage="$1" head="$2"
+  [ "$(require_for_stage "$stage")" = "true" ] || return 1
+  must_sync_raw_for_ref "$head"
+}
+
+recommend_sync_for_ref() {
+  # 仅建议级别（用于 status DECISION）：落后且（超预警数 / 超预警年龄 / 有路径重叠）。
+  local head="$1"
+  local ib ibref mb behind warn_age warn
+  ib="$(integration_branch)"
+  ibref="$(integration_ref "$ib")"
+  [ -n "$ibref" ] || return 1
+  mb="$(git merge-base "$ibref" "$head" 2>/dev/null || true)"
+  [ -n "$mb" ] || return 1
+  behind="$(git rev-list --count "$head..$ibref" 2>/dev/null || printf '0')"
+  [ "$behind" -gt 0 ] 2>/dev/null || return 1
+  warn="$(warn_behind_commits)"
+  warn_age="$(warn_age_days)"
+  if [ "$behind" -ge "$warn" ] 2>/dev/null; then
+    return 0
+  fi
+  if sides_overlap "$mb" "$head" "$ibref"; then
+    return 0
+  fi
+  age="$(branch_age_days "$head" "$ibref")"
+  if [ "$age" != "unknown" ] && [ "$age" -ge "$warn_age" ] 2>/dev/null; then
+    return 0
+  fi
+  return 1
+}
+
+baseline_ok_for_ref() {
+  local head="$1"
+  local ib ibref
+  ib="$(integration_branch)"
+  ibref="$(integration_ref "$ib")"
+  [ -n "$ibref" ] || return 1
+  git merge-base "$ibref" "$head" >/dev/null 2>&1 || return 1
+  return 0
+}
+
+do_fetch() {
+  # 最佳努力获取远端基线：失败只告警，不中断（离线仍可用本地基线判断）。
+  if [ "${OPT_NO_FETCH:-false}" = "true" ]; then
+    return 0
+  fi
+  if git fetch origin --prune >/dev/null 2>&1; then
+    return 0
+  fi
+  warn "无法从 origin 获取最新基线，将使用本地已知基线继续（离线模式）。"
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# status：只读，不修改仓库（不 fetch、不切换、不写配置）
+# ---------------------------------------------------------------------------
+
+cmd_status() {
+  require_repo
+  local ib branch vis vis_source def_vis dirty behind ahead age counts
+  local head_sha dev_sha base_sha sync_req sync_rec decision reason
+  ib="$(integration_branch)"
+  branch="$(current_branch)"
+  [ -n "$branch" ] || branch="(detached)"
+  vis="$(resolve_visibility "$branch")"
+  if [ -n "$(explicit_visibility "$branch")" ]; then
+    vis_source="explicit"
+  else
+    vis_source="none"
+  fi
+  def_vis="$(policy_default_visibility)"
+  [ -n "$def_vis" ] || def_vis="unknown"
+  if is_dirty; then dirty="true"; else dirty="false"; fi
+  head_sha="$(ref_sha "HEAD")"
+  [ -n "$head_sha" ] || head_sha="unknown"
+  dev_sha="$(ref_sha "$(integration_ref "$ib")")"
+  [ -n "$dev_sha" ] || dev_sha="unknown"
+  base_sha="$(git merge-base "$(integration_ref "$ib")" HEAD 2>/dev/null || true)"
+  [ -n "$base_sha" ] || base_sha="unknown"
+  behind="0"
+  ahead="0"
+  if [ -n "$(integration_ref "$ib")" ]; then
+    counts="$(counts_vs HEAD "$(integration_ref "$ib")")"
+    behind="${counts%% *}"
+    ahead="${counts##* }"
+  fi
+  age="$(branch_age_days HEAD "$(integration_ref "$ib")")"
+  [ -n "$age" ] || age="unknown"
+  sync_req="false"
+  sync_rec="false"
+  if is_feature_branch_name "$branch" "$ib" && [ "$base_sha" != "unknown" ]; then
+    if must_sync_for_ref "merge" HEAD; then sync_req="true"; fi
+    if recommend_sync_for_ref HEAD; then sync_rec="true"; fi
+  fi
+  decision="OK"
+  reason="NONE"
+  if ! is_feature_branch_name "$branch" "$ib"; then
+    decision="ACTION_REQUIRED"
+    reason="NOT_A_FEATURE_BRANCH"
+  elif [ "$vis" = "unknown" ]; then
+    decision="ACTION_REQUIRED"
+    reason="UNKNOWN_VISIBILITY"
+  elif [ "$sync_req" = "true" ]; then
+    decision="SYNC_REQUIRED"
+    reason="INTEGRATION_SYNC_REQUIRED"
+  elif [ "$sync_rec" = "true" ]; then
+    decision="SYNC_RECOMMENDED"
+    reason="INTEGRATION_SYNC_RECOMMENDED"
+  fi
+  printf 'BRANCH=%s\n' "$branch"
+  printf 'INTEGRATION_BRANCH=%s\n' "$ib"
+  printf 'VISIBILITY=%s\n' "$vis"
+  printf 'VISIBILITY_SOURCE=%s\n' "$vis_source"
+  printf 'DEFAULT_VISIBILITY=%s\n' "$def_vis"
+  printf 'WORKTREE=%s\n' "$(worktree_kind)"
+  printf 'DIRTY=%s\n' "$dirty"
+  printf 'BEHIND=%s\n' "$behind"
+  printf 'AHEAD=%s\n' "$ahead"
+  printf 'BRANCH_AGE_DAYS=%s\n' "$age"
+  printf 'BASE_SHA=%s\n' "$base_sha"
+  printf 'HEAD_SHA=%s\n' "$head_sha"
+  printf 'DEVELOP_SHA=%s\n' "$dev_sha"
+  printf 'SYNC_REQUIRED=%s\n' "$sync_req"
+  printf 'SYNC_RECOMMENDED=%s\n' "$sync_rec"
+  printf 'DECISION=%s\n' "$decision"
+  if [ "$decision" != "OK" ]; then
+    printf 'REASON=%s\n' "$reason"
+    case "$reason" in
+      UNKNOWN_VISIBILITY) printf 'ACTION=./scripts/branchctl init\n' ;;
+      INTEGRATION_SYNC_REQUIRED) printf 'ACTION=./scripts/branchctl sync\n' ;;
+      INTEGRATION_SYNC_RECOMMENDED) printf 'ACTION=./scripts/branchctl sync\n' ;;
+      NOT_A_FEATURE_BRANCH) printf 'ACTION=切到合法 feature 分支后再执行\n' ;;
+    esac
+  fi
+  return "$E_OK"
+}
+
+# ---------------------------------------------------------------------------
+# init：第一次为当前 feature 落盘显式可见性（幂等）
+# ---------------------------------------------------------------------------
+
+cmd_init() {
+  require_repo
+  local ib branch mode="" explicit src="" def_vis
+  ib="$(integration_branch)"
+  branch="$(current_branch)"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --private) mode="private"; src="arg" ;;
+      --shared) mode="shared"; src="arg" ;;
+      -h|--help) printf '用法： branchctl init [--private|--shared]\n'; return "$E_OK" ;;
+      *) die "$E_USAGE" "init 不支持的参数：$1（用法：branchctl init [--private|--shared]）" ;;
+    esac
+    shift
+  done
+  is_feature_branch_name "$branch" "$ib" || die "$E_STATE" "当前分支不是合法 feature 分支（BRANCH=${branch}），拒绝初始化。"
+  explicit="$(explicit_visibility "$branch")"
+  if [ -n "$explicit" ]; then
+    printf 'VISIBILITY=%s\n' "$(resolve_visibility "$branch")"
+    printf 'INIT=already\n'
+    printf 'SOURCE=explicit\n'
+    warn "分支 $branch 已有显式可见性，保持幂等，未做修改。"
+    return "$E_OK"
+  fi
+  if [ -z "$mode" ]; then
+    def_vis="$(policy_default_visibility)"
+    if [ -z "$def_vis" ]; then
+      die "$E_ACTION" "无法确定默认可见性：策略未配置 feature.default_visibility。请显式执行 branchctl init --private 或 branchctl init --shared。"
+    fi
+    mode="$def_vis"
+    src="policy"
+  fi
+  case "$mode" in
+    private)
+      git config "branch.${branch}.agentShared" "false" \
+        || die "$E_STATE" "写入分支配置失败。"
+      printf 'VISIBILITY=private\n'
+      printf 'INIT=done\n'
+      printf 'SOURCE=%s\n' "$src"
+      printf 'SYNC_METHOD=rebase\n'
+      ;;
+    shared)
+      git config "branch.${branch}.agentShared" "true" \
+        || die "$E_STATE" "写入分支配置失败。"
+      printf 'VISIBILITY=shared\n'
+      printf 'INIT=done\n'
+      printf 'SOURCE=%s\n' "$src"
+      printf 'REBASE_ALLOWED=false\n'
+      printf 'FORCE_PUSH_ALLOWED=false\n'
+      printf 'SYNC_METHOD=merge\n'
+      ;;
+  esac
+  return "$E_OK"
+}
+
+# ---------------------------------------------------------------------------
+# share：private -> shared（单向，不提供回退）
+# ---------------------------------------------------------------------------
+
+cmd_share() {
+  require_repo
+  local ib branch cur
+  ib="$(integration_branch)"
+  branch="$(current_branch)"
+  is_feature_branch_name "$branch" "$ib" || die "$E_STATE" "当前分支不是合法 feature 分支（BRANCH=${branch}），拒绝执行。"
+  cur="$(resolve_visibility "$branch")"
+  if [ "$cur" = "shared" ]; then
+    printf 'VISIBILITY=shared\n'
+    printf 'SHARE=already\n'
+    printf 'REBASE_ALLOWED=false\n'
+    printf 'FORCE_PUSH_ALLOWED=false\n'
+    printf 'SYNC_METHOD=merge\n'
+    return "$E_OK"
+  fi
+  if [ "$cur" = "unknown" ]; then
+    # 只允许 private -> shared：未知可见性不得直接转 shared，
+    # 先 init 明确身份（F-MABI-008）。
+    printf 'VISIBILITY=unknown\n'
+    printf 'SHARE=none\n'
+    printf 'REASON=UNKNOWN_VISIBILITY\n'
+    printf 'ACTION=先执行 ./scripts/branchctl init 明确可见性，再 share\n'
+    die "$E_VISIBILITY" "分支可见性未知，share 拒绝执行（只允许 private -> shared）。"
+  fi
+  git config "branch.${branch}.agentShared" "true" \
+    || die "$E_STATE" "写入分支配置失败。"
+  printf 'VISIBILITY=shared\n'
+  printf 'SHARE=done\n'
+  printf 'REBASE_ALLOWED=false\n'
+  printf 'FORCE_PUSH_ALLOWED=false\n'
+  printf 'SYNC_METHOD=merge\n'
+  warn "分支 $branch 已转为共享分支：禁止自动 rebase，禁止 force push，同步一律使用 merge。"
+  return "$E_OK"
+}
+
+# ---------------------------------------------------------------------------
+# preflight：修改项目产物前的准入检查
+# ---------------------------------------------------------------------------
+
+cmd_preflight() {
+  require_repo
+  local ib branch vis
+  ib="$(integration_branch)"
+  branch="$(current_branch)"
+  if [ -z "$branch" ]; then
+    printf 'PREFLIGHT=false\n'
+    printf 'REASON=DETACHED_HEAD\n'
+    printf 'ACTION=切到合法 feature 分支后再执行\n'
+    die "$E_STATE" "当前为 detached HEAD，无法确定 feature 上下文。"
+  fi
+  if ! is_feature_branch_name "$branch" "$ib"; then
+    if [ "$branch" = "$ib" ] || [ "$branch" = "main" ] || [ "$branch" = "master" ]; then
+      if [ "$(allow_direct_on_integration)" = "true" ]; then
+        warn "项目策略允许在 $branch 上直接开发，继续。"
+      else
+        printf 'PREFLIGHT=false\n'
+        printf 'BRANCH=%s\n' "$branch"
+        printf 'REASON=INTEGRATION_BRANCH\n'
+        printf 'ACTION=切到 feature 分支后再执行\n'
+        die "$E_STATE" "禁止在 $branch 上直接做 feature 开发。"
+      fi
+    else
+      printf 'PREFLIGHT=false\n'
+      printf 'REASON=INVALID_BRANCH\n'
+      die "$E_STATE" "非法分支状态（BRANCH=${branch}）。"
+    fi
+  fi
+  vis="$(resolve_visibility "$branch")"
+  if [ "$vis" = "unknown" ]; then
+    printf 'PREFLIGHT=false\n'
+    printf 'BRANCH=%s\n' "$branch"
+    printf 'VISIBILITY=unknown\n'
+    printf 'DECISION=ACTION_REQUIRED\n'
+    printf 'REASON=UNKNOWN_VISIBILITY\n'
+    printf 'ACTION=./scripts/branchctl init\n'
+    die "$E_VISIBILITY" "分支可见性未知，拒绝猜测。请先执行 ./scripts/branchctl init（或 share）。"
+  fi
+  do_fetch || true
+  if [ "$(policy_bool "checks.before_work" "true")" = "true" ] && must_sync_raw_for_ref HEAD; then
+    # 开工前即存在必须同步条件：提前暴露，不等到 push/review 才阻断
+    #（F-MABI-009；checks.before_work 关闭时跳过）。
+    printf 'PREFLIGHT=false\n'
+    printf 'BRANCH=%s\n' "$branch"
+    printf 'VISIBILITY=%s\n' "$vis"
+    printf 'REASON=INTEGRATION_SYNC_REQUIRED\n'
+    printf 'ACTION=./scripts/branchctl sync\n'
+    die "$E_ACTION" "开工前检查发现必须同步的条件，请先执行 ./scripts/branchctl sync。"
+  fi
+  if is_dirty; then
+    # 开始修改前的脏工作树只做明确提示，不直接失败：
+    # 增量开发中工作树经常带有未提交改动，阻断会误伤正常流程。
+    # 真正要求干净的阶段（gate / merge / integrate）各自独立判定。
+    warn "工作树当前为脏（DIRTY=true），继续前请确认这些改动属于本次任务。"
+  fi
+  printf 'PREFLIGHT=true\n'
+  printf 'BRANCH=%s\n' "$branch"
+  printf 'INTEGRATION_BRANCH=%s\n' "$ib"
+  printf 'VISIBILITY=%s\n' "$vis"
+  if is_dirty; then printf 'DIRTY=true\n'; else printf 'DIRTY=false\n'; fi
+  printf 'DEVELOP_SHA=%s\n' "$(ref_sha "$(integration_ref "$ib")")"
+  printf 'DECISION=OK\n'
+  return "$E_OK"
+}
+
+# ---------------------------------------------------------------------------
+# sync：唯一推荐的同步入口（按可见性自动选择方法）
+# ---------------------------------------------------------------------------
+
+cmd_sync() {
+  require_repo
+  local ib branch vis ibref behind ahead counts
+  ib="$(integration_branch)"
+  branch="$(current_branch)"
+  is_feature_branch_name "$branch" "$ib" || die "$E_STATE" "当前分支不是合法 feature 分支（BRANCH=${branch}），拒绝同步。"
+  vis="$(resolve_visibility "$branch")"
+  if [ "$vis" = "unknown" ]; then
+    printf 'SYNCED=false\n'
+    printf 'REASON=UNKNOWN_VISIBILITY\n'
+    printf 'ACTION=./scripts/branchctl init\n'
+    die "$E_VISIBILITY" "分支可见性未知，拒绝执行同步（绝不猜测 private 后 rebase）。请先执行 ./scripts/branchctl init 或 share。"
+  fi
+  if is_dirty; then
+    printf 'SYNCED=false\n'
+    printf 'REASON=DIRTY_WORKTREE\n'
+    printf 'ACTION=先提交或暂存改动后再执行 ./scripts/branchctl sync（本工具绝不自动 stash）\n'
+    die "$E_ACTION" "工作树为脏，拒绝同步：本工具绝不自动 stash。"
+  fi
+  do_fetch || true
+  ibref="$(integration_ref "$ib")"
+  [ -n "$ibref" ] || die "$E_STATE" "找不到集成基线（origin/$ib 与本地 $ib 均不存在），无法同步。"
+  case "$vis" in
+    private)
+      warn "private 分支：执行 git rebase ${ibref}。"
+      printf 'SYNC_METHOD=rebase\n'
+      if git rebase "$ibref"; then
+        :
+      else
+        printf 'SYNCED=false\n'
+        printf 'REASON=REBASE_CONFLICT\n'
+        printf 'ACTION=按 Git 提示手工解决冲突后执行 git rebase --continue（或 --abort），本工具不自动解决冲突\n'
+        die "$E_ACTION" "rebase 发生冲突，已保留 Git 原生冲突状态，请上层 Agent / 人工处理。"
+      fi
+      ;;
+    shared)
+      warn "shared 分支：执行 git merge ${ibref}（同步性 merge，不强制 --no-ff）。"
+      printf 'SYNC_METHOD=merge\n'
+      if git merge --no-edit "$ibref"; then
+        :
+      else
+        printf 'SYNCED=false\n'
+        printf 'REASON=MERGE_CONFLICT\n'
+        printf 'ACTION=按 Git 提示手工解决冲突后提交，本工具不自动解决冲突\n'
+        die "$E_ACTION" "merge 发生冲突，已保留 Git 原生冲突状态，请上层 Agent / 人工处理。"
+      fi
+      ;;
+  esac
+  behind="0"
+  ahead="0"
+  counts="$(counts_vs HEAD "$ibref")"
+  behind="${counts%% *}"
+  ahead="${counts##* }"
+  printf 'SYNCED=true\n'
+  printf 'BRANCH=%s\n' "$branch"
+  printf 'VISIBILITY=%s\n' "$vis"
+  printf 'HEAD_SHA=%s\n' "$(ref_sha HEAD)"
+  printf 'DEVELOP_SHA=%s\n' "$(ref_sha "$ibref")"
+  printf 'BEHIND=%s\n' "$behind"
+  printf 'AHEAD=%s\n' "$ahead"
+  return "$E_OK"
+}
+
+# ---------------------------------------------------------------------------
+# 就绪检查公共骨架（只读：除 fetch 外不修改任何状态）
+# ---------------------------------------------------------------------------
+
+readiness_check() {
+  # readiness_check <标签> <阶段> <是否要求干净true|false>
+  local label="$1" stage="$2" need_clean="$3"
+  local ib branch vis ready_key ibref base_sha head_sha dev_sha behind ahead counts
+  ready_key="${label}_READY"
+  ib="$(integration_branch)"
+  branch="$(current_branch)"
+  if [ -z "$branch" ]; then
+    printf '%s=false\n' "$ready_key"
+    printf 'REASON=DETACHED_HEAD\n'
+    printf 'ACTION=切到合法 feature 分支后再执行\n'
+    return "$E_READINESS"
+  fi
+  if ! is_feature_branch_name "$branch" "$ib"; then
+    printf '%s=false\n' "$ready_key"
+    printf 'BRANCH=%s\n' "$branch"
+    printf 'REASON=INVALID_BRANCH\n'
+    printf 'ACTION=切到合法 feature 分支后再执行\n'
+    return "$E_READINESS"
+  fi
+  vis="$(resolve_visibility "$branch")"
+  if [ "$vis" = "unknown" ]; then
+    printf '%s=false\n' "$ready_key"
+    printf 'BRANCH=%s\n' "$branch"
+    printf 'VISIBILITY=unknown\n'
+    printf 'REASON=UNKNOWN_VISIBILITY\n'
+    printf 'ACTION=./scripts/branchctl init\n'
+    return "$E_READINESS"
+  fi
+  if [ "$need_clean" = "true" ] && is_dirty; then
+    printf '%s=false\n' "$ready_key"
+    printf 'BRANCH=%s\n' "$branch"
+    printf 'REASON=DIRTY_WORKTREE\n'
+    printf 'ACTION=先提交当前改动后再重试\n'
+    return "$E_READINESS"
+  fi
+  do_fetch || true
+  ibref="$(integration_ref "$ib")"
+  if [ -z "$ibref" ] || ! baseline_ok_for_ref HEAD; then
+    printf '%s=false\n' "$ready_key"
+    printf 'BRANCH=%s\n' "$branch"
+    printf 'REASON=NO_BASELINE\n'
+    printf 'ACTION=git fetch origin 后重试\n'
+    return "$E_READINESS"
+  fi
+  if must_sync_for_ref "$stage" HEAD; then
+    base_sha="$(git merge-base "$ibref" HEAD 2>/dev/null || printf 'unknown')"
+    printf '%s=false\n' "$ready_key"
+    printf 'BRANCH=%s\n' "$branch"
+    printf 'BASE_SHA=%s\n' "$base_sha"
+    printf 'HEAD_SHA=%s\n' "$(ref_sha HEAD)"
+    printf 'DEVELOP_SHA=%s\n' "$(ref_sha "$ibref")"
+    printf 'REASON=INTEGRATION_SYNC_REQUIRED\n'
+    printf 'ACTION=./scripts/branchctl sync\n'
+    return "$E_READINESS"
+  fi
+  base_sha="$(git merge-base "$ibref" HEAD 2>/dev/null || printf 'unknown')"
+  head_sha="$(ref_sha HEAD)"
+  dev_sha="$(ref_sha "$ibref")"
+  behind="0"
+  ahead="0"
+  counts="$(counts_vs HEAD "$ibref")"
+  behind="${counts%% *}"
+  ahead="${counts##* }"
+  printf '%s=true\n' "$ready_key"
+  printf 'BRANCH=%s\n' "$branch"
+  printf 'VISIBILITY=%s\n' "$vis"
+  printf 'BASE_SHA=%s\n' "$base_sha"
+  printf 'HEAD_SHA=%s\n' "$head_sha"
+  printf 'DEVELOP_SHA=%s\n' "$dev_sha"
+  printf 'BEHIND=%s\n' "$behind"
+  printf 'AHEAD=%s\n' "$ahead"
+  return "$E_OK"
+}
+
+cmd_review_ready() { readiness_check "REVIEW" "review" "false"; return $?; }
+cmd_gate_ready() { readiness_check "GATE" "gate" "true"; return $?; }
+cmd_merge_ready() { readiness_check "MERGE" "merge" "true"; return $?; }
+
+# ---------------------------------------------------------------------------
+# integrate：本地 feature -> develop（非常保守，默认 --no-ff）
+# ---------------------------------------------------------------------------
+
+integration_branch_holder() {
+  # 输出占用 refs/heads/<集成分支> 的 worktree 路径；无占用返回空。
+  # 同一分支不能同时被两个 worktree checkout，提前发现可避免 switch 必败
+  #（F-MABI-006）。
+  git worktree list --porcelain 2>/dev/null | awk -v want="refs/heads/$1" '
+    /^worktree / { path = substr($0, 10) }
+    $1 == "branch" && $2 == want { print path; exit }
+  ' || true
+}
+
+extract_feature_id() {  # feature/<id>... 取出 <id>；取不出返回空（调用方用通用 message）。
+  local b="$1" rest=""
+  case "$b" in
+    feature/*) rest="${b#feature/}" ;;
+    fix/*) rest="${b#fix/}" ;;
+    refactor/*) rest="${b#refactor/}" ;;
+    docs/*) rest="${b#docs/}" ;;
+    *) printf ''; return 0 ;;
+  esac
+  rest="${rest%%[/-]*}"
+  printf '%s' "$rest"
+}
+
+cmd_integrate() {
+  require_repo
+  local ib branch vis ibref fid msg merge_sha local_ib origin_ib
+  ib="$(integration_branch)"
+  branch="$(current_branch)"
+  is_feature_branch_name "$branch" "$ib" || die "$E_STATE" "当前分支不是合法 feature 分支（BRANCH=${branch}），拒绝集成。"
+  vis="$(resolve_visibility "$branch")"
+  [ "$vis" != "unknown" ] || die "$E_VISIBILITY" "分支可见性未知，拒绝集成。请先执行 ./scripts/branchctl init。"
+  if is_dirty; then
+    printf 'INTEGRATED=false\n'
+    printf 'REASON=DIRTY_WORKTREE\n'
+    printf 'ACTION=先提交当前改动后再执行\n'
+    die "$E_ACTION" "工作树为脏，拒绝集成。"
+  fi
+  do_fetch || true
+  ibref="$(integration_ref "$ib")"
+  [ -n "$ibref" ] || die "$E_STATE" "找不到集成基线，无法集成。"
+  if must_sync_for_ref "merge" HEAD; then
+    printf 'INTEGRATED=false\n'
+    printf 'REASON=INTEGRATION_SYNC_REQUIRED\n'
+    printf 'ACTION=./scripts/branchctl sync\n'
+    die "$E_READINESS" "feature 落后于 $ib 且存在必须同步的条件，请先同步。"
+  fi
+  [ -n "$(ref_sha "refs/heads/$ib")" ] || die "$E_STATE" "本地 $ib 分支不存在，拒绝集成。"
+  ib_holder="$(integration_branch_holder "$ib")"
+  if [ -n "$ib_holder" ] && [ "$ib_holder" != "$(git rev-parse --show-toplevel 2>/dev/null || true)" ]; then
+    # 注意：绝不能指示“到 HOLDER 里运行 branchctl integrate”，因为 integrate
+    # 要求当前为 feature 分支，而 HOLDER 正是 checkout 集成 downstream 的 worktree，
+    # 那样会形成死路（F-MABI-006）。
+    printf 'INTEGRATED=false\n'
+    printf 'REASON=INTEGRATION_BRANCH_CHECKED_OUT_ELSEWHERE\n'
+    printf 'HOLDER=%s\n' "$ib_holder"
+    printf 'ACTION=改用 PR / Merge Queue 完成最终集成；或在 %s 内按已验证的 feature SHA 手工执行 git merge --no-ff（不得再调用 branchctl integrate）\n' "$ib_holder"
+    die "$E_ACTION" "集成分支 ${ib} 正被另一 worktree 占用，拒绝本地集成。"
+  fi
+  warn "切换到 $ib 并确认其与 origin/$ib 的关系安全（只允许 fast-forward，绝不 reset/clean）。"
+  git switch "$ib" >/dev/null \
+    || die "$E_STATE" "无法切换到 ${ib}，集成中止（feature 分支未改动）。"
+  local_ib="$(ref_sha "refs/heads/$ib")"
+  origin_ib="$(ref_sha "refs/remotes/origin/$ib")"
+  if [ -n "$origin_ib" ] && [ "$local_ib" != "$origin_ib" ]; then
+    if git merge-base --is-ancestor "$local_ib" "$origin_ib" 2>/dev/null; then
+      git merge --ff-only "$origin_ib" >/dev/null \
+        || die "$E_STATE" "无法 fast-forward 到 origin/${ib}，集成中止。请人工确认 $ib 状态。"
+    else
+      die "$E_STATE" "本地 $ib 与 origin/$ib 已分叉，拒绝自动处理。请人工确认后再执行。"
+    fi
+  fi
+  fid="$(extract_feature_id "$branch")"
+  if [ -n "$fid" ]; then
+    msg="merge($fid): integrate $branch"
+  else
+    msg="integrate $branch into $ib"
+  fi
+  if git merge --no-ff "$branch" -m "$msg"; then
+    :
+  else
+    printf 'INTEGRATED=false\n'
+    printf 'REASON=INTEGRATION_CONFLICT\n'
+    printf 'ACTION=按 Git 提示手工解决冲突后提交，本工具不自动解决冲突\n'
+    die "$E_ACTION" "集成发生冲突，已保留 Git 原生冲突状态（当前停留在 ${ib}）。"
+  fi
+  merge_sha="$(ref_sha HEAD)"
+  printf 'INTEGRATED=true\n'
+  printf 'BRANCH=%s\n' "$branch"
+  printf 'INTEGRATION_BRANCH=%s\n' "$ib"
+  printf 'MERGE_SHA=%s\n' "$merge_sha"
+  printf 'MESSAGE=%s\n' "$msg"
+  warn "已在本地 $ib 生成 --no-ff 集成提交 ${merge_sha}。如项目采用 GitHub PR / Merge Queue，请改用 PR 完成最终集成，本命令不做推送。"
+  return "$E_OK"
+}
+
+# ---------------------------------------------------------------------------
+# push-check：供 pre-push hook 调用，只检查、不修改
+# ---------------------------------------------------------------------------
+
+check_single_push_branch() {
+  # check_single_push_branch <分支名>：输出该分支结论，返回值 0 允许 / 非 0 阻断。
+  local b="$1"
+  local ib vis
+  ib="$(integration_branch)"
+  if ! is_feature_branch_name "$b" "$ib"; then
+    printf 'BRANCH=%s\n' "$b"
+    printf 'PUSH_ALLOWED=true\n'
+    printf 'NOTE=非 feature 分支推送，本工具不阻断（集成后推送 %s 属于正常流程）\n' "$ib"
+    return "$E_OK"
+  fi
+  if [ -z "$(ref_sha "$b")" ]; then
+    printf 'BRANCH=%s\n' "$b"
+    printf 'PUSH_ALLOWED=false\n'
+    printf 'REASON=UNKNOWN_BRANCH\n'
+    printf 'ACTION=确认分支存在后再推送\n'
+    return "$E_STATE"
+  fi
+  vis="$(resolve_visibility "$b")"
+  if [ "$vis" = "unknown" ]; then
+    printf 'BRANCH=%s\n' "$b"
+    printf 'PUSH_ALLOWED=false\n'
+    printf 'REASON=UNKNOWN_VISIBILITY\n'
+    printf 'ACTION=./scripts/branchctl init\n'
+    return "$E_VISIBILITY"
+  fi
+  if ! baseline_ok_for_ref "$b"; then
+    printf 'BRANCH=%s\n' "$b"
+    printf 'PUSH_ALLOWED=false\n'
+    printf 'REASON=NO_BASELINE\n'
+    printf 'ACTION=git fetch origin 后重试\n'
+    return "$E_ACTION"
+  fi
+  if must_sync_for_ref "merge" "$b"; then
+    printf 'BRANCH=%s\n' "$b"
+    printf 'PUSH_ALLOWED=false\n'
+    printf 'VISIBILITY=%s\n' "$vis"
+    printf 'REASON=INTEGRATION_SYNC_REQUIRED\n'
+    printf 'ACTION=./scripts/branchctl sync\n'
+    return "$E_ACTION"
+  fi
+  printf 'BRANCH=%s\n' "$b"
+  printf 'PUSH_ALLOWED=true\n'
+  printf 'VISIBILITY=%s\n' "$vis"
+  return "$E_OK"
+}
+
+cmd_push_check() {
+  require_repo
+  do_fetch || true
+  local overall="$E_OK" b line local_ref local_sha rc
+  local stdin_lines=""
+  if [ ! -t 0 ]; then
+    stdin_lines="$(cat || true)"
+  fi
+  if [ -n "$stdin_lines" ]; then
+    # pre-push hook 输入：<local ref> <local sha> <remote ref> <remote sha>
+    while IFS= read -r line || [ -n "$line" ]; do
+      [ -n "$line" ] || continue
+      # shellcheck disable=SC2086
+      set -- $line
+      local_ref="${1:-}"
+      local_sha="${2:-}"
+      case "$local_sha" in
+        0000000000000000000000000000000000000000|'') continue ;;
+      esac
+      b="${local_ref#refs/heads/}"
+      [ "$local_ref" != "$b" ] || continue
+      check_single_push_branch "$b" || {
+        rc=$?
+        if [ "$rc" -gt "$overall" ]; then overall="$rc"; fi
+      }
+    done <<<"$stdin_lines"
+  else
+    b="$(current_branch)"
+    if [ -z "$b" ]; then
+      printf 'PUSH_ALLOWED=false\n'
+      printf 'REASON=DETACHED_HEAD\n'
+      die "$E_STATE" "当前为 detached HEAD，无法确定推送分支。"
+    fi
+    check_single_push_branch "$b" || overall=$?
+  fi
+  if [ "$overall" -eq "$E_OK" ]; then
+    printf 'PUSH_ALLOWED=true\n'
+  else
+    printf 'PUSH_ALLOWED=false\n'
+  fi
+  return "$overall"
+}
+
+# ---------------------------------------------------------------------------
+# ci-check：供 GitHub Actions 调用，兼容 detached HEAD
+# ---------------------------------------------------------------------------
+
+cmd_ci_check() {
+  require_repo
+  local head_ref="" base_ref="" head_sha_in="" base_sha_in="" ib head base
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --head-ref)
+        [ $# -ge 2 ] || die "$E_USAGE" "--head-ref 缺少参数值。"
+        head_ref="$2"
+        shift 2
+        ;;
+      --base-ref)
+        [ $# -ge 2 ] || die "$E_USAGE" "--base-ref 缺少参数值。"
+        base_ref="$2"
+        shift 2
+        ;;
+      --head-sha)
+        [ $# -ge 2 ] || die "$E_USAGE" "--head-sha 缺少参数值。"
+        head_sha_in="$2"
+        shift 2
+        ;;
+      --base-sha)
+        [ $# -ge 2 ] || die "$E_USAGE" "--base-sha 缺少参数值。"
+        base_sha_in="$2"
+        shift 2
+        ;;
+      --head-ref=*|--base-ref=*|--head-sha=*|--base-sha=*)
+        case "$1" in
+          --head-ref=*) head_ref="${1#--head-ref=}" ;;
+          --base-ref=*) base_ref="${1#--base-ref=}" ;;
+          --head-sha=*) head_sha_in="${1#--head-sha=}" ;;
+          --base-sha=*) base_sha_in="${1#--base-sha=}" ;;
+        esac
+        shift
+        ;;
+      -h|--help)
+        printf '用法： branchctl ci-check [--head-ref <分支>] [--base-ref <分支>] [--head-sha <提交>] [--base-sha <提交>]\n'
+        printf '未给参数时自动读取 GITHUB_HEAD_REF / GITHUB_BASE_REF。\n'
+        printf 'PR 场景请显式传入 --head-sha / --base-sha（取自 PR 事件的真实两端），\n'
+        printf '绝不拿合成 merge commit 冒充 feature HEAD。\n'
+        return "$E_OK"
+        ;;
+      *) die "$E_USAGE" "ci-check 不支持的参数：$1" ;;
+    esac
+  done
+  [ -n "$head_ref" ] || head_ref="${GITHUB_HEAD_REF:-}"
+  [ -n "$base_ref" ] || base_ref="${GITHUB_BASE_REF:-}"
+  ib="$(integration_branch)"
+  [ -n "$base_ref" ] || base_ref="$ib"
+  # detached HEAD 下绝不依赖 git branch --show-current。
+  if [ -z "$head_ref" ]; then
+    head_ref="$(current_branch)"
+  fi
+  head="${head_ref#refs/heads/}"
+  base="${base_ref#refs/heads/}"
+  if [ -z "$head" ]; then
+    printf 'CI_READY=false\n'
+    printf 'REASON=UNKNOWN_HEAD\n'
+    printf 'ACTION=通过 --head-ref 传入 PR 源分支\n'
+    die "$E_STATE" "无法确定 PR 源分支（detached HEAD 且无 GITHUB_HEAD_REF）。"
+  fi
+  if ! is_feature_branch_name "$head" "$ib"; then
+    printf 'CI_READY=false\n'
+    printf 'HEAD_REF=%s\n' "$head"
+    printf 'REASON=INVALID_BRANCH\n'
+    printf 'ACTION=PR 源分支应为合法 feature 分支\n'
+    return "$E_READINESS"
+  fi
+  if [ "$base" != "$ib" ]; then
+    printf 'CI_READY=false\n'
+    printf 'HEAD_REF=%s\n' "$head"
+    printf 'BASE_REF=%s\n' "$base"
+    printf 'REASON=UNEXPECTED_BASE\n'
+    printf 'ACTION=将 PR 目标改为 %s\n' "$ib"
+    return "$E_READINESS"
+  fi
+  # 解析 HEAD 提交：显式 SHA 优先，其次远端跟踪与本地引用。
+  # 绝不回退到 GITHUB_SHA：PR 事件下它常为合成 merge commit，
+  # 冒充 feature HEAD 会造成 BEHIND=0 的假 PASS（F-MABI-005）。
+  local head_sha=""
+  if [ -n "$head_sha_in" ]; then
+    head_sha="$(ref_sha "$head_sha_in")"
+  fi
+  [ -n "$head_sha" ] || head_sha="$(ref_sha "refs/remotes/origin/$head")"
+  [ -n "$head_sha" ] || head_sha="$(ref_sha "refs/heads/$head")"
+  [ -n "$head_sha" ] || head_sha="$(ref_sha "$head")"
+  if [ -z "$head_sha" ]; then
+    printf 'CI_READY=false\n'
+    printf 'HEAD_REF=%s\n' "$head"
+    printf 'REASON=UNRESOLVED_HEAD\n'
+    printf 'ACTION=通过 --head-sha 传入 PR 源端真实提交后重试\n'
+    return "$E_READINESS"
+  fi
+  local base_sha=""
+  if [ -n "$base_sha_in" ]; then
+    base_sha="$(ref_sha "$base_sha_in")"
+  fi
+  [ -n "$base_sha" ] || base_sha="$(ref_sha "refs/remotes/origin/$base")"
+  [ -n "$base_sha" ] || base_sha="$(ref_sha "refs/heads/$base")"
+  [ -n "$base_sha" ] || base_sha="$(ref_sha "$base")"
+  [ -n "$base_sha" ] || die "$E_STATE" "找不到目标基线提交（BASE_REF=${base}）。"
+  local mb behind ahead
+  mb="$(git merge-base "$base_sha" "$head_sha" 2>/dev/null || true)"
+  if [ -z "$mb" ]; then
+    printf 'CI_READY=false\n'
+    printf 'REASON=NO_BASELINE\n'
+    printf 'ACTION=确认 CI 拉取了完整历史（fetch-depth: 0）后重试\n'
+    return "$E_READINESS"
+  fi
+  # CI 内用解析出的提交做同步判定（不依赖当前检出分支）。
+  local ci_must="false"
+  if [ "$(require_for_stage "merge")" = "true" ]; then
+    local warn behind_n hard age_n
+    warn="$(warn_behind_commits)"
+    hard="$(hard_age_days)"
+    behind_n="$(git rev-list --count "$head_sha..$base_sha" 2>/dev/null || printf '0')"
+    if [ "$behind_n" -gt 0 ] 2>/dev/null; then
+      if [ "$behind_n" -ge "$warn" ] 2>/dev/null; then
+        ci_must="true"
+      elif sides_overlap "$mb" "$head_sha" "$base_sha"; then
+        ci_must="true"
+      elif develop_side_changed_critical "$mb" "$base_sha"; then
+        ci_must="true"
+      else
+        age_n="$(branch_age_days "$head_sha" "$base_sha")"
+        if [ "$age_n" != "unknown" ] && [ "$age_n" -ge "$hard" ] 2>/dev/null; then
+          ci_must="true"
+        fi
+      fi
+    fi
+  fi
+  behind="$(git rev-list --count "$head_sha..$base_sha" 2>/dev/null || printf '0')"
+  ahead="$(git rev-list --count "$base_sha..$head_sha" 2>/dev/null || printf '0')"
+  if [ "$ci_must" = "true" ]; then
+    printf 'CI_READY=false\n'
+    printf 'HEAD_REF=%s\n' "$head"
+    printf 'BASE_REF=%s\n' "$base"
+    printf 'BASE_SHA=%s\n' "$mb"
+    printf 'HEAD_SHA=%s\n' "$head_sha"
+    printf 'DEVELOP_SHA=%s\n' "$base_sha"
+    printf 'BEHIND=%s\n' "$behind"
+    printf 'AHEAD=%s\n' "$ahead"
+    printf 'REASON=INTEGRATION_SYNC_REQUIRED\n'
+    printf 'ACTION=在 feature 分支执行 ./scripts/branchctl sync 后更新 PR\n'
+    return "$E_READINESS"
+  fi
+  printf 'CI_READY=true\n'
+  printf 'HEAD_REF=%s\n' "$head"
+  printf 'BASE_REF=%s\n' "$base"
+  printf 'BASE_SHA=%s\n' "$mb"
+  printf 'HEAD_SHA=%s\n' "$head_sha"
+  printf 'DEVELOP_SHA=%s\n' "$base_sha"
+  printf 'BEHIND=%s\n' "$behind"
+  printf 'AHEAD=%s\n' "$ahead"
+  return "$E_OK"
+}
+
+# ---------------------------------------------------------------------------
+# 帮助与分发
+# ---------------------------------------------------------------------------
+
+usage() {
+  cat <<'EOF'
+用法： branchctl <command> [参数]
+
+只读检查：
+  status                 当前分支状态（机器可解析的 KEY=VALUE）
+  review-ready           进入评审前的只读验证
+  gate-ready             进入门禁前的只读验证（要求工作树干净）
+  merge-ready            最终集成前的只读验证（要求工作树干净）
+  push-check             pre-push 检查（只检查，不修改历史）
+  ci-check               CI 检查（兼容 detached HEAD，可用 --head-ref/--base-ref）
+
+写入操作（显式动作，不偷改历史）：
+  init [--private|--shared]  为当前 feature 落盘显式可见性
+  share                      private 转 shared（单向）
+  sync                       按可见性同步 develop（private=rebase，shared=merge）
+  integrate                  本地 feature -> develop（--no-ff；PR 模式请勿用）
+
+其它：
+  version                打印版本
+  help                   显示本帮助
+
+全局参数：--no-fetch（跳过 git fetch origin，直接用本地基线判断）
+EOF
+}
+
+OPT_NO_FETCH="false"
+
+main() {
+  local cmd="${1:-help}"
+  shift || true
+  # 提取全局参数（各子命令同样透传，避免参数顺序苛刻）。
+  local args=()
+  local a
+  for a in "$@"; do
+    case "$a" in
+      --no-fetch) OPT_NO_FETCH="true" ;;
+      *) args+=("$a") ;;
+    esac
+  done
+  # bash 3.2 兼容：空数组时直接清空位置参数。
+  if [ "${#args[@]}" -gt 0 ]; then
+    set -- "${args[@]}"
+  else
+    set --
+  fi
+  case "$cmd" in
+    status) cmd_status "$@" ;;
+    init) cmd_init "$@" ;;
+    share) cmd_share "$@" ;;
+    preflight) cmd_preflight "$@" ;;
+    sync) cmd_sync "$@" ;;
+    review-ready|review_ready) cmd_review_ready "$@" ;;
+    gate-ready|gate_ready) cmd_gate_ready "$@" ;;
+    merge-ready|merge_ready) cmd_merge_ready "$@" ;;
+    integrate) cmd_integrate "$@" ;;
+    push-check|push_check) cmd_push_check "$@" ;;
+    ci-check|ci_check) cmd_ci_check "$@" ;;
+    version|--version|-V) printf 'branchctl %s\n' "$BRANCHCTL_VERSION" ;;
+    help|--help|-h) usage ;;
+    *) die "$E_USAGE" "未知命令：${cmd}（执行 branchctl help 查看用法）" ;;
+  esac
+}
+
+main "$@"

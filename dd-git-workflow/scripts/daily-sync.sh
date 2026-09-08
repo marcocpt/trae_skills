@@ -4,6 +4,7 @@ set -euo pipefail
 # 全局技能 dd-git-workflow/scripts 配套脚本
 # 用法: ./daily-sync.sh
 # 拉取 develop 最新改动并合并到当前 feature 分支
+# 仅适用于共享分支；私有分支同步见 branch.md“私有 / 共享分支同步”节
 # 冲突时输出冲突文件清单并以退出码 2 退出
 
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"

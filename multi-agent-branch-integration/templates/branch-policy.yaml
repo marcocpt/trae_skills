@@ -1,0 +1,53 @@
+# multi-agent 分支策略（项目级配置）
+#
+# 本文件属于项目：install.sh 只在缺失时创建，update.sh 永远不覆盖。
+# branchctl 内置的 YAML 子集读取只识别「顶层段.键: 标量值」，
+# 不要在这里使用嵌套列表或多行结构。
+
+version: 1
+
+# 默认集成分支。feature 最终合入该分支，同步时也以它为基线。
+integration_branch: develop
+
+feature:
+  # 新 feature 的默认可见性：private | shared。
+  # 注意：该值只决定 `branchctl init` 落盘什么；
+  # 在显式 init 之前分支可见性一律视为 unknown，绝不据此猜测后 rebase。
+  default_visibility: private
+
+private:
+  # 私有分支同步方法：只能是 rebase。
+  sync_method: rebase
+
+shared:
+  # 共享分支同步方法：只能是 merge。
+  sync_method: merge
+  # 安全下限：即使这里改为 true，branchctl 也绝不自动 force push。
+  allow_force_push: false
+
+integration:
+  # feature -> develop 的集成方式：只能是 no-ff（保留语义边界与审计区间）。
+  feature_to_develop: no-ff
+
+checks:
+  before_work: true
+  before_review: true
+  before_gate: true
+  before_merge: true
+
+branch_lifetime:
+  warning_days: 3
+  hard_days: 7
+
+sync:
+  warning_behind_commits: 20
+  require_before_review: true
+  require_before_gate: true
+  require_before_merge: true
+  # 额外关键路径（空格分隔的 shell 通配符，可选；内置清单见 policy-guide）。
+  # critical_paths: "db/migrations/* infra/*"
+
+# 直接在集成分支上开发的保护开关。默认 false（禁止）；
+# 仅当项目明确需要时才改为 true。
+protection:
+  allow_direct_on_integration: false

@@ -56,7 +56,7 @@ swiftlint lint --strict
 | 未提交文件 | `git status --porcelain` | 提交或 stash |
 | 未跑测试 | 检查测试脚本执行记录 | 补跑测试 |
 | 未同步文档 | 对照文档同步检查表 | 同步文档 |
-| 未同步 develop | `git log HEAD..origin/develop` | 执行 daily-sync |
+| 未同步 develop | `git log HEAD..origin/develop` | 共享分支执行 daily-sync；私有分支按 branch.md canonical 用 rebase（`branchctl sync`） |
 | 公共文件未隔离 | 检查 commit 是否含 PublicFile tag | 拆分到独立分支 |
 | 公共文件分支超期 | `git log --format=%cd --date=short <merge-base>..HEAD` 与今天对比，>1 天且含 PublicFile tag | 立即合并或拆分 |
 | 跨模块修改未声明 | 检查修改文件是否跨多个顶层模块目录且无 `CrossModule:` tag | 补充 CrossModule: tag 或拆分 |
@@ -89,7 +89,7 @@ CI 流水线推荐包含以下步骤：
 ## 推荐 Git Alias
 
 ```bash
-# 基础 alias
+# 基础 alias（sync 仅适用于共享分支；私有分支同步见 branch.md“私有 / 共享分支同步”节）
 git config alias.sync "!git fetch origin && git merge origin/develop"
 git config alias.checkmerge "merge-tree --write-tree --name-only origin/develop HEAD"
 git config alias.graph "log --graph --oneline --decorate --all"

@@ -7,7 +7,7 @@ description: 当 AI Coding 任务涉及分支、worktree、commit、merge、冲�
 
 ## 目标
 
-为 AI Agent 提供一套统一、可按需加载的 Git 约束。Codex 可直接执行普通 Git 原子命令；本 Skill 只保留项目特有的分支模型、merge-only、worktree 隔离、CI SHA 绑定、冲突与清理规则。
+为 AI Agent 提供一套统一、可按需加载的 Git 约束。Codex 可直接执行普通 Git 原子命令；本 Skill 只保留项目特有的分支模型、私有/共享分支同步规则（共享分支 merge-only）、worktree 隔离、CI SHA 绑定、冲突与清理规则。
 
 ## 核心原则
 

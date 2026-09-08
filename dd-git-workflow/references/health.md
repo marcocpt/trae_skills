@@ -50,7 +50,7 @@
 
 **含义**：
 
-- **拉取上游**：`git fetch origin && git merge origin/develop` 同步上游改动
+- **拉取上游**：共享分支执行 `git fetch origin && git merge origin/develop` 同步上游改动（私有分支按 [branch.md](branch.md)“私有 / 共享分支同步”节用 rebase，不得混用）
 - **推送可合并部分**：将已完成且通过自检的部分合并回 develop
 
 **为什么"必须合并"而不只是"同步"**：
@@ -59,17 +59,17 @@
 - 必须合并强制 AI Agent 把可合并的成果及时回到主干，避免分支长期独立
 - 长分支即使每天同步，冲突也会随分支存活时间指数增长
 
-**每日同步脚本**：`scripts/daily-sync.sh`
+**每日同步脚本**（仅共享分支；私有分支见 [branch.md](branch.md)“私有 / 共享分支同步”节）：`scripts/daily-sync.sh`
 
 ```bash
-# 用法：在 feature 分支上执行
+# 用法：在共享 feature 分支上执行
 bash scripts/daily-sync.sh
 # 冲突时输出冲突文件清单并以退出码 2 退出
 ```
 
 ### 触发时机
 
-新分支不设置 upstream（不 tracking develop），但 Agent 必须在以下时机主动调用 `daily-sync.sh` 同步 develop 改动到当前 feature 分支：
+新分支不设置 upstream（不 tracking develop），共享分支的 Agent 必须在以下时机主动调用 `daily-sync.sh` 同步 develop 改动到当前 feature 分支（私有分支按 canonical 用 rebase / `branchctl sync`，不得调用本脚本）：
 
 - **进入 worktree 开始工作前**：Agent 切入 worktree 准备编码前，先跑 `daily-sync.sh`，避免基于过期的 develop 工作
 - **push 前**：执行 `git push` 推送 feature 分支前，先跑 `daily-sync.sh`，避免推送落后于 develop 的分支

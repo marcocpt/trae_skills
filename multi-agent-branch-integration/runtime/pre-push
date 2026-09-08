@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+#
+# pre-push hook（由 install.sh 安装到项目的 .githooks/pre-push）。
+#
+# 只做一件事：把 pre-push 收到的引用行透传给 branchctl push-check，
+# 并原样保留其退出码。绝不在 hook 内做 rebase / merge / 改写历史。
+#
+set -euo pipefail
+
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$HOOK_DIR/.." && pwd)"
+BRANCHCTL="$PROJECT_ROOT/scripts/branchctl"
+
+if [ ! -x "$BRANCHCTL" ]; then
+  printf 'pre-push: ERROR: 找不到可执行的 %s，拒绝推送以保安全。\n' "$BRANCHCTL" >&2
+  printf 'pre-push: 请重新运行 Skill 安装器恢复 scripts/branchctl。\n' >&2
+  exit 40
+fi
+
+exec "$BRANCHCTL" push-check

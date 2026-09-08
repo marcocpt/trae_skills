@@ -10,9 +10,9 @@
 
 ## 长分支合并策略
 
-### 全部使用 merge
+### 共享长分支使用 merge
 
-长分支合并**不引入 rebase**，原因：
+共享长分支合并**不引入 rebase**（私有分支同步见 [branch.md](branch.md)“私有 / 共享分支同步”节），原因：
 
 - rebase 改写历史，多 Agent 协作时易导致 force push 冲突
 - merge 保留真实开发轨迹，便于追溯
@@ -23,7 +23,7 @@
 长分支冲突必须按以下顺序处理，**禁止直接在 develop 上解决冲突**：
 
 ```text
-1. 在 feature 分支上执行 git merge origin/develop
+1. 在共享 feature 分支上执行 git merge origin/develop（私有分支用 rebase，见上节）
 2. 在 feature 分支解决冲突
 3. 在 feature 分支提交冲突解决
 4. 在 feature 分支运行合并前自检
