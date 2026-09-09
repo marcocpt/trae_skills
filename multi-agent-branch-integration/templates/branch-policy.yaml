@@ -11,8 +11,8 @@ integration_branch: develop
 
 feature:
   # 新 feature 的默认可见性：private | shared。
-  # 注意：该值只决定 `branchctl init` 落盘什么；
-  # 在显式 init 之前分支可见性一律视为 unknown，绝不据此猜测后 rebase。
+  # 注意：该值只决定无参数 init 与 agent-start 自动初始化时落盘什么；
+  # 其它命令不得直接把该默认值当作当前可见性，在显式落盘之前一律视为 unknown。
   default_visibility: private
 
 private:
@@ -34,7 +34,7 @@ checks:
   before_review: true
   before_gate: true
   before_merge: true
-  # agent-finish 自动执行的项目测试命令。为空表示跳过（输出 TESTS=skipped，
+  # agent-finish 自动执行的本地项目测试命令。为空表示跳过（输出 LOCAL_TESTS=skipped，
   # 绝不声称测试已通过）；非空时在仓库根目录用 bash 执行，非零即阻断收尾。
   test_command: ""
 

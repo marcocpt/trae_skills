@@ -64,10 +64,11 @@ GitHub PR 模式用 PR merge commit 做最终集成，不用本地 `integrate`�
 
 ## Agent 必须做
 
-- 改动产物前先跑 `preflight`，不通过不动代码；
-- 同步只用 `./scripts/branchctl sync`；
-- `review-ready` / `gate-ready` / `merge-ready` 逐个通过后再进入下一阶段；
-- 被 `REASON` 阻断时按 `ACTION` 执行对应命令，不绕过。
+- 正常任务只走自动生命周期：`agent-start` → 开发 → `agent-finish`；
+  单步原语（`preflight` / `sync` / `review-ready` / `gate-ready` /
+  `merge-ready`）仅用于诊断、恢复与特殊流程，不得与自动入口混拼流程；
+- 被 `REASON` 阻断时按 `ACTION` 执行对应命令，不绕过；
+- 发起外部送审的同时执行 `freeze`，评审关闭后执行 `unfreeze`。
 
 ## Agent 禁止做
 
@@ -92,10 +93,15 @@ GitHub PR 模式用 PR merge commit 做最终集成，不用本地 `integrate`�
 
 ```text
 AGENTS.md 接入片段
-  → 约束 Agent 先跑 branchctl preflight（流程入口）
-    → pre-push hook 调用 branchctl push-check（本地兜底：只拦不改）
-      → GitHub Actions 跑 branchctl ci-check（远端兜底：只验不改）
+  → 任务开始 branchctl agent-start
+    → 开发
+      → 任务收尾 branchctl agent-finish
+        → pre-push hook 调 push-check（本地兜底：只拦不改）
+          → GitHub Actions 调 ci-check（远端兜底：只验不改）
 ```
+
+`preflight` 是 `agent-start` 内部调用的原语，不是正常任务的顶层入口；
+单步原语只留给诊断、恢复与特殊流程。
 
 ## 按需加载
 

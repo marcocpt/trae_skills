@@ -830,10 +830,26 @@ t30() {
   rc=$?
   assert_rc_zero "$id" "$rc" "agent-finish" || return 0
   assert_contains "$id" "$out" "AGENT_FINISH=true" "收尾标志" || return 0
-  assert_contains "$id" "$out" "TESTS=skipped" "测试跳过声明" || return 0
+  assert_contains "$id" "$out" "LOCAL_TESTS=skipped" "测试跳过声明" || return 0
   assert_contains "$id" "$out" "REVIEW_READY=true" "就绪标志" || return 0
+  for sha in $(printf '%s' "$out" | grep -E '^(BASE_SHA|HEAD_SHA|DEVELOP_SHA)=' | cut -d= -f2); do
+    case "$sha" in
+      ''|*[!0-9a-f]*)
+        report "$id" "FAIL" "SHA 非法（非十六进制）：$sha"
+        return 0
+        ;;
+    esac
+    if [ "${#sha}" -ne 40 ]; then
+      report "$id" "FAIL" "SHA 长度非法：$sha"
+      return 0
+    fi
+  done
+  if [ "$(printf '%s' "$out" | grep -cE '^(BASE_SHA|HEAD_SHA|DEVELOP_SHA)=')" != "3" ]; then
+    report "$id" "FAIL" "三组 SHA 缺失"
+    return 0
+  fi
   case "$out" in
-    *"TESTS=passed"*)
+    *"LOCAL_TESTS=passed"*)
       report "$id" "FAIL" "伪造了测试通过"
       return 0
       ;;
@@ -855,13 +871,13 @@ t31() {
   out="$(run_tool "$FIX_WORK" agent-finish 2>&1)"
   rc=$?
   assert_rc_zero "$id" "$rc" "agent-finish（测试通过）" || return 0
-  assert_contains "$id" "$out" "TESTS=passed" "测试通过" || return 0
+  assert_contains "$id" "$out" "LOCAL_TESTS=passed" "测试通过" || return 0
   sed 's/test_command: "true"/test_command: "false"/' "$pol" >"$pol.tmp"
   mv "$pol.tmp" "$pol"
   out="$(run_tool "$FIX_WORK" agent-finish 2>&1)"
   rc=$?
   assert_rc_nonzero "$id" "$rc" "agent-finish（测试失败）" || return 0
-  assert_contains "$id" "$out" "TESTS_FAILED" "失败原因" || return 0
+  assert_contains "$id" "$out" "LOCAL_TESTS_FAILED" "失败原因" || return 0
   report "$id" "PASS" "配置测试如实执行并阻断"
 }
 
@@ -881,6 +897,83 @@ t32() {
   rc=$?
   assert_rc_nonzero "$id" "$rc" "agent-start（develop）" || return 0
   report "$id" "PASS" "收尾不自动初始化"
+}
+
+# ---------------------------------------------------------------- T33 冻结分支拒绝自动同步
+t33() {
+  local id="T33" out rc before after
+  fixture_overlap "t33" "feature/frz"
+  run_tool "$FIX_WORK" init --private >/dev/null 2>&1
+  out="$(run_tool "$FIX_WORK" freeze 2>&1)"
+  rc=$?
+  assert_rc_zero "$id" "$rc" "freeze" || return 0
+  assert_contains "$id" "$out" "SYNC_FROZEN=true" "冻结标志" || return 0
+  before="$(git -C "$FIX_WORK" rev-parse HEAD)"
+  out="$(run_tool "$FIX_WORK" agent-start 2>&1)"
+  rc=$?
+  assert_rc_nonzero "$id" "$rc" "agent-start（已冻结）" || return 0
+  assert_contains "$id" "$out" "SYNC_FROZEN" "拒绝原因" || return 0
+  after="$(git -C "$FIX_WORK" rev-parse HEAD)"
+  if [ "$before" != "$after" ]; then
+    report "$id" "FAIL" "冻结后历史仍被改写"
+    return 0
+  fi
+  out="$(run_tool "$FIX_WORK" unfreeze 2>&1)"
+  rc=$?
+  assert_rc_zero "$id" "$rc" "unfreeze" || return 0
+  out="$(run_tool "$FIX_WORK" agent-start 2>&1)"
+  rc=$?
+  assert_rc_zero "$id" "$rc" "agent-start（解冻后）" || return 0
+  assert_contains "$id" "$out" "AGENT_START=true" "启动标志" || return 0
+  report "$id" "PASS" "冻结阻断、解冻恢复"
+}
+
+# ---------------------------------------------------------------- T34 自动入口不继承 develop 例外
+t34() {
+  local id="T34" out rc pol
+  fixture_repo "t34"
+  pol="$FIX_WORK/.agent/branch-policy.yaml"
+  awk '/allow_direct_on_integration/{sub(/false/, "true")}1' "$pol" >"$pol.tmp"
+  mv "$pol.tmp" "$pol"
+  out="$(run_tool "$FIX_WORK" agent-start 2>&1)"
+  rc=$?
+  assert_rc_nonzero "$id" "$rc" "agent-start（develop）" || return 0
+  if [ -n "$(git -C "$FIX_WORK" config --get branch.develop.agentShared || true)" ]; then
+    report "$id" "FAIL" "develop 被写入了可见性"
+    return 0
+  fi
+  # preflight 的例外本身不受影响：分支门禁照样放行（走到可见性检查才停，
+  # 而不是倒在 INTEGRATION_BRANCH），且全程不写配置。
+  out="$(run_tool "$FIX_WORK" preflight 2>&1)"
+  rc=$?
+  assert_rc_nonzero "$id" "$rc" "preflight（develop 无可见性）" || return 0
+  assert_contains "$id" "$out" "UNKNOWN_VISIBILITY" "停在可见性而非分支门禁" || return 0
+  case "$out" in
+    *"INTEGRATION_BRANCH"*)
+      report "$id" "FAIL" "例外未生效"
+      return 0
+      ;;
+  esac
+  report "$id" "PASS" "自动入口只认 feature"
+}
+
+# ---------------------------------------------------------------- T35 失败路径不吞证据声明
+t35() {
+  local id="T35" out rc pol
+  fixture_overlap "t35" "feature/failafter"
+  run_tool "$FIX_WORK" init --private >/dev/null 2>&1
+  pol="$FIX_WORK/.agent/branch-policy.yaml"
+  awk '/before_merge: true/{print; print "  test_command: \"false\""; next}1' "$pol" >"$pol.tmp"
+  mv "$pol.tmp" "$pol"
+  (cd "$FIX_WORK" && git add .agent/branch-policy.yaml && git commit -qm "test: failing test command")
+  out="$(run_tool "$FIX_WORK" agent-finish 2>&1)"
+  rc=$?
+  assert_rc_nonzero "$id" "$rc" "agent-finish（测试失败）" || return 0
+  assert_contains "$id" "$out" "LOCAL_TESTS_FAILED" "失败原因" || return 0
+  assert_contains "$id" "$out" "PRIOR_EVIDENCE=STALE" "证据声明仍在" || return 0
+  assert_contains "$id" "$out" "HEAD_BEFORE=" "旧 HEAD 仍在" || return 0
+  assert_contains "$id" "$out" "HEAD_AFTER=" "新 HEAD 仍在" || return 0
+  report "$id" "PASS" "失败路径证据不丢"
 }
 
 main() {
@@ -921,6 +1014,9 @@ main() {
   t30
   t31
   t32
+  t33
+  t34
+  t35
   printf -- '----------------------------------------\n'
   printf 'TOTAL: %s passed, %s failed\n' "$PASS" "$FAIL"
   if [ -n "$FAILED_CASES" ]; then

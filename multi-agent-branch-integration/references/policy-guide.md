@@ -86,6 +86,14 @@ behind > 0 且（behind ≥ 预警数
 
 ## 4. 命令语义与干净工作树要求
 
+术语先行，避免与 `dd-workflow-runtime` 碰撞：本文件的 `preflight`
+指分支准入检查（能否在这个分支上开工），不是 runtime 的工作流入口
+Preflight；`*-ready` 指分支策略层的合入前检查，不是工作流 Stage Gate
+（Stage Gate 不是 Git Delivery Gate，前者归调用方与 runtime 所有）。
+`freeze` 冻的是自动同步动作，不是外部审查的送审候选绑定（后者归
+外部审查流程与 runtime 状态所有，本工具只读写自家的
+`branch.<名>.agentSyncFrozen`）。
+
 每个命令的干净工作树要求按语义独立定义，
 不得互相复用导致误判：
 
@@ -93,6 +101,7 @@ behind > 0 且（behind ≥ 预警数
 |---|---|---|---|
 | `agent-start` | 否（组合） | 允许进入（同步需要时照样拒绝） | 初始化→按需同步一次→preflight；失败透出原命令输出 |
 | `agent-finish` | 否（组合） | 允许进入（各原语独立判定） | 同步一次→项目测试→review-ready；不做初始化、不提交 |
+| `freeze/unfreeze` | 写配置 | 不判定 | 冻结/解冻自动同步；冻结只拦自动同步，不拦只读检查 |
 | `status` | 是 | 仅报告 `DIRTY=` | 从不 fetch，从不修改 |
 | `preflight` | 准入检查 | 告警但通过 | 开始修改前使用；增量开发常带未提交改动。但 `checks.before_work=true` 时若已存在必须同步条件则直接阻断（提前暴露，不等到 push 才拦） |
 | `sync` | 否 | 拒绝（不自动 stash） | 冲突时保留原生状态并返回非 0 |
@@ -134,9 +143,22 @@ behind > 0 且（behind ≥ 预警数
   开发，默认 `false`。打开后 `preflight` 放行，其它命令仍要求合法 feature。
 - `checks.before_work`：`preflight` 是否在开工前就阻断必须同步的条件，
   默认 `true`。关闭后 `preflight` 回到只做准入不断同步的状态。
-- `checks.test_command`：`agent-finish` 自动执行的项目测试命令，
-  为空即跳过（`TESTS=skipped`，绝不声称通过）；非空时在仓库根目录
-  用 bash 执行，非零退出即阻断收尾（`REASON=TESTS_FAILED`）。
+- `checks.test_command`：`agent-finish` 自动执行的本地项目测试命令，
+  为空即跳过（`LOCAL_TESTS=skipped`，绝不声称通过）；非空时在仓库根目录
+  用 bash 执行，非零退出即阻断收尾（`REASON=LOCAL_TESTS_FAILED`）。
+
+## 6.2 本地测试与远端 CI 的边界（必读）
+
+`LOCAL_TESTS=passed` 只是“本地命令跑过了”，**永不代表远端 CI 门禁通过，
+也不得据此关闭任何必需远端 CI 的 Gate**。测试位置决策、CI 复用与触发、
+“CI 优先、禁止本地替代”的完整合同归 `dd-workflow-runtime` 所有：
+
+- 测试位置与“CI 不可用”的严格定义：`dd-workflow-runtime/references/test-location.md`；
+- CI 发现、触发、等待与失败语义：`dd-workflow-runtime/references/ci.md`。
+
+有必需远端 CI 门禁的项目：`agent-finish` 的本地测试最多算快速反馈，
+仍须按上述两份合同走 CI 验证；`REVIEW_READY=true` 只是分支策略就绪，
+不是 CI 通过，更不是工作流完成。
 - `sync.critical_paths`：空格分隔的 shell 通配符，追加到内置关键清单。
 - `shared.allow_force_push` 为安全下限字段：即使项目写成 `true`，
   `branchctl` 也绝不自动 force push（见第 8 节）。
@@ -149,11 +171,15 @@ behind > 0 且（behind ≥ 预警数
 ## 6.1 SHA 证据与重写历史
 
 rebase 会改写 feature 历史：旧提交 SHA 随即悬空，此前钉在旧 SHA 上的
-送审冻结与证据全部作废，关闭前复验会判基线漂移。因此：
+送审绑定与证据全部作废，外部审查的关闭前复验会判基线漂移（该复验机制归外部审查流程所有，本工具只如实报告新旧 HEAD）。因此：
 
-- 自动同步只允许发生在尚无已冻结送审候选时；
-- 一旦重写发生，工具输出 `PRIOR_EVIDENCE=STALE` 与新旧 HEAD，
-  上层必须重新冻结基线，旧 verdict 不得再用；
+- 自动同步只允许发生在尚无已冻结送审候选时；冻结载体为分支配置
+  `branch.<名>.agentSyncFrozen`，由 `freeze` / `unfreeze` 管理：
+  Agent 发起外部送审的同时执行 `freeze`，评审关闭后再 `unfreeze`；
+- 冻结期间 `agent-start` 与 `agent-finish` 拒绝一切自动同步
+  （private 也不例外，`REASON=SYNC_FROZEN`），只读检查不受影响；
+- 一旦重写发生，工具在同步成功后**立即**输出 `HEAD_BEFORE` /
+  `HEAD_AFTER` / `PRIOR_EVIDENCE`，之后测试或门禁再失败也不得吞掉该声明；
 - merge 不改写历史，输出 `PRIOR_EVIDENCE=PRESERVED`；
 - 需要长期多轮审查的任务尽早 `share`，用 merge 保 SHA 稳定。
 
@@ -220,5 +246,6 @@ rebase 会改写 feature 历史：旧提交 SHA 随即悬空，此前钉在旧 S
 | `REASON=NO_BASELINE` | 无可用基线（常为离线或浅克隆） | `git fetch origin` / `fetch-depth: 0` |
 | `REASON=UNEXPECTED_BASE` | PR 目标不是集成分支 | 改 PR 目标为集成分支 |
 | `REASON=UNRESOLVED_HEAD` | CI 内找不到源分支引用（且无明确 SHA） | 用 `--head-sha` 传入 PR 源端真实提交 |
-| `REASON=TESTS_FAILED` | `agent-finish` 中项目测试失败 | 修复测试失败后重试 |
+| `REASON=LOCAL_TESTS_FAILED` | `agent-finish` 中本地项目测试失败 | 修复测试失败后重试（另见 §6.2：本地通过不等于 CI 通过） |
+| `REASON=SYNC_FROZEN` | 分支已冻结自动同步（送审候选中） | 评审关闭后 `unfreeze` 再重试 |
 | `REASON=INTEGRATION_BRANCH_CHECKED_OUT_ELSEWHERE` | 集成分支被另一 worktree 占用 | 改用 PR；或在占用的 worktree 内手工 merge（不得再调 integrate） |

@@ -675,7 +675,56 @@ cmd_share() {
   printf 'REBASE_ALLOWED=false\n'
   printf 'FORCE_PUSH_ALLOWED=false\n'
   printf 'SYNC_METHOD=merge\n'
-  warn "分支 $branch 已转为共享分支：禁止自动 rebase，禁止 force push，同步一律使用 merge。"
+  warn "分支 ${branch} 已转为共享分支：禁止自动 rebase，禁止 force push，同步一律使用 merge。"
+  return "$E_OK"
+}
+
+# ---------------------------------------------------------------------------
+# freeze / unfreeze：送审候选的同步冻结（F-MABI-AUTO-001）
+# ---------------------------------------------------------------------------
+# 文档承诺“冻结候选禁止自动同步”必须有机械载体：Agent 把 SHA 发给强审者
+# 的同时执行 freeze，评审关闭后再 unfreeze。冻结期间 agent-start 与
+# agent-finish 拒绝一切自动同步（private 也不例外），只读检查不受影响。
+
+is_sync_frozen() {
+  local v=""
+  v="$(git config --get "branch.$1.agentSyncFrozen" 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
+  case "$v" in
+    true|yes|on|1) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+cmd_freeze() {
+  require_repo
+  local ib branch
+  ib="$(integration_branch)"
+  branch="$(current_branch)"
+  is_feature_branch_name "$branch" "$ib" || die "$E_STATE" "当前分支不是合法 feature 分支（BRANCH=${branch}），拒绝冻结。"
+  git config "branch.${branch}.agentSyncFrozen" "true" \
+    || die "$E_STATE" "写入分支配置失败。"
+  printf 'SYNC_FROZEN=true\n'
+  printf 'BRANCH=%s\n' "$branch"
+  warn "分支 ${branch} 已冻结自动同步：评审关闭前任何入口不得 rebase / merge，关闭后执行 unfreeze。"
+  return "$E_OK"
+}
+
+cmd_unfreeze() {
+  require_repo
+  local ib branch
+  ib="$(integration_branch)"
+  branch="$(current_branch)"
+  is_feature_branch_name "$branch" "$ib" || die "$E_STATE" "当前分支不是合法 feature 分支（BRANCH=${branch}）。"
+  if ! is_sync_frozen "$branch"; then
+    printf 'SYNC_FROZEN=false\n'
+    printf 'UNFREEZE=already\n'
+    return "$E_OK"
+  fi
+  git config --unset "branch.${branch}.agentSyncFrozen" \
+    || die "$E_STATE" "清除分支配置失败。"
+  printf 'SYNC_FROZEN=false\n'
+  printf 'UNFREEZE=done\n'
+  printf 'BRANCH=%s\n' "$branch"
   return "$E_OK"
 }
 
@@ -684,9 +733,12 @@ cmd_share() {
 # ---------------------------------------------------------------------------
 
 gate_feature_branch() {
-  # gate_feature_branch <标签> <分支> <集成分支>：非 feature 上下文直接拒绝。
+  # gate_feature_branch <标签> <分支> <集成分支> <是否严格>：非 feature 上下文直接拒绝。
   # preflight 与 agent-start 共用同一实现，语义永不分叉；失败时打印标签行后退出。
-  local label="$1" branch="$2" ib="$3"
+  # 严格模式（agent-start / agent-finish）不继承 preflight 的
+  # allow_direct_on_integration 例外：自动生命周期只认真正的 feature，
+  # 绝不给 develop 写 agentShared（F-MABI-AUTO-003）。
+  local label="$1" branch="$2" ib="$3" strict="${4:-0}"
   if [ -z "$branch" ]; then
     printf '%s=false\n' "$label"
     printf 'REASON=DETACHED_HEAD\n'
@@ -695,7 +747,7 @@ gate_feature_branch() {
   fi
   if ! is_feature_branch_name "$branch" "$ib"; then
     if [ "$branch" = "$ib" ] || [ "$branch" = "main" ] || [ "$branch" = "master" ]; then
-      if [ "$(allow_direct_on_integration)" = "true" ]; then
+      if [ "$strict" != "1" ] && [ "$(allow_direct_on_integration)" = "true" ]; then
         warn "项目策略允许在 ${branch} 上直接开发，继续。"
       else
         printf '%s=false\n' "$label"
@@ -765,17 +817,18 @@ cmd_preflight() {
 # 2. 每个入口最多自动同步一次，不循环追赶 develop；中途又落后如实阻断。
 # 3. 自动初始化只应用项目显式配置的 default_visibility（落盘为普通显式
 #    配置并打印来源），无默认值时仍阻断；显式配置永远优先。
-# 4. 测试绝不伪造：未配置 checks.test_command 即输出 TESTS=skipped。
+# 4. 本地测试绝不伪造：未配置 checks.test_command 即输出 LOCAL_TESTS=skipped；
+#    有输出也只是本地命令执行结果，永不代表远端 CI 门禁通过（见 policy-guide 边界声明）。
 # 5. share 永不自动，只认用户的多人协作指令。
 # 6. 历史一旦被重写，此前绑定旧 SHA 的送审与证据即作废：工具如实报告
-#    HEAD_BEFORE / HEAD_AFTER 与 PRIOR_EVIDENCE，由上层 Agent 重新冻结基线。
+#    HEAD_BEFORE / HEAD_AFTER 与 PRIOR_EVIDENCE，由上层 Agent 重新记录基线并重新送审（送审候选的绑定与复验归外部审查流程所有）。
 
 cmd_agent_start() {
   require_repo
   local ib branch vis auto_init src head_before head_after method gate_out gate_rc
   ib="$(integration_branch)"
   branch="$(current_branch)"
-  gate_feature_branch "AGENT_START" "$branch" "$ib"
+  gate_feature_branch "AGENT_START" "$branch" "$ib" "1"
   do_fetch || true
   auto_init="false"
   src="explicit"
@@ -803,15 +856,34 @@ cmd_agent_start() {
   fi
   head_before="$(ref_sha HEAD)"
   method="none"
+  if is_sync_frozen "$branch"; then
+    printf 'AGENT_START=false\n'
+    printf 'BRANCH=%s\n' "$branch"
+    printf 'REASON=SYNC_FROZEN\n'
+    printf 'ACTION=评审关闭后执行 ./scripts/branchctl unfreeze，再重试\n'
+    die "$E_ACTION" "分支已冻结自动同步（送审候选中），拒绝一切自动 rebase / merge。"
+  fi
   if must_sync_raw_for_ref HEAD; then
     if [ "$vis" = "private" ]; then method="rebase"; else method="merge"; fi
     warn "开工前存在必须同步条件，自动执行 ${method}（单次，不循环）。"
     cmd_sync || die "$?" "自动同步失败，已保留 Git 原生状态，请人工处理后重试。"
   fi
   head_after="$(ref_sha HEAD)"
+  # 证据行紧随同步成功立即输出：后续 preflight 若失败，证据声明不得一并丢失
+  #（F-MABI-AUTO-001）。
+  printf 'HEAD_BEFORE=%s\n' "$head_before"
+  printf 'HEAD_AFTER=%s\n' "$head_after"
+  if [ "$head_before" != "$head_after" ] && [ "$method" = "rebase" ]; then
+    printf 'PRIOR_EVIDENCE=STALE\n'
+    warn "本次同步重写了历史：此前绑定旧 SHA 的送审与证据已作废，上层必须重新记录基线并重新送审。"
+  else
+    printf 'PRIOR_EVIDENCE=PRESERVED\n'
+  fi
   gate_out="$(mktemp 2>/dev/null || printf '')"
   [ -n "$gate_out" ] || die "$E_STATE" "无法创建临时文件。"
   if cmd_preflight >"$gate_out" 2>&1; then
+    # 成功时原样透传（含 DEVELOP_SHA 等上下文），不得丢弃（F-MABI-AUTO-002）。
+    cat "$gate_out"
     rm -f "$gate_out"
   else
     gate_rc=$?
@@ -829,14 +901,6 @@ cmd_agent_start() {
   printf 'AUTO_INIT=%s\n' "$auto_init"
   printf 'SOURCE=%s\n' "$src"
   printf 'SYNC_METHOD=%s\n' "$method"
-  printf 'HEAD_BEFORE=%s\n' "$head_before"
-  printf 'HEAD_AFTER=%s\n' "$head_after"
-  if [ "$head_before" != "$head_after" ] && [ "$method" = "rebase" ]; then
-    printf 'PRIOR_EVIDENCE=STALE\n'
-    warn "本次同步重写了历史：此前绑定旧 SHA 的送审与证据已作废，上层必须重新冻结基线。"
-  else
-    printf 'PRIOR_EVIDENCE=PRESERVED\n'
-  fi
   return "$E_OK"
 }
 
@@ -845,7 +909,7 @@ cmd_agent_finish() {
   local ib branch vis head_before head_after method test_cmd test_rc gate_out gate_rc
   ib="$(integration_branch)"
   branch="$(current_branch)"
-  gate_feature_branch "AGENT_FINISH" "$branch" "$ib"
+  gate_feature_branch "AGENT_FINISH" "$branch" "$ib" "1"
   vis="$(resolve_visibility "$branch")"
   if [ "$vis" = "unknown" ]; then
     printf 'AGENT_FINISH=false\n'
@@ -858,32 +922,51 @@ cmd_agent_finish() {
   do_fetch || true
   head_before="$(ref_sha HEAD)"
   method="none"
+  if is_sync_frozen "$branch"; then
+    printf 'AGENT_FINISH=false\n'
+    printf 'BRANCH=%s\n' "$branch"
+    printf 'REASON=SYNC_FROZEN\n'
+    printf 'ACTION=评审关闭后执行 ./scripts/branchctl unfreeze，再重试\n'
+    die "$E_ACTION" "分支已冻结自动同步（送审候选中），拒绝一切自动 rebase / merge。"
+  fi
   if must_sync_raw_for_ref HEAD; then
     if [ "$vis" = "private" ]; then method="rebase"; else method="merge"; fi
     warn "收尾前存在必须同步条件，自动执行 ${method}（单次，不循环）。"
     cmd_sync || die "$?" "自动同步失败，已保留 Git 原生状态，请人工处理后重试。"
   fi
   head_after="$(ref_sha HEAD)"
+  # 与 agent-start 同理：证据行紧随同步成功立即输出（F-MABI-AUTO-001）。
+  printf 'HEAD_BEFORE=%s\n' "$head_before"
+  printf 'HEAD_AFTER=%s\n' "$head_after"
+  if [ "$head_before" != "$head_after" ] && [ "$method" = "rebase" ]; then
+    printf 'PRIOR_EVIDENCE=STALE\n'
+    warn "本次同步重写了历史：此前绑定旧 SHA 的送审与证据已作废，上层必须重新记录基线并重新送审。"
+  else
+    printf 'PRIOR_EVIDENCE=PRESERVED\n'
+  fi
   test_cmd="$(policy_get "checks.test_command" "")"
   if [ -z "$test_cmd" ]; then
-    printf 'TESTS=skipped\n'
+    printf 'LOCAL_TESTS=skipped\n'
     warn "未配置 checks.test_command，跳过测试执行（绝不声称测试已通过）。"
   else
     warn "执行项目测试命令（来自 checks.test_command）。"
     if (cd "$ROOT" && bash -c "$test_cmd"); then
-      printf 'TESTS=passed\n'
+      printf 'LOCAL_TESTS=passed\n'
     else
       test_rc=$?
-      printf 'TESTS=failed\n'
+      printf 'LOCAL_TESTS=failed\n'
       printf 'AGENT_FINISH=false\n'
-      printf 'REASON=TESTS_FAILED\n'
+      printf 'REASON=LOCAL_TESTS_FAILED\n'
       printf 'ACTION=修复测试失败后重试\n'
-      die "$E_ACTION" "项目测试失败（退出码 ${test_rc}），拒绝收尾。"
+      die "$E_ACTION" "项目本地测试失败（退出码 ${test_rc}），拒绝收尾。"
     fi
   fi
   gate_out="$(mktemp 2>/dev/null || printf '')"
   [ -n "$gate_out" ] || die "$E_STATE" "无法创建临时文件。"
   if cmd_review_ready >"$gate_out" 2>&1; then
+    # 成功时原样透传（含 BASE_SHA / HEAD_SHA / DEVELOP_SHA），不得丢弃
+    #（F-MABI-AUTO-002：agent-finish 承诺输出三组基线 SHA）。
+    cat "$gate_out"
     rm -f "$gate_out"
   else
     gate_rc=$?
@@ -899,14 +982,6 @@ cmd_agent_finish() {
   printf 'BRANCH=%s\n' "$branch"
   printf 'VISIBILITY=%s\n' "$vis"
   printf 'SYNC_METHOD=%s\n' "$method"
-  printf 'HEAD_BEFORE=%s\n' "$head_before"
-  printf 'HEAD_AFTER=%s\n' "$head_after"
-  if [ "$head_before" != "$head_after" ] && [ "$method" = "rebase" ]; then
-    printf 'PRIOR_EVIDENCE=STALE\n'
-    warn "本次同步重写了历史：此前绑定旧 SHA 的送审与证据已作废，上层必须重新冻结基线。"
-  else
-    printf 'PRIOR_EVIDENCE=PRESERVED\n'
-  fi
   printf 'REVIEW_READY=true\n'
   return "$E_OK"
 }
@@ -1425,6 +1500,7 @@ usage() {
 Agent 任务生命周期（推荐入口，内部只组合下列原语）：
   agent-start            任务开始：自动初始化可见性→按需同步一次→preflight
   agent-finish           任务收尾：按需同步一次→项目测试→review-ready
+  freeze                 冻结自动同步（送审时）/ unfreeze 解冻（评审关闭后）
 
 只读检查：
   status                 当前分支状态（机器可解析的 KEY=VALUE）
@@ -1475,6 +1551,8 @@ main() {
     preflight) cmd_preflight "$@" ;;
     agent-start|agent_start) cmd_agent_start "$@" ;;
     agent-finish|agent_finish) cmd_agent_finish "$@" ;;
+    freeze) cmd_freeze "$@" ;;
+    unfreeze) cmd_unfreeze "$@" ;;
     sync) cmd_sync "$@" ;;
     review-ready|review_ready) cmd_review_ready "$@" ;;
     gate-ready|gate_ready) cmd_gate_ready "$@" ;;

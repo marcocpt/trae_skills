@@ -88,6 +88,7 @@ CI 自动跑 `ci-check`，最终用 merge commit 合入，
 |---|---|---|
 | `agent-start` | 检查+按需写 | 任务开始自动入口（初始化→同步一次→preflight） |
 | `agent-finish` | 检查+按需写 | 任务收尾自动入口（同步一次→测试→review-ready） |
+| `freeze/unfreeze` | 写配置 | 冻结/解冻自动同步（送审期间防漂移） |
 | `status` | 只读 | 当前分支可见性、落后/领先数、年龄、决策 |
 | `init` | 写配置 | 落盘显式可见性，幂等 |
 | `share` | 写配置 | private 转 shared（单向） |

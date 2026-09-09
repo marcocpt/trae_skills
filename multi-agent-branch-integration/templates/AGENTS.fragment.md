@@ -21,7 +21,7 @@ Agent 不得要求用户手工执行 preflight、sync、rebase 或 merge。
 发生 Git 冲突时：禁止自动解决，保留现场，停止并报告冲突文件。
 
 历史一旦被重写（输出 `PRIOR_EVIDENCE=STALE`），此前绑定旧 SHA 的
-送审与证据即作废，Agent 必须重新冻结基线。
+送审与证据即作废，Agent 必须重新记录基线并重新送审。
 
 ## Agent 完成任务
 
@@ -31,11 +31,30 @@ Agent 不得要求用户手工执行 preflight、sync、rebase 或 merge。
 ./scripts/branchctl agent-finish
 ```
 
-`agent-finish` 自行完成：按需同步一次、执行项目测试命令、
+`agent-finish` 自行完成：按需同步一次、执行本地项目测试命令、
 过 review-ready；只有 `REVIEW_READY=true` 才能送审，
 同时输出 `BASE_SHA` / `HEAD_SHA` / `DEVELOP_SHA`。
 
+本地测试通过不等于远端 CI 通过：有必需远端 CI 门禁的项目，
+仍须按项目 CI 流程验证，不得以 `LOCAL_TESTS=passed` 关闭 CI 门禁。
+
 `finish` 不做自动初始化：可见性未知时拒绝并指回 `agent-start`。
+
+## 同步冻结（送审期间防漂移）
+
+把 SHA 发给外部审查的同时必须执行：
+
+```bash
+./scripts/branchctl freeze
+```
+
+评审关闭后再执行：
+
+```bash
+./scripts/branchctl unfreeze
+```
+
+冻结期间一切自动同步都被拒绝（private 也不例外），只读检查不受影响。
 
 ## 多人协作转换
 
