@@ -68,7 +68,22 @@ fi
 AHEAD=$(git rev-list --count "$BASE..HEAD" 2>/dev/null || echo 0)
 BEHIND=$(git rev-list --count "HEAD..$BASE" 2>/dev/null || echo 0)
 if [ "$BEHIND" -gt 0 ]; then
-  RESULTS+=('"sync":{"status":"warn","ahead":'"$AHEAD"',"behind":'"$BEHIND"',"reason":"branch behind develop, run daily-sync"}')
+  # 同步恢复动作按 branch.md 私有/共享 canonical 分流：私有分支不得被指去跑 merge 型 daily-sync；
+  # 未知可见性 fail-closed，不得猜成 shared（F-MABI-001A）。
+  _CUR_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  _VIS="$(git config --get "branch.${_CUR_BRANCH}.agentShared" 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
+  case "$_VIS" in
+    false|no|off|0)
+      RESULTS+=('"sync":{"status":"warn","ahead":'"$AHEAD"',"behind":'"$BEHIND"',"reason":"branch behind develop, private branch: run branchctl sync (rebase)"}')
+      ;;
+    true|yes|on|1)
+      RESULTS+=('"sync":{"status":"warn","ahead":'"$AHEAD"',"behind":'"$BEHIND"',"reason":"branch behind develop, run daily-sync"}')
+      ;;
+    *)
+      RESULTS+=('"sync":{"status":"fail","ahead":'"$AHEAD"',"behind":'"$BEHIND"',"reason":"branch visibility unknown, determine visibility first (branchctl init), do not sync"}')
+      CHECKS_OK=false
+      ;;
+  esac
 else
   RESULTS+=('"sync":{"status":"pass","ahead":'"$AHEAD"',"behind":0}')
 fi

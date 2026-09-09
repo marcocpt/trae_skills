@@ -4,13 +4,13 @@
 
 ## 概述
 
-合并流程遵循 merge-only 原则，禁止 rebase。本技能涵盖每日合并、Push 流程、完整 Merge 流程和 Commit 规范。完整工作流总览见 [dd-git-workflow](../../dd-git-workflow/SKILL.md)。
+合并流程对共享分支遵循 merge-only 原则，禁止 rebase。私有分支（经显式标记、无他人依赖）的同步方式见 [branch.md](branch.md) “私有 / 共享分支同步”节。本技能涵盖每日合并、Push 流程、完整 Merge 流程和 Commit 规范。完整工作流总览见 [dd-git-workflow](../../dd-git-workflow/SKILL.md)。
 
 本技能按 `invocation_mode=helper` 返回调用方，不自行 Host Close。直接承接用户目标时由顶层 `standalone` 会话按 [dd-workflow-runtime/ask](../../dd-workflow-runtime/references/ask.md) 收尾。
 
-## merge-only 原则与混合模式
+## merge-only 原则与混合模式（共享分支）
 
-坚持 merge-only 原则，不引入 rebase。在 merge 基础上引入混合模式：
+共享分支坚持 merge-only 原则，不引入 rebase（私有分支见 [branch.md](branch.md) 同名 canonical 节）。在 merge 基础上引入混合模式：
 
 | 模式 | 命令 | 适用场景 | 历史保留 |
 |------|------|---------|---------|
@@ -29,7 +29,7 @@
 
 **含义**：
 
-- **拉取上游**：`git fetch origin && git merge origin/develop` 同步上游改动
+- **拉取上游**：共享分支执行 `git fetch origin && git merge origin/develop` 同步上游改动（私有分支按 [branch.md](branch.md) canonical 用 rebase，不得混用）
 - **推送可合并部分**：将已完成且通过自检的部分合并回 develop
 
 **为什么"必须合并"而不只是"同步"**：
@@ -38,10 +38,10 @@
 - 必须合并强制 AI Agent 把可合并的成果及时回到主干，避免分支长期独立
 - 长分支即使每天同步，冲突也会随分支存活时间指数增长
 
-**每日同步脚本**：`scripts/daily-sync.sh`
+**每日同步脚本**（仅共享分支；私有分支见 [branch.md](branch.md)“私有 / 共享分支同步”节）：`scripts/daily-sync.sh`
 
 ```bash
-# 用法：在 feature 分支上执行
+# 用法：在共享 feature 分支上执行
 bash scripts/daily-sync.sh
 # 冲突时输出冲突文件清单并以退出码 2 退出
 ```
@@ -70,8 +70,8 @@ bash scripts/daily-sync.sh
 ## Merge 完整 5 步流程
 
 | 步骤 | 动作 | 命令/工具 | 失败处理 |
-|------|------|----------|---------|
-| ① | merge develop 到 feature | `git merge --no-ff origin/develop` | 解决冲突后继续 |
+|------|------|---------|---------|
+| ① | merge develop 到 feature（共享分支；私有分支用 rebase，见 [branch.md](branch.md)） | `git merge --no-ff origin/develop` | 解决冲突后继续 |
 | ② | merge-tree 预检 | `git merge-tree --write-tree origin/develop HEAD` | severity=high 禁止合并 |
 | ③ | Build / Tests / SwiftLint | 项目测试脚本 | 修复后重新执行 |
 | ④ | AI 自检 | `scripts/pre-merge-check.sh` | all_pass=false 禁止合并 |

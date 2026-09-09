@@ -83,6 +83,21 @@ bash scripts/create-worktree.sh refactor core-state-machine
 - 示例：分支 `fix/F3.1-hotkey-conflict` → worktree 目录 `${project}-worktrees/fix/F3.1-hotkey-conflict`
 - worktree 目录位于仓库同级的 `${project}-worktrees` 下，按分支类型分类
 
+## 私有 / 共享分支同步（canonical）
+
+本节是分支同步方式的唯一事实源（F-MABI-001 裁决 A 的归属结果）。
+
+- 判定顺序：显式分支配置 `branch.<分支名>.agentShared` 优先；
+  `true` 为共享，`false` 为私有；无显式配置一律视为未知，
+  未知时禁止任何同步与集成（宁可阻断，不猜测）。
+  唯一的例外是自动化入口按项目 `feature.default_visibility` 显式落盘
+  （落盘后即为普通显式配置，全程可审计），落盘前仍按未知阻断。
+- 私有分支（无他人依赖、可安全重写历史）同步上游用 rebase。
+- 共享分支同步上游用 merge，禁止自动 rebase，禁止 force push。
+- 远端存在同名分支不等于共享（个人备份推送同样存在远端）。
+- 机器执行层为 `multi-agent-branch-integration` 的 `branchctl`
+ （按本节规则选择方法），本 Skill 只拥有规则本身。
+
 ## Feature Flag
 
 未完成功能建议通过 Feature Flag 合并到 develop，而不是长期保留分支。
@@ -103,7 +118,7 @@ bash scripts/create-worktree.sh refactor core-state-machine
 
 - **一个分支多个独立功能**：一个分支只承载一个职责，禁止在 `feature/` 分支混入 `fix/` 内容
 - **分支命名违规**：禁止使用下划线、空格、中文；分支名总长度禁止超过 50 字符
-- **已共享分支频繁 Rebase**：坚持 merge-only 原则，不引入 rebase
+- **已共享分支频繁 Rebase**：共享分支坚持 merge-only 原则，不引入 rebase（私有分支同步见本文件“私有 / 共享分支同步”节，不得反向套用到共享分支）
 - **禁止 worktree 跨分支共享工作区**：一个 worktree 只属于一个分支
 - **禁止用 `--ff-only` 替代功能合并**：功能合并必须 `--no-ff` 保留分支历史
 - **禁止跨模块边界修改**：单个 Agent 不得同时修改 3 个以上模块

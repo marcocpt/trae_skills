@@ -15,7 +15,7 @@
 | 脚本 | 用途 | 输出格式 | 调用方 |
 |------|------|---------|--------|
 | `scripts/create-worktree.sh` | 创建分支和 worktree | 终端文本 | dd-git-workflow/worktree |
-| `scripts/daily-sync.sh` | 每日同步上游并检测冲突 | 终端文本 + 退出码 | dd-git-workflow/health |
+| `scripts/daily-sync.sh` | 共享分支每日同步上游并检测冲突（私有分支禁用，见 branch.md canonical） | 终端文本 + 退出码 | dd-git-workflow/health |
 | `scripts/pre-merge-check.sh` | 合并前 AI 自检 | PreMergeChecklist JSON | dd-git-workflow/ci |
 | `scripts/conflict-predict.sh` | 冲突预测 | ConflictPredictionReport JSON | dd-git-workflow/conflict |
 | `scripts/branch-health.sh` | 分支健康度评分 | BranchHealthReport JSON | dd-git-workflow/health |
@@ -27,7 +27,7 @@
 # 创建 worktree
 ./scripts/create-worktree.sh feature F3.1 ocr-acceleration
 
-# 每日同步
+# 每日同步（仅共享分支）
 ./scripts/daily-sync.sh
 
 # 合并前自检（输出 JSON）

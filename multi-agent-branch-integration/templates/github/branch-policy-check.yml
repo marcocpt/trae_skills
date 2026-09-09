@@ -1,0 +1,33 @@
+# 由 multi-agent-branch-integration 管理的分支策略检查（managed by multi-agent-branch-integration）。
+# 本 CI 只做验证：绝不自动 rebase、commit、push。
+# 注意：branches 下的分支名由 install.sh / update.sh 按 .agent/branch-policy.yaml
+# 的 integration_branch 生成，切勿手改（F-MABI-007）。
+name: branch-policy-check
+
+on:
+  pull_request:
+    branches:
+      - __INTEGRATION_BRANCH__
+
+permissions:
+  contents: read
+
+jobs:
+  branch-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout（完整历史，ci-check 需要 merge-base）
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Branch policy check
+        env:
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+        run: |
+          ./scripts/branchctl ci-check \
+            --head-ref "$GITHUB_HEAD_REF" \
+            --base-ref "$GITHUB_BASE_REF" \
+            --head-sha "${{ github.event.pull_request.head.sha }}" \
+            --base-sha "${{ github.event.pull_request.base.sha }}"
