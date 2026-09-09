@@ -90,6 +90,8 @@ bash scripts/create-worktree.sh refactor core-state-machine
 - 判定顺序：显式分支配置 `branch.<分支名>.agentShared` 优先；
   `true` 为共享，`false` 为私有；无显式配置一律视为未知，
   未知时禁止任何同步与集成（宁可阻断，不猜测）。
+  唯一的例外是自动化入口按项目 `feature.default_visibility` 显式落盘
+  （落盘后即为普通显式配置，全程可审计），落盘前仍按未知阻断。
 - 私有分支（无他人依赖、可安全重写历史）同步上游用 rebase。
 - 共享分支同步上游用 merge，禁止自动 rebase，禁止 force push。
 - 远端存在同名分支不等于共享（个人备份推送同样存在远端）。

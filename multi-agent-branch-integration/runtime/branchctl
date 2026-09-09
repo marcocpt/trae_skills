@@ -683,13 +683,12 @@ cmd_share() {
 # preflight：修改项目产物前的准入检查
 # ---------------------------------------------------------------------------
 
-cmd_preflight() {
-  require_repo
-  local ib branch vis
-  ib="$(integration_branch)"
-  branch="$(current_branch)"
+gate_feature_branch() {
+  # gate_feature_branch <标签> <分支> <集成分支>：非 feature 上下文直接拒绝。
+  # preflight 与 agent-start 共用同一实现，语义永不分叉；失败时打印标签行后退出。
+  local label="$1" branch="$2" ib="$3"
   if [ -z "$branch" ]; then
-    printf 'PREFLIGHT=false\n'
+    printf '%s=false\n' "$label"
     printf 'REASON=DETACHED_HEAD\n'
     printf 'ACTION=切到合法 feature 分支后再执行\n'
     die "$E_STATE" "当前为 detached HEAD，无法确定 feature 上下文。"
@@ -697,20 +696,29 @@ cmd_preflight() {
   if ! is_feature_branch_name "$branch" "$ib"; then
     if [ "$branch" = "$ib" ] || [ "$branch" = "main" ] || [ "$branch" = "master" ]; then
       if [ "$(allow_direct_on_integration)" = "true" ]; then
-        warn "项目策略允许在 $branch 上直接开发，继续。"
+        warn "项目策略允许在 ${branch} 上直接开发，继续。"
       else
-        printf 'PREFLIGHT=false\n'
+        printf '%s=false\n' "$label"
         printf 'BRANCH=%s\n' "$branch"
         printf 'REASON=INTEGRATION_BRANCH\n'
         printf 'ACTION=切到 feature 分支后再执行\n'
-        die "$E_STATE" "禁止在 $branch 上直接做 feature 开发。"
+        die "$E_STATE" "禁止在 ${branch} 上直接做 feature 开发。"
       fi
     else
-      printf 'PREFLIGHT=false\n'
+      printf '%s=false\n' "$label"
       printf 'REASON=INVALID_BRANCH\n'
       die "$E_STATE" "非法分支状态（BRANCH=${branch}）。"
     fi
   fi
+  return "$E_OK"
+}
+
+cmd_preflight() {
+  require_repo
+  local ib branch vis
+  ib="$(integration_branch)"
+  branch="$(current_branch)"
+  gate_feature_branch "PREFLIGHT" "$branch" "$ib"
   vis="$(resolve_visibility "$branch")"
   if [ "$vis" = "unknown" ]; then
     printf 'PREFLIGHT=false\n'
@@ -745,6 +753,161 @@ cmd_preflight() {
   if is_dirty; then printf 'DIRTY=true\n'; else printf 'DIRTY=false\n'; fi
   printf 'DEVELOP_SHA=%s\n' "$(ref_sha "$(integration_ref "$ib")")"
   printf 'DECISION=OK\n'
+  return "$E_OK"
+}
+
+# ---------------------------------------------------------------------------
+# agent-start / agent-finish：Agent 任务生命周期的两个自动入口
+# ---------------------------------------------------------------------------
+# 设计约束（违反即停下纠正）：
+# 1. 只组合已有原语（preflight / sync / review-ready），绝不复制第二套
+#    rebase / merge 逻辑；新增代码只是编排与状态报告。
+# 2. 每个入口最多自动同步一次，不循环追赶 develop；中途又落后如实阻断。
+# 3. 自动初始化只应用项目显式配置的 default_visibility（落盘为普通显式
+#    配置并打印来源），无默认值时仍阻断；显式配置永远优先。
+# 4. 测试绝不伪造：未配置 checks.test_command 即输出 TESTS=skipped。
+# 5. share 永不自动，只认用户的多人协作指令。
+# 6. 历史一旦被重写，此前绑定旧 SHA 的送审与证据即作废：工具如实报告
+#    HEAD_BEFORE / HEAD_AFTER 与 PRIOR_EVIDENCE，由上层 Agent 重新冻结基线。
+
+cmd_agent_start() {
+  require_repo
+  local ib branch vis auto_init src head_before head_after method gate_out gate_rc
+  ib="$(integration_branch)"
+  branch="$(current_branch)"
+  gate_feature_branch "AGENT_START" "$branch" "$ib"
+  do_fetch || true
+  auto_init="false"
+  src="explicit"
+  vis="$(resolve_visibility "$branch")"
+  if [ "$vis" = "unknown" ]; then
+    src="policy"
+    vis="$(policy_default_visibility)"
+    if [ -z "$vis" ]; then
+      printf 'AGENT_START=false\n'
+      printf 'BRANCH=%s\n' "$branch"
+      printf 'VISIBILITY=unknown\n'
+      printf 'REASON=UNKNOWN_VISIBILITY\n'
+      printf 'ACTION=项目未配置 feature.default_visibility，请显式执行 ./scripts/branchctl init --private 或 --shared\n'
+      die "$E_VISIBILITY" "无法自动初始化可见性：策略无默认值，拒绝猜测。"
+    fi
+    if [ "$vis" = "private" ]; then
+      git config "branch.${branch}.agentShared" "false" \
+        || die "$E_STATE" "写入分支配置失败。"
+    else
+      git config "branch.${branch}.agentShared" "true" \
+        || die "$E_STATE" "写入分支配置失败。"
+    fi
+    auto_init="true"
+    warn "分支 ${branch} 无显式可见性，已按项目策略自动初始化为 ${vis}（SOURCE=policy）。"
+  fi
+  head_before="$(ref_sha HEAD)"
+  method="none"
+  if must_sync_raw_for_ref HEAD; then
+    if [ "$vis" = "private" ]; then method="rebase"; else method="merge"; fi
+    warn "开工前存在必须同步条件，自动执行 ${method}（单次，不循环）。"
+    cmd_sync || die "$?" "自动同步失败，已保留 Git 原生状态，请人工处理后重试。"
+  fi
+  head_after="$(ref_sha HEAD)"
+  gate_out="$(mktemp 2>/dev/null || printf '')"
+  [ -n "$gate_out" ] || die "$E_STATE" "无法创建临时文件。"
+  if cmd_preflight >"$gate_out" 2>&1; then
+    rm -f "$gate_out"
+  else
+    gate_rc=$?
+    cat "$gate_out"
+    rm -f "$gate_out"
+    printf 'AGENT_START=false\n'
+    printf 'BRANCH=%s\n' "$branch"
+    printf 'ACTION=按上方 preflight 输出处理后重试\n'
+    return "$gate_rc"
+  fi
+  printf 'AGENT_START=true\n'
+  printf 'BRANCH=%s\n' "$branch"
+  printf 'INTEGRATION_BRANCH=%s\n' "$ib"
+  printf 'VISIBILITY=%s\n' "$vis"
+  printf 'AUTO_INIT=%s\n' "$auto_init"
+  printf 'SOURCE=%s\n' "$src"
+  printf 'SYNC_METHOD=%s\n' "$method"
+  printf 'HEAD_BEFORE=%s\n' "$head_before"
+  printf 'HEAD_AFTER=%s\n' "$head_after"
+  if [ "$head_before" != "$head_after" ] && [ "$method" = "rebase" ]; then
+    printf 'PRIOR_EVIDENCE=STALE\n'
+    warn "本次同步重写了历史：此前绑定旧 SHA 的送审与证据已作废，上层必须重新冻结基线。"
+  else
+    printf 'PRIOR_EVIDENCE=PRESERVED\n'
+  fi
+  return "$E_OK"
+}
+
+cmd_agent_finish() {
+  require_repo
+  local ib branch vis head_before head_after method test_cmd test_rc gate_out gate_rc
+  ib="$(integration_branch)"
+  branch="$(current_branch)"
+  gate_feature_branch "AGENT_FINISH" "$branch" "$ib"
+  vis="$(resolve_visibility "$branch")"
+  if [ "$vis" = "unknown" ]; then
+    printf 'AGENT_FINISH=false\n'
+    printf 'BRANCH=%s\n' "$branch"
+    printf 'VISIBILITY=unknown\n'
+    printf 'REASON=UNKNOWN_VISIBILITY\n'
+    printf 'ACTION=先执行 ./scripts/branchctl agent-start（或 init）明确可见性\n'
+    die "$E_VISIBILITY" "收尾时可见性未知，拒绝继续（finish 不做自动初始化）。"
+  fi
+  do_fetch || true
+  head_before="$(ref_sha HEAD)"
+  method="none"
+  if must_sync_raw_for_ref HEAD; then
+    if [ "$vis" = "private" ]; then method="rebase"; else method="merge"; fi
+    warn "收尾前存在必须同步条件，自动执行 ${method}（单次，不循环）。"
+    cmd_sync || die "$?" "自动同步失败，已保留 Git 原生状态，请人工处理后重试。"
+  fi
+  head_after="$(ref_sha HEAD)"
+  test_cmd="$(policy_get "checks.test_command" "")"
+  if [ -z "$test_cmd" ]; then
+    printf 'TESTS=skipped\n'
+    warn "未配置 checks.test_command，跳过测试执行（绝不声称测试已通过）。"
+  else
+    warn "执行项目测试命令（来自 checks.test_command）。"
+    if (cd "$ROOT" && bash -c "$test_cmd"); then
+      printf 'TESTS=passed\n'
+    else
+      test_rc=$?
+      printf 'TESTS=failed\n'
+      printf 'AGENT_FINISH=false\n'
+      printf 'REASON=TESTS_FAILED\n'
+      printf 'ACTION=修复测试失败后重试\n'
+      die "$E_ACTION" "项目测试失败（退出码 ${test_rc}），拒绝收尾。"
+    fi
+  fi
+  gate_out="$(mktemp 2>/dev/null || printf '')"
+  [ -n "$gate_out" ] || die "$E_STATE" "无法创建临时文件。"
+  if cmd_review_ready >"$gate_out" 2>&1; then
+    rm -f "$gate_out"
+  else
+    gate_rc=$?
+    cat "$gate_out"
+    rm -f "$gate_out"
+    printf 'AGENT_FINISH=false\n'
+    printf 'BRANCH=%s\n' "$branch"
+    printf 'REASON=REVIEW_NOT_READY\n'
+    printf 'ACTION=按上方 review-ready 输出处理后重试\n'
+    return "$gate_rc"
+  fi
+  printf 'AGENT_FINISH=true\n'
+  printf 'BRANCH=%s\n' "$branch"
+  printf 'VISIBILITY=%s\n' "$vis"
+  printf 'SYNC_METHOD=%s\n' "$method"
+  printf 'HEAD_BEFORE=%s\n' "$head_before"
+  printf 'HEAD_AFTER=%s\n' "$head_after"
+  if [ "$head_before" != "$head_after" ] && [ "$method" = "rebase" ]; then
+    printf 'PRIOR_EVIDENCE=STALE\n'
+    warn "本次同步重写了历史：此前绑定旧 SHA 的送审与证据已作废，上层必须重新冻结基线。"
+  else
+    printf 'PRIOR_EVIDENCE=PRESERVED\n'
+  fi
+  printf 'REVIEW_READY=true\n'
   return "$E_OK"
 }
 
@@ -1259,6 +1422,10 @@ usage() {
   cat <<'EOF'
 用法： branchctl <command> [参数]
 
+Agent 任务生命周期（推荐入口，内部只组合下列原语）：
+  agent-start            任务开始：自动初始化可见性→按需同步一次→preflight
+  agent-finish           任务收尾：按需同步一次→项目测试→review-ready
+
 只读检查：
   status                 当前分支状态（机器可解析的 KEY=VALUE）
   review-ready           进入评审前的只读验证
@@ -1306,6 +1473,8 @@ main() {
     init) cmd_init "$@" ;;
     share) cmd_share "$@" ;;
     preflight) cmd_preflight "$@" ;;
+    agent-start|agent_start) cmd_agent_start "$@" ;;
+    agent-finish|agent_finish) cmd_agent_finish "$@" ;;
     sync) cmd_sync "$@" ;;
     review-ready|review_ready) cmd_review_ready "$@" ;;
     gate-ready|gate_ready) cmd_gate_ready "$@" ;;

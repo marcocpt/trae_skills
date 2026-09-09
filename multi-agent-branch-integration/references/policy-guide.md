@@ -30,8 +30,12 @@
 1. **显式分支配置**（最高）：`branch.<分支名>.agentShared`，
    `true` 为 shared，`false` 为 private。
 2. **项目策略默认值**：`feature.default_visibility`。
-   该值只决定 `branchctl init` 无参数时落盘什么；
-   在显式落盘之前，当前可见性一律视为 `unknown`。
+   该值只决定无参数 `init` 与 `agent-start` 落盘什么；
+   落盘后即为普通显式配置，此后一切判定走显式路径。
+   因此“按策略自动初始化”不是猜测：输入确定、落盘明确、全程打印
+   `AUTO_INIT=true` 与 `SOURCE=policy`；显式配置永远优先。
+   在显式落盘之前，当前可见性一律视为 `unknown`，
+   `sync` / `integrate` / `share` 照样阻断，不因自动入口存在而放宽。
 3. **无法安全确定**：返回 `VISIBILITY=unknown` + `DECISION=ACTION_REQUIRED`，
    要求先执行 `./scripts/branchctl init`（或 `share`）。
 
@@ -87,6 +91,8 @@ behind > 0 且（behind ≥ 预警数
 
 | 命令 | 只读 | 脏工作树 | 说明 |
 |---|---|---|---|
+| `agent-start` | 否（组合） | 允许进入（同步需要时照样拒绝） | 初始化→按需同步一次→preflight；失败透出原命令输出 |
+| `agent-finish` | 否（组合） | 允许进入（各原语独立判定） | 同步一次→项目测试→review-ready；不做初始化、不提交 |
 | `status` | 是 | 仅报告 `DIRTY=` | 从不 fetch，从不修改 |
 | `preflight` | 准入检查 | 告警但通过 | 开始修改前使用；增量开发常带未提交改动。但 `checks.before_work=true` 时若已存在必须同步条件则直接阻断（提前暴露，不等到 push 才拦） |
 | `sync` | 否 | 拒绝（不自动 stash） | 冲突时保留原生状态并返回非 0 |
@@ -128,6 +134,9 @@ behind > 0 且（behind ≥ 预警数
   开发，默认 `false`。打开后 `preflight` 放行，其它命令仍要求合法 feature。
 - `checks.before_work`：`preflight` 是否在开工前就阻断必须同步的条件，
   默认 `true`。关闭后 `preflight` 回到只做准入不断同步的状态。
+- `checks.test_command`：`agent-finish` 自动执行的项目测试命令，
+  为空即跳过（`TESTS=skipped`，绝不声称通过）；非空时在仓库根目录
+  用 bash 执行，非零退出即阻断收尾（`REASON=TESTS_FAILED`）。
 - `sync.critical_paths`：空格分隔的 shell 通配符，追加到内置关键清单。
 - `shared.allow_force_push` 为安全下限字段：即使项目写成 `true`，
   `branchctl` 也绝不自动 force push（见第 8 节）。
@@ -136,6 +145,17 @@ behind > 0 且（behind ≥ 预警数
 因此不要在策略文件中使用嵌套列表或多行结构。
 
 ---
+
+## 6.1 SHA 证据与重写历史
+
+rebase 会改写 feature 历史：旧提交 SHA 随即悬空，此前钉在旧 SHA 上的
+送审冻结与证据全部作废，关闭前复验会判基线漂移。因此：
+
+- 自动同步只允许发生在尚无已冻结送审候选时；
+- 一旦重写发生，工具输出 `PRIOR_EVIDENCE=STALE` 与新旧 HEAD，
+  上层必须重新冻结基线，旧 verdict 不得再用；
+- merge 不改写历史，输出 `PRIOR_EVIDENCE=PRESERVED`；
+- 需要长期多轮审查的任务尽早 `share`，用 merge 保 SHA 稳定。
 
 ## 7. worktree
 
@@ -200,4 +220,5 @@ behind > 0 且（behind ≥ 预警数
 | `REASON=NO_BASELINE` | 无可用基线（常为离线或浅克隆） | `git fetch origin` / `fetch-depth: 0` |
 | `REASON=UNEXPECTED_BASE` | PR 目标不是集成分支 | 改 PR 目标为集成分支 |
 | `REASON=UNRESOLVED_HEAD` | CI 内找不到源分支引用（且无明确 SHA） | 用 `--head-sha` 传入 PR 源端真实提交 |
+| `REASON=TESTS_FAILED` | `agent-finish` 中项目测试失败 | 修复测试失败后重试 |
 | `REASON=INTEGRATION_BRANCH_CHECKED_OUT_ELSEWHERE` | 集成分支被另一 worktree 占用 | 改用 PR；或在占用的 worktree 内手工 merge（不得再调 integrate） |

@@ -720,6 +720,169 @@ t26() {
   report "$id" "PASS" "补装与模板升级无误报"
 }
 
+# fixture_overlap <用例名> <分支名>：构造可自动合并的路径重叠
+#（feature 改首行，develop 改末行），供自动同步测试使用。
+# 设置 FIX_ORIGIN / FIX_WORK。
+fixture_overlap() {
+  local name="$1"
+  local branch="$2"
+  local base="$TROOT/$name"
+  FIX_ORIGIN="$base-origin.git"
+  FIX_WORK="$base-work"
+  git init -q --bare "$FIX_ORIGIN"
+  git_init_branch "$base-seed" "develop"
+  git_cfg "$base-seed"
+  printf 'l1\nl2\nl3\n' >"$base-seed/shared.txt"
+  (cd "$base-seed" && git add shared.txt && git commit -q -m init)
+  (cd "$base-seed" && git remote add origin "$FIX_ORIGIN")
+  (cd "$base-seed" && git push -q origin develop)
+  git clone -q -b develop "$FIX_ORIGIN" "$FIX_WORK" 2>/dev/null
+  git_cfg "$FIX_WORK"
+  bash "$INSTALLER" "$FIX_WORK" >/dev/null 2>&1
+  (cd "$FIX_WORK" && git add -A && git commit -q -m "chore: install branchctl")
+  (cd "$FIX_WORK" && git push -q origin develop)
+  (cd "$FIX_WORK" && git checkout -q -b "$branch")
+  sed 's/^l1$/l1-feat/' "$FIX_WORK/shared.txt" >"$FIX_WORK/shared.txt.tmp"
+  mv "$FIX_WORK/shared.txt.tmp" "$FIX_WORK/shared.txt"
+  (cd "$FIX_WORK" && git commit -qam "feature: touch shared")
+  advance_develop_l3 "$FIX_WORK"
+}
+
+advance_develop_l3() {
+  local work="$1"
+  local adv="$work-adv"
+  rm -rf "$adv"
+  git clone -q -b develop "$FIX_ORIGIN" "$adv" 2>/dev/null
+  git_cfg "$adv"
+  sed 's/^l3$/l3-dev/' "$adv/shared.txt" >"$adv/shared.txt.tmp"
+  mv "$adv/shared.txt.tmp" "$adv/shared.txt"
+  (cd "$adv" && git commit -qam "develop: touch shared" && git push -q origin develop)
+}
+
+# ---------------------------------------------------------------- T27 agent-start 自动初始化并同步
+t27() {
+  local id="T27" out rc parent origin_dev
+  fixture_overlap "t27" "feature/auto"
+  out="$(run_tool "$FIX_WORK" agent-start 2>&1)"
+  rc=$?
+  assert_rc_zero "$id" "$rc" "agent-start" || return 0
+  assert_contains "$id" "$out" "AGENT_START=true" "启动标志" || return 0
+  assert_contains "$id" "$out" "AUTO_INIT=true" "自动初始化标记" || return 0
+  assert_contains "$id" "$out" "SOURCE=policy" "策略来源" || return 0
+  assert_contains "$id" "$out" "PRIOR_EVIDENCE=STALE" "证据作废声明" || return 0
+  [ "$(git -C "$FIX_WORK" config branch.feature/auto.agentShared)" = "false" ] || {
+    report "$id" "FAIL" "未按策略落盘为 private"
+    return 0
+  }
+  origin_dev="$(git -C "$FIX_WORK" rev-parse refs/remotes/origin/develop)"
+  parent="$(git -C "$FIX_WORK" rev-list --parents -n 1 HEAD | awk '{print $2}')"
+  if [ "$parent" != "$origin_dev" ]; then
+    report "$id" "FAIL" "自动同步未发生 rebase"
+    return 0
+  fi
+  report "$id" "PASS" "自动初始化并 rebase"
+}
+
+# ---------------------------------------------------------------- T28 agent-start 尊重显式 shared
+t28() {
+  local id="T28" out rc parents
+  fixture_overlap "t28" "feature/autoshr"
+  run_tool "$FIX_WORK" init --shared >/dev/null 2>&1
+  out="$(run_tool "$FIX_WORK" agent-start 2>&1)"
+  rc=$?
+  assert_rc_zero "$id" "$rc" "agent-start（shared）" || return 0
+  assert_contains "$id" "$out" "AUTO_INIT=false" "不重复初始化" || return 0
+  assert_contains "$id" "$out" "PRIOR_EVIDENCE=PRESERVED" "证据保留声明" || return 0
+  parents="$(git -C "$FIX_WORK" rev-list --parents -n 1 HEAD | awk '{print NF}')"
+  if [ "$parents" != "3" ]; then
+    report "$id" "FAIL" "shared 未走 merge"
+    return 0
+  fi
+  report "$id" "PASS" "显式 shared 走 merge 且不重写"
+}
+
+# ---------------------------------------------------------------- T29 无默认值时 agent-start 照样阻断
+t29() {
+  local id="T29" out rc
+  fixture_overlap "t29" "feature/nodefault"
+  sed 's/^  default_visibility:.*/  default_visibility:/' "$FIX_WORK/.agent/branch-policy.yaml" >"$FIX_WORK/.agent/branch-policy.yaml.tmp"
+  mv "$FIX_WORK/.agent/branch-policy.yaml.tmp" "$FIX_WORK/.agent/branch-policy.yaml"
+  out="$(run_tool "$FIX_WORK" agent-start 2>&1)"
+  rc=$?
+  assert_rc_nonzero "$id" "$rc" "agent-start（无默认值）" || return 0
+  assert_contains "$id" "$out" "UNKNOWN_VISIBILITY" "拒绝原因" || return 0
+  if [ -n "$(git -C "$FIX_WORK" config --get branch.feature/nodefault.agentShared || true)" ]; then
+    report "$id" "FAIL" "拒绝后仍写入了配置"
+    return 0
+  fi
+  report "$id" "PASS" "无默认值时不猜测"
+}
+
+# ---------------------------------------------------------------- T30 agent-finish 无测试命令
+t30() {
+  local id="T30" out rc
+  fixture_repo "t30"
+  (cd "$FIX_WORK" && git checkout -q -b feature/fin)
+  run_tool "$FIX_WORK" init --private >/dev/null 2>&1
+  printf 'f\n' >"$FIX_WORK/f.txt"
+  (cd "$FIX_WORK" && git add f.txt && git commit -q -m "feature: f")
+  out="$(run_tool "$FIX_WORK" agent-finish 2>&1)"
+  rc=$?
+  assert_rc_zero "$id" "$rc" "agent-finish" || return 0
+  assert_contains "$id" "$out" "AGENT_FINISH=true" "收尾标志" || return 0
+  assert_contains "$id" "$out" "TESTS=skipped" "测试跳过声明" || return 0
+  assert_contains "$id" "$out" "REVIEW_READY=true" "就绪标志" || return 0
+  case "$out" in
+    *"TESTS=passed"*)
+      report "$id" "FAIL" "伪造了测试通过"
+      return 0
+      ;;
+  esac
+  report "$id" "PASS" "无命令时如实跳过不断言通过"
+}
+
+# ---------------------------------------------------------------- T31 agent-finish 执行配置测试
+t31() {
+  local id="T31" out rc pol
+  fixture_repo "t31"
+  (cd "$FIX_WORK" && git checkout -q -b feature/fint)
+  run_tool "$FIX_WORK" init --private >/dev/null 2>&1
+  printf 'f\n' >"$FIX_WORK/f.txt"
+  (cd "$FIX_WORK" && git add f.txt && git commit -q -m "feature: f")
+  pol="$FIX_WORK/.agent/branch-policy.yaml"
+  awk '/before_merge: true/{print; print "  test_command: \"true\""; next}1' "$pol" >"$pol.tmp"
+  mv "$pol.tmp" "$pol"
+  out="$(run_tool "$FIX_WORK" agent-finish 2>&1)"
+  rc=$?
+  assert_rc_zero "$id" "$rc" "agent-finish（测试通过）" || return 0
+  assert_contains "$id" "$out" "TESTS=passed" "测试通过" || return 0
+  sed 's/test_command: "true"/test_command: "false"/' "$pol" >"$pol.tmp"
+  mv "$pol.tmp" "$pol"
+  out="$(run_tool "$FIX_WORK" agent-finish 2>&1)"
+  rc=$?
+  assert_rc_nonzero "$id" "$rc" "agent-finish（测试失败）" || return 0
+  assert_contains "$id" "$out" "TESTS_FAILED" "失败原因" || return 0
+  report "$id" "PASS" "配置测试如实执行并阻断"
+}
+
+# ---------------------------------------------------------------- T32 agent-finish 未知可见性拒绝
+t32() {
+  local id="T32" out rc
+  fixture_repo "t32"
+  (cd "$FIX_WORK" && git checkout -q -b feature/unkfin)
+  printf 'x\n' >"$FIX_WORK/x.txt"
+  (cd "$FIX_WORK" && git add x.txt && git commit -q -m "feature: x")
+  out="$(run_tool "$FIX_WORK" agent-finish 2>&1)"
+  rc=$?
+  assert_rc_nonzero "$id" "$rc" "agent-finish（unknown）" || return 0
+  assert_contains "$id" "$out" "UNKNOWN_VISIBILITY" "拒绝原因" || return 0
+  (cd "$FIX_WORK" && git checkout -q develop)
+  out="$(run_tool "$FIX_WORK" agent-start 2>&1)"
+  rc=$?
+  assert_rc_nonzero "$id" "$rc" "agent-start（develop）" || return 0
+  report "$id" "PASS" "收尾不自动初始化"
+}
+
 main() {
   TROOT="$(mktemp -d 2>/dev/null || mktemp -d -t branchctl-test)"
   command -v git >/dev/null 2>&1 || {
@@ -752,6 +915,12 @@ main() {
   t24
   t25
   t26
+  t27
+  t28
+  t29
+  t30
+  t31
+  t32
   printf -- '----------------------------------------\n'
   printf 'TOTAL: %s passed, %s failed\n' "$PASS" "$FAIL"
   if [ -n "$FAILED_CASES" ]; then

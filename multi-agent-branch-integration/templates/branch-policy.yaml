@@ -34,6 +34,9 @@ checks:
   before_review: true
   before_gate: true
   before_merge: true
+  # agent-finish 自动执行的项目测试命令。为空表示跳过（输出 TESTS=skipped，
+  # 绝不声称测试已通过）；非空时在仓库根目录用 bash 执行，非零即阻断收尾。
+  test_command: ""
 
 branch_lifetime:
   warning_days: 3

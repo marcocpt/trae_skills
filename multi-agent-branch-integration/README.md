@@ -43,13 +43,17 @@ ChatGPT Agent 等任何能跑 shell 的 Agent，不依赖任一 App 的专有能
 不带参数时按 `.agent/branch-policy.yaml` 的 `feature.default_visibility`
 落盘。未初始化的分支可见性一律视为未知，同步与集成会被阻断。
 
-## 日常开发（每个 Agent 每次）
+## 日常开发（每个 Agent 每次：两个自动入口）
 
 ```bash
-./scripts/branchctl preflight   # 改动产物前必须通过
-./scripts/branchctl status      # 只读状态（机器可解析的 KEY=VALUE）
-./scripts/branchctl sync        # 同步 develop（方法由可见性自动决定）
+./scripts/branchctl agent-start    # 任务开始：初始化→同步→准入，一次搞定
+./scripts/branchctl agent-finish   # 任务收尾：同步→测试→review-ready，一次搞定
 ```
+
+`agent-start` 通过（`AGENT_START=true`）才能改动产物；
+`agent-finish` 通过（`REVIEW_READY=true`）才能送审。
+单步命令（`init` / `preflight` / `status` / `sync` / `review-ready`…）
+照常保留，用于诊断与特殊流程。
 
 ## 评审与门禁
 
@@ -82,6 +86,8 @@ CI 自动跑 `ci-check`，最终用 merge commit 合入，
 
 | 命令 | 读写 | 说明 |
 |---|---|---|
+| `agent-start` | 检查+按需写 | 任务开始自动入口（初始化→同步一次→preflight） |
+| `agent-finish` | 检查+按需写 | 任务收尾自动入口（同步一次→测试→review-ready） |
 | `status` | 只读 | 当前分支可见性、落后/领先数、年龄、决策 |
 | `init` | 写配置 | 落盘显式可见性，幂等 |
 | `share` | 写配置 | private 转 shared（单向） |

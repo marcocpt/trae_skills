@@ -28,16 +28,22 @@ Git pre-push hook 与 GitHub Actions 只做强制检查、不改写历史。
 - 需要语义级冲突判断、自动解决冲突：本 Skill 不提供，转人工处理；
 - 项目尚未安装：先看本文档「安装」一节，而不是手写 git 命令绕过。
 
-## 标准执行顺序
+## 标准执行顺序（Agent 全自动）
 
 ```text
-首次：  ./scripts/branchctl init --private（或 --shared）
-每次改动前：./scripts/branchctl preflight  → 必须 PREFLIGHT=true 才继续
-开发中：  ./scripts/branchctl status（只读）→ ./scripts/branchctl sync（按需）
-评审：    ./scripts/branchctl review-ready  → REVIEW_READY=true
-门禁：    ./scripts/branchctl gate-ready    → GATE_READY=true（要求工作树干净）
-集成：    ./scripts/branchctl merge-ready   → MERGE_READY=true（要求工作树干净）
+任务开始：  ./scripts/branchctl agent-start   → AGENT_START=true 才继续
+开发…测试…提交（Agent 按任务自行完成）
+任务收尾：  ./scripts/branchctl agent-finish  → REVIEW_READY=true 才送审
 ```
+
+`agent-start` 内部分三步：按项目策略自动初始化可见性（无默认值仍阻断）、
+按需自动同步一次（private→rebase，shared→merge，不循环）、再过 preflight。
+`agent-finish` 同理：同步一次→跑项目测试→过 review-ready。
+历史一旦被重写即报告 `PRIOR_EVIDENCE=STALE`，旧 SHA 证据作废重冻。
+
+诊断与单步执行仍可用原语（`status` / `init` / `sync` / `preflight` /
+`review-ready` / `gate-ready` / `merge-ready`），语义不变；
+其中 `sync` 等在可见性未知时照样阻断，不因自动入口存在而放宽。
 
 GitHub PR 模式用 PR merge commit 做最终集成，不用本地 `integrate`；
 本地 `integrate` 只适用于明确约定本地集成的项目，且固定 `--no-ff`。
