@@ -17,6 +17,7 @@ description: 当重构遗留代码、用户提到 AI 重构/refactoring、或工
 
 - 明确 Bug：用 [dd-bug-fix-workflow](../dd-bug-fix-workflow/SKILL.md)；
 - 新用户行为或新能力：用 [dd-feature-development-workflow](../dd-feature-development-workflow/SKILL.md)；
+- 为新架构假设打贯穿式最小闭环（tracer / Phase 0）：属新功能范畴，用 [dd-feature-development-workflow](../dd-feature-development-workflow/SKILL.md)，重构工作流不引入 tracer；
 - 只有文档审查：用对应文档 Skill。
 
 AI 无权威证据且无法判断 Bug/Feature 时必须 ASK，不得把产品选择伪装为重构。
