@@ -7,7 +7,7 @@ description: >-
   dual-mode contract (it wrapped decision advice into findings), so advisory
   rounds pin this dedicated profile instead (LATER-20260907 forensic finding).
 mode: primary
-model: opencode/muse-spark-1.2-contributor-free
+model: opencode/muse-spark-1.3-contributor-free
 permission:
   "*": deny
   read: allow

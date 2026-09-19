@@ -57,11 +57,11 @@ hosts:
     worker:
       # 主 session 即 implementation worker（OpenCode 无独立 worker agent 文件机制）；
       # same-model independent review：与 reviewer 同模型，隔离靠角色/只读权限/frozen baseline
-      model: opencode/muse-spark-1.2-contributor-free
+      model: opencode/muse-spark-1.3-contributor-free
       binding: primary-session
     reviewer:
       file: opencode/strong-reviewer.md
-      model: opencode/muse-spark-1.2-contributor-free     # same-model independent review（与 worker 同模型，非更强模型）
+      model: opencode/muse-spark-1.3-contributor-free     # same-model independent review（与 worker 同模型，非更强模型）
       permission_default_deny: true
       readonly_allows: [read, glob, grep, list]
       # external opencode-cli backend 的 invocation profile（primary-mode，同模型同权限，
@@ -71,7 +71,7 @@ hosts:
       # muse-spark 双模合同遵循失败（决策建议被包装成 finding 的实测）
       advisory_cli_agent_file: opencode/strong-reviewer-advisory-cli.md
     install: "~/.config/opencode/agents/"
-    status: installed-discovered      # L3 已过；换绑 muse-spark-1.2-contributor-free 后 L6 由 opencode-cli backend 重新取证
+    status: installed-discovered      # L3 已过；2026-09-19 由 muse-spark-1.2-contributor-free 改绑 muse-spark-1.3-contributor-free（保持绑定为较新档位）；改绑不解决 403 FreeTierError——真因是带权限限制的 agent 被免费档拒绝，与模型档位无关；改绑后 L6 由 opencode-cli backend 重新取证
 
   codebuddy:
     reviewer:

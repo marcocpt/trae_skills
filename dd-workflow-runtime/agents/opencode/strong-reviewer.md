@@ -9,7 +9,7 @@ description: >-
 mode: subagent
 # same-model independent review：与 implementation worker 同模型；隔离来自角色、
 # 独立 subagent 调用、冻结基线与下方机械只读权限，而非模型能力差异。
-model: opencode/muse-spark-1.2-contributor-free
+model: opencode/muse-spark-1.3-contributor-free
 permission:
   "*": deny
   read: allow
