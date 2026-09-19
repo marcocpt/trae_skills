@@ -23,7 +23,7 @@ description: 当实现需要规格套件、分阶段计划、TDD、CI 或用户�
 1. **新任务首次进入 Intake 时，先用通俗语言向用户复述需求**（要解决什么问题、范围边界、成功标准），取得确认后再收集剩余事实——这是防跑偏的第一道闸口，不得跳过；恢复任务若状态已含有效需求确认则复用，不重复 ASK；随后复用已有 Handoff 和已解决事实，不重复询问；
 2. **首次建立执行环境时默认新建隔离 worktree，且在修改项目产物（代码、测试、规格、项目文档等交付范围内文件）之前完成**；恢复任务、有效 Handoff 或父工作流已提供的 worktree 必须复用并验证，不重新创建；仅用户明确要求时才允许在当前工作区，且须记录原因；
 3. 调用 `dd-writing-specs` 生成并批准 Requirements、Design、Test Matrix，UI 功能按需包含 Visual；
-4. 从已批准规格拆出 Phase 和可执行 Task；
+4. 从已批准规格拆出 Phase 和可执行 Task；Planning 同时判定是否需要 tracer（语义见 [tracer-contract](../dd-workflow-runtime/references/tracer-contract.md)），需要则 Implementation 以 Phase 0 先打通真实链路再进 Phase 1；
 5. 按 Phase → Task → TDD 实现，每个 Phase 必须通过 Local Gate；
 6. 根据真实实现同步受影响文档；
 7. 冻结最终候选 SHA——实现和文档完成后锁定、等待最终验证和交付的唯一版本；
@@ -68,6 +68,7 @@ delivery_policy: project-rules
 5. 用户可见行为必须有用户可见证据；
 6. 最终候选必须冻结，审查 / 完整规格缺口检查 / 完整 CI 绑定同一个 SHA；
 7. 内容批准、测试 PASS、审查者 PASS 只证明 Workflow Gate，不自动产生 Git 或外部动作授权。
+8. Tracer 决策必须闭环：Planning 判定 `required`/`skipped`；`required` 时 Phase 1 前 Phase 0 必须 `passed`，`skipped` 时必须有 `reason`；schema／evidence 唯一属主为 `dd-workflow-runtime/references/tracer-contract.md`，本文件只决定何时调用。
 
 ## Stage / Gate 图
 
@@ -104,7 +105,7 @@ intake → environment → specification → planning → implementation
 | Intake | **新任务首次进入时先用通俗语言复述需求并取得用户确认**（恢复任务状态已含有效确认则复用，不重复 ASK），再确认 Feature 的目标、范围、成功标准、失败路径、兼容性及可验证 AC，只补尚未解决的 blocker | 需求复述已获用户确认并持久化 | [intake-and-environment.md](references/intake-and-environment.md) |
 | Environment | **首次建立执行环境时默认新建隔离 worktree，且在修改项目产物之前完成**；恢复任务、有效 Handoff 或父工作流已提供的 worktree 必须复用并验证；仅用户明确要求时才允许在当前工作区并记录原因。验证基线和并发状态 | worktree 已新建或已复用并验证，工作环境与状态一致，可安全进入规格阶段 | [intake-and-environment.md](references/intake-and-environment.md) |
 | Specification | 调用 `dd-writing-specs` 生成并批准 Requirements、Design、Test Matrix；UI 功能按需生成 Visual | canonical spec 已批准，并有当前内容指纹和批准依据 | [specification.md](references/specification.md) |
-| Planning | 从已批准规格生成 Phase 和可执行 Task 包，建立 AC → Task → Test/Evidence 映射 | 所有 Phase/Task 输入输出、写入范围、验证方式和停止条件都明确 | [planning-stage.md](references/planning-stage.md) |
+| Planning | 从已批准规格生成 Phase 和可执行 Task 包，建立 AC → Task → Test/Evidence 映射，并判定 tracer（required/skipped） | 所有 Phase/Task 输入输出、写入范围、验证方式和停止条件都明确，tracer 决策已记录 | [planning-stage.md](references/planning-stage.md) |
 | Implementation | 按当前 Task 的 `anchors`、全局约束、Out of Scope、失败路径及必要集成输入选择性读取规格（不完整重读）；按 Phase 执行 Task 并采用 TDD；每个 Phase 通过 Local Gate 并完成按风险路由的紧凑 Phase 复核（命中风险触发器时升级独立强审）；高风险 UI 按风险触发远程 Smoke CI；Local Gate 未通过不得进入下一 Phase | 全部 Phase 已验证，无未解释的当前 Phase 缺口 | [implementation.md](references/implementation.md) |
 | Documentation | 根据最终已验证行为判断哪些长期文档需要更新、无需更新或已过期 | 文档与即将冻结的实现一致 | [documentation.md](references/documentation.md) |
 | Final Candidate | 冻结候选 SHA；对同一个 SHA 做确定性验证、独立审查、完整规格缺口检查和 Full CI。候选 Gate 只产出并验证可交付候选，不推进目标分支 | review / gap / CI 均绑定同一 `candidate_sha` 并通过 | [candidate.md](references/candidate.md) |
@@ -116,7 +117,8 @@ intake → environment → specification → planning → implementation
 - Planning 模板（source_manifest / 任务结构）：[planning.md](references/planning.md)；
 - 来源／执行包／验证证据包／生命周期共享合同：[artifact-contract](../dd-workflow-runtime/references/artifact-contract.md) 是路由器，详细合同在其三个分文件 `artifact-source-and-packet.md`／`artifact-verification.md`／`artifact-lifecycle.md`；
 - A/B/C 审查与风险升级：[review-gate](../dd-workflow-runtime/references/review-gate.md)；
-- 测试位置与 CI：[test-location](../dd-workflow-runtime/references/test-location.md) 和 [ci](../dd-workflow-runtime/references/ci.md)。
+- 测试位置与 CI：[test-location](../dd-workflow-runtime/references/test-location.md) 和 [ci](../dd-workflow-runtime/references/ci.md)；
+- Tracer 贯穿式最小闭环（Phase 0 触发/证据/恢复三态）：[tracer-contract](../dd-workflow-runtime/references/tracer-contract.md)。
 
 ## 通用质量 Gate
 

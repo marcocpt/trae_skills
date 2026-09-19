@@ -61,7 +61,8 @@ phase_list:
 - 精确验证命令和预期；
 - UI 真实入口、操作、断言和证据；
 - 提交边界和回滚；
-- AC → Task → Test/Evidence 映射。
+- AC → Task → Test/Evidence 映射；
+- Tracer 判定（`tracer.decision` + `reason`/`target_ac`），语义唯一属主见 [tracer-contract](../../dd-workflow-runtime/references/tracer-contract.md)：命中 review-gate 风险分类或存在未验证高风险架构假设 → `required`，否则 `skipped` + `reason`；承载该风险的既有 AC 标 `tracer_candidate: true`，不新建 TA 编号。
 
 每个可执行 Task 必须按 [artifact-source-and-packet](../../dd-workflow-runtime/references/artifact-source-and-packet.md) 实例化弱模型执行包：Phase plan 头部定义唯一 `source_manifest`，Task 用 `sources: [{ref, anchors}]`。缺任一来源指纹、批准依据、输入／输出、写入范围、精确验证、停止条件或 Delivery 授权时保持 `BLOCKED`，不得进入 Implementation。
 
@@ -87,6 +88,10 @@ phase_plan_paths:
     path: plan-phase-02-<slug>.md
 integration_plan_path: plan-integration-cross-phase.md   # 仅复杂档
 plan_delivery_evidence: <commit-sha-or-not-required-or-not-authorized>
+tracer:                       # 判定语义见 tracer-contract.md，此处只记录决策，不复制 schema
+  decision: required | skipped
+  reason: <skipped 时必填>
+  target_ac: <required 时填承载架构风险的 AC id>
 current_stage: implementation
 current_phase: 0
 ```
