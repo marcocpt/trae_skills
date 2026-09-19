@@ -12,6 +12,7 @@ description: 当修复需要证据驱动根因调查、隔离环境、TDD、回�
 ## 不适用
 
 - 新功能或行为扩展：使用 `dd-feature-development-workflow`；
+- 为新架构假设先打贯穿式最小闭环（tracer / Phase 0）：属新功能范畴，由 `dd-feature-development-workflow` 承载，Bug 修复不引入 tracer；
 - 项目 Bootstrap：使用 `dd-project-bootstrap-workflow`；
 - 简单文本或纯文档修改；
 - 用户只要求诊断、未授权修复时：停在 Diagnosis 结论，不实施修复。
