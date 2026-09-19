@@ -4,7 +4,7 @@
 
 ## 1. 前置
 
-所有 Phase Gate 通过，且 Documentation 已同步（候选冻结前完成，AC-07）。
+所有 Phase Gate 通过，且 Documentation 已同步（候选冻结前完成，AC-07）。Tracer 决策已闭环（见 [tracer-contract](../../dd-workflow-runtime/references/tracer-contract.md) §9）：`required` → `tracer.result=passed`；`skipped` → `reason` 存在；未闭环不得冻结候选。
 
 ## 2. 冻结候选 SHA
 

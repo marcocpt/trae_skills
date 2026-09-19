@@ -48,6 +48,7 @@ current_phase: null
 total_phases: 0
 completed_phases: []
 smoke_ci_phases: []
+tracer: null   # {decision, reason, target_ac, result, evidence_ref, limitations}，schema 唯一属主见 tracer-contract.md
 commits: {}
 final_candidate_branch: null
 candidate_sha: null
@@ -92,3 +93,5 @@ merge、push、cleanup 等不可瞬时动作使用运行时的 `in_progress: {op
 状态字段与产物、分支或 CI 证据冲突时，按运行时恢复合同修正后继续。状态缺失时至少检查工作分支提交、规格/计划文件、Phase 证据、候选分支和 CI 结果；禁止默认回到 Intake。
 
 证据优先于状态字段：`current_stage` 与真实 diff／提交／CI 冲突时，以可复核证据为准，并把修正写入状态。
+
+Tracer 恢复三态判定见 [tracer-contract](../../dd-workflow-runtime/references/tracer-contract.md) §8：`decision=required` 且 `result` 非 `passed` 时从 Phase 0（`current_stage=implementation`, `current_phase=0`）恢复，不得进 Phase 1；`skipped` 缺 `reason` 时 `BLOCKED`。tracer 落在 `4/4.x → implementation` 内，不新增 Stage，`current_step` 映射不变。

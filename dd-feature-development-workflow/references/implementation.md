@@ -2,6 +2,15 @@
 
 只在 Implementation Stage 读取。Phase Loop、TDD、Local Gate、UI Smoke 与 Phase risk review。
 
+## 0. Tracer（Phase 0，条件）
+
+读取 `state.tracer.decision`：
+
+- `skipped` 或指向低风险增量 → 跳过本节直接进 Phase 1；`skipped` 缺 `reason` 时 `BLOCKED`；
+- `required` → 必须先执行 Phase 0，`tracer.result` 未 `passed` 前**不得开始 Phase 1**；`decision` 缺失 → 回 Planning 补判定。
+
+Phase 0 按 [tracer-contract](../../dd-workflow-runtime/references/tracer-contract.md) 用最小真实链路（真实入口→真实依赖→核心逻辑→真实输出）+ TDD 打通，产物保留为 Phase 1+ 地基代码；证据绑 `implementation_digest`（此时未冻结候选，禁引 `candidate_sha`）。跑不通 → `result: BLOCKED`，按本文件 §1 合同漂移（stale）回 Planning / Specification。`passed` 后原子更新 `tracer.result` 与 `verification_evidence` 的 `phase-tracer` 条目，再进入 Phase 1。
+
 ## 1. Phase Loop
 
 一个 Phase 可含多个 Task；Phase 责任：把所有 Task 的 TDD 循环推进到 Local Gate 全过，才进入下一 Phase。每个 Phase：

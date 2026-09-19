@@ -28,6 +28,7 @@ IMPLEMENTATION = WORKFLOW_ROOT / "references" / "implementation.md"
 PLANNING = WORKFLOW_ROOT / "references" / "planning.md"
 PLANNING_STAGE = WORKFLOW_ROOT / "references" / "planning-stage.md"
 UI_EVIDENCE = RUNTIME_ROOT / "references" / "ui-evidence.md"
+TRACER = RUNTIME_ROOT / "references" / "tracer-contract.md"
 
 
 def read(path: Path) -> str:
@@ -326,6 +327,65 @@ class TestStateProducerConsumerConsistent(unittest.TestCase):
                       "legacy mapping must map confirmation to 7 (R4-002)")
         self.assertIn("不得用于排序或推进", mapping_block,
                       "legacy current_step must be label-only, not for ordering (R4-002)")
+
+
+class TestTracerBulletContract(unittest.TestCase):
+    """Tracer Bullet：两轴模型 + Phase 0 前置 + 单一属主 + 决策闭环。"""
+
+    def test_tracer_contract_is_single_owner_of_schema(self):
+        tr = read(TRACER)
+        for key in ("TracerDecision", "TracerResult", "entry_point",
+                    "implementation_digest", "review-gate.md"):
+            self.assertIn(key, tr,
+                          f"tracer-contract.md must own '{key}' (tracer single owner)")
+        # 不新增失败态：复用 BLOCKED，无 tracer 专属 failed
+        self.assertIn("不新增 tracer 专属失败态", tr,
+                      "tracer must reuse global BLOCKED, not invent failed (tracer)")
+        # 证据 run-bound：Phase 0 禁引 candidate_sha
+        self.assertIn("禁止引用 `candidate_sha`", tr,
+                      "tracer evidence must bind implementation_digest, never candidate_sha (tracer)")
+
+    def test_router_files_do_not_inline_full_schema(self):
+        # 入口文件只引用，不复制完整 schema（entry_point 仅属 owner 文件）
+        self.assertNotIn("entry_point", read(SKILL),
+                         "SKILL.md must reference, not inline, tracer schema (single owner)")
+        self.assertNotIn("entry_point", read(PLANNING_STAGE),
+                         "planning-stage.md must reference, not inline, tracer schema (single owner)")
+
+    def test_planning_records_decision_not_result(self):
+        stage = read(PLANNING_STAGE)
+        self.assertIn("tracer.decision", stage,
+                      "planning must record tracer decision (tracer)")
+        self.assertIn("target_ac", stage,
+                      "planning must record target_ac reusing existing AC (tracer)")
+        self.assertIn("tracer-contract", stage,
+                      "planning must reference tracer-contract owner (tracer)")
+
+    def test_implementation_gates_phase1_on_tracer(self):
+        impl = read(IMPLEMENTATION)
+        self.assertIn("不得开始 Phase 1", impl,
+                      "required tracer must gate Phase 1 start (tracer)")
+        self.assertIn("Phase 0", impl,
+                      "tracer executes as Phase 0, not a new Stage (tracer)")
+        self.assertIn("implementation_digest", impl,
+                      "Phase 0 evidence must bind implementation_digest (tracer)")
+
+    def test_candidate_checks_decision_closure(self):
+        cand = read(CANDIDATE)
+        self.assertIn("决策已闭环", cand,
+                      "candidate must verify tracer decision closure, not evidence existence (tracer)")
+        self.assertIn("tracer-contract", cand,
+                      "candidate must reference tracer-contract §9 (tracer)")
+
+    def test_state_field_and_recovery_no_skip(self):
+        handoff = read(STATE_AND_HANDOFF)
+        self.assertIn("tracer:", handoff,
+                      "feature state must carry tracer field (tracer)")
+        self.assertIn("不得进 Phase 1", handoff,
+                      "recovery must not skip Phase 0 when required (tracer)")
+        # 不新增 Stage：current_step 映射仍把 tracer 落在 implementation 4.x
+        self.assertIn("4 / 4.x → implementation", handoff,
+                      "tracer must not add a new Stage to legacy mapping (tracer)")
 
 
 if __name__ == "__main__":
