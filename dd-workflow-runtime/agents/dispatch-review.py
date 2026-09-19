@@ -102,6 +102,7 @@ KNOWN_FAILURE_CATEGORIES = FALLBACK_CATEGORIES | {
     "session_resume_mismatch",
 }
 ID_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*$")
 FORBIDDEN_MODEL_BINDING_KEYS = {
     "adapter",
     "backend",
@@ -409,6 +410,8 @@ def validate_registry_policy(registry: Dict[str, Any], policy: Dict[str, Any]) -
             errors.append(f"{path}.readonly_mode: required")
         elif spec.get("readonly_mode") not in KNOWN_READONLY_MODES:
             errors.append(f"{path}.readonly_mode: unknown readonly mode {spec.get('readonly_mode')!r}")
+        if "per_call_model" in spec and spec.get("per_call_model") is not True:
+            errors.append(f"{path}.per_call_model: must be true when declared")
         for exit_key in ("availability_exit_codes", "transient_exit_codes"):
             exit_codes = spec.get(exit_key)
             if not isinstance(exit_codes, list) or not all(
@@ -789,6 +792,11 @@ def _validate_request_shape(request: Dict[str, Any]) -> None:
         path = Path(item)
         if path.is_absolute() or ".." in path.parts or item in {"", "."}:
             raise TerminalReviewFailure("security_policy_violation", f"scope escapes repository: {item!r}")
+    model = request.get("model")
+    if model is not None and (not isinstance(model, str) or not MODEL_ID_RE.fullmatch(model)):
+        raise TerminalReviewFailure(
+            "schema_invalid", f"request.model must be a full provider/model id, got {model!r}"
+        )
     if mode == "finding":
         verification = request.get("verification")
         if not isinstance(verification, list) or not verification:
@@ -874,8 +882,11 @@ def _readonly_evidence_valid(
     if not isinstance(proofs, list):
         return None
     expected_mode = backend.get("readonly_mode")
+    pinned = request.get("model")
     for proof in proofs:
         if not isinstance(proof, dict):
+            continue
+        if pinned is not None and proof.get("model") != pinned:
             continue
         source = proof.get("source")
         if (
@@ -965,6 +976,11 @@ def _check_backend_eligibility(
         expected_host = backend.get("host")
         if expected_host != request["host"]:
             raise BackendUnavailable("capability_unavailable", f"{backend_id} is bound to host {expected_host!r}")
+    if request.get("model") is not None and backend.get("per_call_model") is not True:
+        raise BackendUnavailable(
+            "capability_unavailable",
+            f"{backend_id} does not support a per-call model pin",
+        )
     proof = _readonly_evidence_valid(request, backend_id, backend)
     if backend.get("readonly_required") and proof is None:
         raise TerminalReviewFailure("readonly_violation", f"backend-bound L6 read-only evidence is required before {backend_id}")
@@ -1590,6 +1606,8 @@ def dispatch_review(
             # adapter, otherwise the adapter cannot honour the resume form.
             if isinstance(request.get("continuation"), dict):
                 adapter_request["continuation"] = copy.deepcopy(request["continuation"])
+            if request.get("model") is not None and backend.get("per_call_model") is True:
+                adapter_request["model"] = request["model"]
             started_at = _utc_now()
             raw = runner(backend, adapter_request) if runner is not None else _run_cli_backend(backend, adapter_request)
             if mode == "advisory":

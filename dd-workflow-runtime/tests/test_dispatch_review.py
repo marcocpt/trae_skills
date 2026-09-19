@@ -1631,5 +1631,107 @@ class AdvisoryRegistryTests(unittest.TestCase):
             self.assertEqual(confirmation, {"confirmed": True, "evidence": "provider-self-report"})
 
 
+class PerCallModelTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.repo, self.head, self.base = _init_fixture_repo(self.temp)
+        self.registry, self.policy = _configuration()
+        self.registry["backends"]["opencode-cli"]["per_call_model"] = True
+        self.policy["roles"]["strong-reviewer"]["backends"] = ["opencode-cli"]
+
+    def tearDown(self) -> None:
+        self.temp.cleanup()
+
+    def request(self, **overrides: Any) -> Dict[str, Any]:
+        request = _base_request(self.repo, self.base, self.head)
+        request.update(overrides)
+        return request
+
+    def model_proof(self, model: str) -> Dict[str, Any]:
+        return {
+            "backend": "opencode-cli",
+            "mode": "agent-read-only-contract",
+            "level": "L6",
+            "confirmed": True,
+            "source": "test-opencode-read-only-model",
+            "model": model,
+        }
+
+    def result(self, backend: str, request: Dict[str, Any], status: str = "PASS") -> Dict[str, Any]:
+        return {
+            "schema": ROUTER.RESULT_SCHEMA,
+            "backend": backend,
+            "reviewer": f"{backend}/strong-reviewer",
+            "target": {
+                "base_sha": request["base_sha"],
+                "head_sha": request["head_sha"],
+                "scope": list(request["scope"]),
+            },
+            "status": status,
+            "reviewed": list(request["scope"]),
+            "unreadable": [],
+            "findings": [],
+            "evidence": ["reviewed frozen target"],
+            "lifecycle": {"started": True, "completed": True},
+            "failure_category": None,
+            "readonly_confirmation": {"confirmed": True, "evidence": "probe-no-write"},
+        }
+
+    def dispatch(self, request: Dict[str, Any], runner: Any = None) -> Dict[str, Any]:
+        return ROUTER.dispatch_review(request, self.registry, self.policy, runner)
+
+    def test_pinned_model_reaches_supporting_backend(self) -> None:
+        model = "opencode/union-alpha"
+        request = self.request(model=model, readonly_evidence=[self.model_proof(model)])
+        runner = BackendScriptRunner({"opencode-cli": self.result("opencode-cli", request)})
+        result = self.dispatch(request, runner)
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["backend"], "opencode-cli")
+        self.assertEqual(runner.requests[0].get("model"), model)
+
+    def test_pinned_model_without_backend_support_fails_closed(self) -> None:
+        del self.registry["backends"]["opencode-cli"]["per_call_model"]
+        model = "opencode/union-alpha"
+        request = self.request(model=model, readonly_evidence=[self.model_proof(model)])
+        runner = BackendScriptRunner({"opencode-cli": self.result("opencode-cli", request)})
+        result = self.dispatch(request, runner)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(runner.calls, [])
+
+    def test_malformed_model_is_rejected(self) -> None:
+        for bad in ("", "   ", "muse-spark", "/no-prefix", "a/b/c/", 123):
+            with self.subTest(bad=bad):
+                request = self.request(model=bad, readonly_evidence=[self.model_proof("opencode/union-alpha")])
+                runner = BackendScriptRunner({"opencode-cli": self.result("opencode-cli", request)})
+                result = self.dispatch(request, runner)
+                self.assertEqual(result["status"], "BLOCKED")
+                self.assertEqual(result["failure_category"], "schema_invalid")
+                self.assertEqual(runner.calls, [])
+
+    def test_pinned_model_without_matching_proof_is_blocked(self) -> None:
+        request = self.request(model="opencode/union-alpha")
+        runner = BackendScriptRunner({"opencode-cli": self.result("opencode-cli", request)})
+        result = self.dispatch(request, runner)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["failure_category"], "readonly_violation")
+        self.assertEqual(runner.calls, [])
+
+    def test_unpinned_request_sends_no_model(self) -> None:
+        request = self.request()
+        runner = BackendScriptRunner({"opencode-cli": self.result("opencode-cli", request)})
+        result = self.dispatch(request, runner)
+        self.assertEqual(result["status"], "PASS")
+        self.assertNotIn("model", runner.requests[0])
+
+    def test_registry_rejects_non_boolean_per_call_model(self) -> None:
+        self.registry["backends"]["opencode-cli"]["per_call_model"] = "yes"
+        request = self.request()
+        runner = BackendScriptRunner({"opencode-cli": self.result("opencode-cli", request)})
+        result = self.dispatch(request, runner)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["failure_category"], "configuration_invalid")
+        self.assertEqual(runner.calls, [])
+
+
 if __name__ == "__main__":
     unittest.main()

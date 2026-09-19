@@ -89,6 +89,12 @@ backends:
     # contract are unchanged (L6 proof remains valid).
     command: [review]
     forbid_args: [--auto]
+    # Per-call reviewer model pin: the Router may forward a shape-validated
+    # request.model to this backend only; the adapter maps it onto
+    # `opencode run --model <id>` keeping the agent profile (mode, readonly
+    # contract) fixed.  The pin is single-round (canonical bindings untouched)
+    # and always gated on per-model L6 evidence; resume rounds must not pin.
+    per_call_model: true
     # LATER-20260907: advisory dispatch (decision-point advice).  The capability
     # is bound to its wire contract; advisory rounds emit dd-advisory-result/1
     # and never enter the finding closure vocabulary.

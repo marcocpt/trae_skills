@@ -91,6 +91,22 @@ class CheckOpenCodeSameModelTests(unittest.TestCase):
     def test_canonical_fixture_passes(self) -> None:
         self.assertEqual(VB.check_opencode_same_model(opencode_bindings()), [])
 
+    def test_matching_union_alpha_bindings_pass(self) -> None:
+        bindings = opencode_bindings()
+        for role in ("worker", "reviewer"):
+            bindings["opencode"][role]["model"] = "opencode/union-alpha"
+        self.assertEqual(VB.check_opencode_same_model(bindings), [])
+
+    def test_missing_or_invalid_matching_models_are_rejected(self) -> None:
+        for model in (None, "", "   ", 123, [], {}):
+            with self.subTest(model=model):
+                bindings = opencode_bindings()
+                for role in ("worker", "reviewer"):
+                    bindings["opencode"][role]["model"] = model
+                errors = VB.check_opencode_same_model(bindings)
+                self.assertTrue(any("opencode/worker" in e and "model" in e for e in errors))
+                self.assertTrue(any("opencode/reviewer" in e and "model" in e for e in errors))
+
     def test_worker_model_drift_is_rejected(self) -> None:
         bindings = opencode_bindings()
         bindings["opencode"]["worker"]["model"] = "opencode/hy3-free"

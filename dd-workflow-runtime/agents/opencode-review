@@ -14,6 +14,8 @@ It never retries, never dispatches a second review, never claims readonly author
 
 from __future__ import annotations
 
+import importlib.machinery
+import importlib.util
 import json
 import os
 import re
@@ -34,6 +36,47 @@ AGENT_NAME = "strong-reviewer-cli"
 AGENT_NAME_ADVISORY = "strong-reviewer-advisory-cli"
 FINDING_KEYS = ("id", "severity", "classification", "change_risk", "location", "evidence", "required_fix")
 SHA_RE = re.compile(r"^[0-9a-fA-F]{7,64}$")
+CANONICAL_BINDINGS = Path(__file__).resolve().parent / "model-bindings.yaml"
+MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*$")
+
+
+def _load_bindings_module():
+    loader = importlib.machinery.SourceFileLoader("dd_validate_bindings", str(Path(__file__).resolve().parent / "validate-bindings.py"))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    if spec is None or spec.loader is None:
+        raise ValueError("cannot load validate-bindings.py")
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def _read_canonical_model(bindings_path: Path | None = None) -> str:
+    if bindings_path is None:
+        bindings_path = CANONICAL_BINDINGS
+    try:
+        bindings = _load_bindings_module().load_bindings(bindings_path)
+    except OSError as exc:
+        raise ValueError(f"cannot read model-bindings.yaml: {exc}") from None
+    host = bindings.get("opencode")
+    if not isinstance(host, dict):
+        raise ValueError("model-bindings.yaml: hosts.opencode is missing")
+    reviewer = host.get("reviewer")
+    if not isinstance(reviewer, dict):
+        raise ValueError("model-bindings.yaml: hosts.opencode.reviewer is missing")
+    model = reviewer.get("model")
+    if model is None or not isinstance(model, str) or not MODEL_ID_RE.fullmatch(model):
+        raise ValueError(f"model-bindings.yaml: invalid canonical model id {model!r}")
+    return model
+
+
+def _canonical_reviewer_identity(agent_name: str) -> tuple[str, str | None]:
+    try:
+        model = _read_canonical_model()
+    except ValueError as exc:
+        return f"{agent_name}/unknown", str(exc)
+    if not isinstance(model, str) or not MODEL_ID_RE.fullmatch(model):
+        return f"{agent_name}/unknown", f"invalid canonical model id {model!r}"
+    return f"{agent_name}/{model}", None
 
 
 def _blocked_result(request: Dict[str, Any], category: str, detail: str) -> Dict[str, Any]:
@@ -422,7 +465,26 @@ def main() -> int:
     continuation = request.get("continuation") if isinstance(request.get("continuation"), dict) else None
     advisory_mode = request.get("mode", "finding") == "advisory"
     agent_name = AGENT_NAME_ADVISORY if advisory_mode else AGENT_NAME
+    override_model = request.get("model")
+    if override_model is not None:
+        if not isinstance(override_model, str) or not MODEL_ID_RE.fullmatch(override_model):
+            result = _blocked_result(request, "configuration_invalid", f"invalid per-call model id {override_model!r}")
+            print(json.dumps(result, ensure_ascii=False))
+            return 0
+        if continuation is not None and continuation.get("form") == "resume":
+            result = _blocked_result(request, "configuration_invalid", "per-call model applies to initial dispatch only; resume pins the original session identity")
+            print(json.dumps(result, ensure_ascii=False))
+            return 0
+        reviewer = f"{agent_name}/{override_model}"
+    else:
+        reviewer, identity_error = _canonical_reviewer_identity(agent_name)
+        if identity_error is not None:
+            result = _blocked_result(request, "configuration_invalid", identity_error)
+            print(json.dumps(result, ensure_ascii=False))
+            return 0
     cmd = ["opencode", "run", "--agent", agent_name, "--format", "json"]
+    if override_model is not None:
+        cmd += ["--model", override_model]
     if continuation and continuation.get("form") == "resume":
         cmd += ["--session", continuation["handle"]]
     env = {"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", str(Path.home()))}
@@ -499,7 +561,7 @@ def main() -> int:
         result = {
             "schema": ADVISORY_RESULT_SCHEMA,
             "backend": BACKEND_ID,
-            "reviewer": f"{agent_name}/muse-spark-1.2-contributor-free",
+            "reviewer": reviewer,
             "target": {
                 "base_sha": request["base_sha"],
                 "head_sha": request["head_sha"],
@@ -545,7 +607,7 @@ def main() -> int:
     result = {
         "schema": RESULT_SCHEMA,
         "backend": BACKEND_ID,
-        "reviewer": f"{AGENT_NAME}/muse-spark-1.2-contributor-free",
+        "reviewer": reviewer,
         "target": {
             "base_sha": request["base_sha"],
             "head_sha": request["head_sha"],

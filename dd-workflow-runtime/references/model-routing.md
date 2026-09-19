@@ -64,7 +64,7 @@ python3 "$RUNTIME_SKILL_ROOT/agents/check-review-route.py" \
 | 宿主 | 原生角色绑定 | 日常路径 | 外部强审 |
 |---|---|---|---|
 | Codex | 支持（独立模型、推理强度、只读 Agent）；`config_file` 必须直连 canonical 普通文件 | 已证明 read-only 父：原生 reviewer；其他父模式：派生前守卫禁止直接 Reviewer Gate，改用单独 read-only 父、已授权 external 或 BLOCKED | chatgpt-review MCP |
-| OpenCode | 支持（agent 配置 + 权限白名单）；worker=主 session、reviewer=subagent 均绑定 `opencode/muse-spark-1.2-contributor-free`——same-model independent review，隔离靠角色/只读权限/frozen baseline，非模型能力差异 | 原生 | chatgpt-review MCP |
+| OpenCode | 支持（agent 配置 + 权限白名单）；worker=主 session、reviewer=subagent，具体模型由 `model-bindings.yaml` 声明；同模型独立审查的隔离靠角色、只读权限与冻结基线，非模型能力差异 | 原生 | chatgpt-review MCP |
 | Qoder | 支持（frontmatter model/effort、worktree 隔离） | 原生 | chatgpt-review MCP |
 | ZCode | 支持（Beta；subagent 不能继续派生）；已绑套餐内最强 GLM-5.3 + 强制 high 思考档（主会话同为 5.3 时为同模型独立审查，单供应商上限） | 主 Agent 编排原生角色（高风险走 external） | chatgpt-review MCP |
 | CodeBuddy（CLI 能力域） | 支持（插件 agent yaml） | 原生 | chatgpt-review MCP |
@@ -74,6 +74,21 @@ python3 "$RUNTIME_SKILL_ROOT/agents/check-review-route.py" \
 ## 绑定配置属主
 
 按 DD-008，模型绑定策略集中维护：canonical 源是宿主中立的 [agents/model-bindings.yaml](../agents/model-bindings.yaml)（独立路由配置域）；`agents/<host>/` 下的原生文件是它的产物，由 [agents/validate-bindings.py](../agents/validate-bindings.py) 机械校验等价性，任何漂移非零退出。宿主侧不维护可独立编辑副本，但安装引用必须遵循宿主实测约束：Codex 的 `~/.codex/config.toml [agents.*].config_file` 必须直接指向 canonical 普通文件，不能指向 `~/.codex/agents/` symlink；CLI 0.149.0 对 symlink 返回 ELOOP，外层错误会被模糊为 `agent type is currently not available`。直连注册后还必须删除 `~/.codex/agents/` 下的同名文件或 symlink，否则自动发现会产生 `duplicate agent role name`。其他宿主只有在各自验证通过时才使用 symlink。更换任一宿主的模型或推理强度：先改 model-bindings.yaml，跑校验器确认原生文件同步（当前为"手写 native + 机械校验"模式；自动生成器记 TODO）；Codex 本机安装另跑 `python3 agents/validate-bindings.py --check-codex-install`。公共 Skill 正文不因换模型而改动（FR-002、NFR-009）。
+
+### OpenCode 模型改选
+
+- `model-bindings.yaml` 决定具体模型 ID；校验器只检查 worker/reviewer 的同模型约束、角色隔离和产物一致性，不得另设某个模型 ID 的硬编码白名单。两角色同时改绑不违反同模型约束；仅改 reviewer 导致两角色不同则仍应拒绝。
+- 该约束针对配置中声明的 OpenCode 角色，不要求从 CodeBuddy 等其他宿主调用 `opencode-cli` 的执行者与审查者同模型，也不能据此改写正在运行的主会话身份。
+- 用户仅指定本次审核模型，不等于授权持久修改共享绑定。先核实显示名对应的完整模型 ID，再比较当前绑定；当前 adapter 没有单次模型覆盖通道。需要持久改绑时先明确授权范围，按上文同步 canonical 与相关原生/CLI 产物并运行校验器；不得绕过 adapter 临时拼接模型参数。
+- 绑定校验通过仅证明配置一致，不证明模型可用或后端具备资格。改绑后的只读取证与会话连续性按 [transport.md](../../gpt-grilling-review/references/transport.md) 执行；不得改写旧证据的版本号冒充重新取证。adapter 结果中的 `reviewer` 模型段来自 canonical 声明，不是供应商实际模型的运行时证明；安装配置仍须与 canonical 核对。
+
+### 单次模型覆盖（per-call model pin）
+
+- 派发请求可在顶层带可选 `model`（完整 `provider/model` ID，如 `opencode/union-alpha`），仅本次生效；canonical 文件不动，下次恢复默认。
+- Router 只做形态校验；pin 只透传给 registry 声明 `per_call_model: true` 的后端（当前仅 `opencode-cli`，以 `--model` 调用，profile 的 mode 与只读权限不变），不支持的后端遇到 pin 直接 fail-closed，不静默忽略。
+- pin 必须配同模型的 L6 取证：proof 的 `model` 须与 pin 一致，否则 `readonly_violation`。无证新模型按用户预授权自动重测（流程见 transport），测不过仍 BLOCKED。
+- pin 只允许 initial；resume 带 pin 直接拒绝——换模型即换 reviewer，不继承原会话关闭权。
+- worker 说明：外部调用时 worker 即当前执行会话，Skill 不能切换它的模型；“两角色一起换”指 canonical 默认保持同模型、不产生持久的 reviewer 单侧漂移，单轮 pin 只固定 reviewer 并如实记录身份。
 
 ## Generic Review Backend Router v1
 

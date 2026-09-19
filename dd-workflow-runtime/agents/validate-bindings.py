@@ -135,7 +135,6 @@ def check_native(bindings: dict) -> list[str]:
     return errors
 
 
-OPENCODE_EXPECTED_MODEL = "opencode/muse-spark-1.2-contributor-free"  # 实机 opencode models 验证的 canonical id（逻辑名 Muse Spark 1.2 Free）
 OPENCODE_READONLY_ALLOWS = ["read", "glob", "grep", "list"]
 
 
@@ -154,10 +153,14 @@ def check_opencode_same_model(bindings: dict) -> list[str]:
     if not isinstance(worker, dict) or not isinstance(reviewer, dict):
         return ["opencode: 缺少 worker 或 reviewer 角色绑定"]
     for role, spec in (("worker", worker), ("reviewer", reviewer)):
-        if spec.get("model") != OPENCODE_EXPECTED_MODEL:
-            errors.append(
-                f"opencode/{role}: model 必须是 {OPENCODE_EXPECTED_MODEL}，实际 {spec.get('model')!r}"
-            )
+        model = spec.get("model")
+        if not isinstance(model, str) or not model.strip():
+            errors.append(f"opencode/{role}: 缺少有效 model")
+    if not errors and worker.get("model") != reviewer.get("model"):
+        errors.append(
+            f"opencode/worker 与 opencode/reviewer: model 必须一致，"
+            f"实际 worker {worker.get('model')!r} != reviewer {reviewer.get('model')!r}"
+        )
     if str(worker.get("binding", "")) != "primary-session":
         errors.append('opencode/worker: binding 必须是 primary-session')
     if "file" in worker:

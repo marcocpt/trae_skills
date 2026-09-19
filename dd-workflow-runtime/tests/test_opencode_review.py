@@ -542,5 +542,278 @@ class AdvisoryModeTests(unittest.TestCase):
         self.assertEqual(obj["schema"], "dd-advisory-result/1")
 
 
+class ReviewerModelIdentityTests(unittest.TestCase):
+    def _write_bindings(self, yaml_text: str) -> Path:
+        path = Path(self.temp.name) / "model-bindings.yaml"
+        path.write_text(yaml_text)
+        return path
+
+    def _run_with_bindings_file(self, yaml_text: str, advisory=False):
+        bindings = self._write_bindings(yaml_text)
+        with mock.patch.object(ADAPTER_MOD, "CANONICAL_BINDINGS", bindings):
+            return self._run_with_canonical(None, advisory=advisory)
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.temp.name) / "repo"
+        self.repo.mkdir()
+        subprocess.run(["git", "-C", str(self.repo), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "config", "user.email", "test@example.invalid"], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "config", "user.name", "Test"], check=True)
+        (self.repo / "review.py").write_text("print('base')\n")
+        subprocess.run(["git", "-C", str(self.repo), "add", "review.py"], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "commit", "-qm", "base"], check=True)
+        self.base = subprocess.run(["git", "-C", str(self.repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+        (self.repo / "review.py").write_text("print('head')\n")
+        subprocess.run(["git", "-C", str(self.repo), "add", "review.py"], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "commit", "-qm", "head"], check=True)
+        self.head = subprocess.run(["git", "-C", str(self.repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+        self.opencode_invoked = False
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def _run_with_canonical(self, canonical, advisory=False):
+        findings_payload = _valid_reviewer_json("PASS")
+        advisory_payload = {
+            "status": "ADVISORY",
+            "reviewed": ["review.py"],
+            "unreadable": [],
+            "decision_points": [{
+                "id": "DP-1", "recommendation": "A", "rationale": "r",
+                "risks": [], "information_sufficient": True, "info_gaps": [],
+            }],
+            "suggested_decision_points": [],
+            "evidence": ["ok"],
+            "failure_category": None,
+        }
+        payload = advisory_payload if advisory else findings_payload
+        stream = _event_stream(json.dumps(payload))
+        mock_completed = mock.Mock()
+        mock_completed.stdout = stream
+        mock_completed.stderr = ""
+        mock_completed.returncode = 0
+        original_run = subprocess.run
+        self.opencode_invoked = False
+        with mock.patch("subprocess.run") as mocked:
+            def side_effect(cmd, **kwargs):
+                if cmd[0] == "opencode":
+                    self.opencode_invoked = True
+                    return mock_completed
+                return original_run(cmd, **kwargs)
+            mocked.side_effect = side_effect
+            req = {
+                "schema": "dd-review-request/1",
+                "role": "strong-reviewer",
+                "host": "opencode",
+                "repo": str(self.repo),
+                "base_sha": self.base,
+                "head_sha": self.head,
+                "scope": ["review.py"],
+            }
+            if advisory:
+                req["mode"] = "advisory"
+                req["decision_points"] = [{"id": "DP-1", "question": "q?", "options": [{"id": "A", "description": "d"}]}]
+            else:
+                req["verification"] = [{"name": "unit", "status": "passed", "evidence": "e"}]
+            import io
+            with mock.patch("sys.stdin", io.StringIO(json.dumps(req))), \
+                 mock.patch("sys.stdout", new_callable=io.StringIO) as fake_out, \
+                 mock.patch.object(sys, "argv", ["opencode-review", "review"]):
+                ret = ADAPTER_MOD.main()
+            return ret, fake_out.getvalue()
+
+    def test_finding_path_reports_canonical_model(self):
+        yaml_text = (
+            "hosts:\n"
+            "  opencode:\n"
+            "    reviewer:\n"
+            "      model: opencode/union-alpha\n"
+        )
+        ret, out = self._run_with_bindings_file(yaml_text)
+        self.assertEqual(ret, 0)
+        result = json.loads(out)
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["reviewer"], f"{ADAPTER_MOD.AGENT_NAME}/opencode/union-alpha")
+
+    def test_advisory_path_reports_canonical_model(self):
+        yaml_text = (
+            "hosts:\n"
+            "  opencode:\n"
+            "    reviewer:\n"
+            "      model: opencode/union-alpha\n"
+        )
+        ret, out = self._run_with_bindings_file(yaml_text, advisory=True)
+        self.assertEqual(ret, 0)
+        result = json.loads(out)
+        self.assertEqual(result["status"], "ADVISORY")
+        self.assertEqual(result["reviewer"], f"{ADAPTER_MOD.AGENT_NAME_ADVISORY}/opencode/union-alpha")
+
+    def test_missing_bindings_file_fail_closed(self):
+        with mock.patch.object(ADAPTER_MOD, "CANONICAL_BINDINGS", Path(self.temp.name) / "absent.yaml"):
+            ret, out = self._run_with_canonical(None)
+        result = json.loads(out)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["failure_category"], "configuration_invalid")
+        self.assertFalse(self.opencode_invoked)
+
+    def test_bindings_without_reviewer_role_fail_closed(self):
+        yaml_text = (
+            "hosts:\n"
+            "  opencode:\n"
+            "    worker:\n"
+            "      model: opencode/union-alpha\n"
+        )
+        ret, out = self._run_with_bindings_file(yaml_text)
+        result = json.loads(out)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["failure_category"], "configuration_invalid")
+        self.assertFalse(self.opencode_invoked)
+
+    def test_bindings_with_empty_or_invalid_model_fail_closed(self):
+        for bad in ("", "   ", "muse-spark", "/no-prefix", "a/b/c/"):
+            with self.subTest(bad=bad):
+                yaml_text = (
+                    "hosts:\n"
+                    "  opencode:\n"
+                    "    reviewer:\n"
+                    f"      model: {bad}\n"
+                )
+                ret, out = self._run_with_bindings_file(yaml_text)
+                result = json.loads(out)
+                self.assertEqual(result["status"], "BLOCKED")
+                self.assertEqual(result["failure_category"], "configuration_invalid")
+                self.assertFalse(self.opencode_invoked)
+
+    def test_real_canonical_model_matches_full_provider_id(self):
+        model = ADAPTER_MOD._read_canonical_model()
+        self.assertIsInstance(model, str)
+        self.assertRegex(model, ADAPTER_MOD.MODEL_ID_RE.pattern)
+
+
+class PerCallModelOverrideTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.temp.name) / "repo"
+        self.repo.mkdir()
+        subprocess.run(["git", "-C", str(self.repo), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "config", "user.email", "test@example.invalid"], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "config", "user.name", "Test"], check=True)
+        (self.repo / "review.py").write_text("print('base')\n")
+        subprocess.run(["git", "-C", str(self.repo), "add", "review.py"], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "commit", "-qm", "base"], check=True)
+        self.base = subprocess.run(["git", "-C", str(self.repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+        (self.repo / "review.py").write_text("print('head')\n")
+        subprocess.run(["git", "-C", str(self.repo), "add", "review.py"], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "commit", "-qm", "head"], check=True)
+        self.head = subprocess.run(["git", "-C", str(self.repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+        self.opencode_invoked = False
+        self.captured_cmd = []
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def _run(self, request_overrides=None, advisory=False, payload_status="PASS"):
+        findings_payload = _valid_reviewer_json(payload_status)
+        advisory_payload = {
+            "status": "ADVISORY",
+            "reviewed": ["review.py"],
+            "unreadable": [],
+            "decision_points": [{
+                "id": "DP-1", "recommendation": "A", "rationale": "r",
+                "risks": [], "information_sufficient": True, "info_gaps": [],
+            }],
+            "suggested_decision_points": [],
+            "evidence": ["ok"],
+            "failure_category": None,
+        }
+        payload = advisory_payload if advisory else findings_payload
+        stream = _event_stream(json.dumps(payload))
+        mock_completed = mock.Mock()
+        mock_completed.stdout = stream
+        mock_completed.stderr = ""
+        mock_completed.returncode = 0
+        original_run = subprocess.run
+        self.opencode_invoked = False
+        self.captured_cmd = []
+        with mock.patch("subprocess.run") as mocked:
+            def side_effect(cmd, **kwargs):
+                if cmd[0] == "opencode":
+                    self.opencode_invoked = True
+                    self.captured_cmd = list(cmd)
+                    return mock_completed
+                return original_run(cmd, **kwargs)
+            mocked.side_effect = side_effect
+            req = {
+                "schema": "dd-review-request/1",
+                "role": "strong-reviewer",
+                "host": "opencode",
+                "repo": str(self.repo),
+                "base_sha": self.base,
+                "head_sha": self.head,
+                "scope": ["review.py"],
+            }
+            if advisory:
+                req["mode"] = "advisory"
+                req["decision_points"] = [{"id": "DP-1", "question": "q?", "options": [{"id": "A", "description": "d"}]}]
+            else:
+                req["verification"] = [{"name": "unit", "status": "passed", "evidence": "e"}]
+            if request_overrides:
+                req.update(request_overrides)
+            import io
+            with mock.patch("sys.stdin", io.StringIO(json.dumps(req))), \
+                 mock.patch("sys.stdout", new_callable=io.StringIO) as fake_out, \
+                 mock.patch.object(sys, "argv", ["opencode-review", "review"]):
+                ret = ADAPTER_MOD.main()
+            return ret, fake_out.getvalue()
+
+    def test_finding_override_adds_model_flag_and_identity(self):
+        ret, out = self._run({"model": "opencode/union-alpha"})
+        result = json.loads(out)
+        self.assertEqual(ret, 0)
+        self.assertEqual(result["status"], "PASS")
+        self.assertTrue(self.opencode_invoked)
+        self.assertIn("--model", self.captured_cmd)
+        self.assertEqual(
+            self.captured_cmd[self.captured_cmd.index("--model") + 1],
+            "opencode/union-alpha",
+        )
+        self.assertEqual(result["reviewer"], f"{ADAPTER_MOD.AGENT_NAME}/opencode/union-alpha")
+
+    def test_advisory_override_adds_model_flag_and_identity(self):
+        ret, out = self._run({"model": "opencode/union-alpha"}, advisory=True)
+        result = json.loads(out)
+        self.assertEqual(ret, 0)
+        self.assertEqual(result["status"], "ADVISORY")
+        self.assertIn("--model", self.captured_cmd)
+        self.assertEqual(result["reviewer"], f"{ADAPTER_MOD.AGENT_NAME_ADVISORY}/opencode/union-alpha")
+
+    def test_invalid_override_fails_closed_without_invocation(self):
+        for bad in ("", "muse-spark", "/no-prefix", "a/b/c/", 123):
+            with self.subTest(bad=bad):
+                ret, out = self._run({"model": bad})
+                result = json.loads(out)
+                self.assertEqual(result["status"], "BLOCKED")
+                self.assertEqual(result["failure_category"], "configuration_invalid")
+                self.assertFalse(self.opencode_invoked)
+
+    def test_resume_with_override_fails_closed_without_invocation(self):
+        ret, out = self._run({
+            "model": "opencode/union-alpha",
+            "continuation": {"form": "resume", "handle": "ses_test"},
+        })
+        result = json.loads(out)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["failure_category"], "configuration_invalid")
+        self.assertFalse(self.opencode_invoked)
+
+    def test_no_override_sends_no_model_flag(self):
+        ret, out = self._run()
+        result = json.loads(out)
+        self.assertEqual(ret, 0)
+        self.assertEqual(result["status"], "PASS")
+        self.assertNotIn("--model", self.captured_cmd)
+
+
 if __name__ == "__main__":
     unittest.main()

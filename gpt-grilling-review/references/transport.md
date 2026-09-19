@@ -285,6 +285,12 @@ STATUS: HUMAN_DECISION_REQUIRED
 
 **资格**：由 `review-backends.yaml` 的续接形态、会话标识与 backend-bound 只读取证，以及 `routing-policy.yaml` 的 stateful 候选序列共同决定；**本节不记录当前资格状态**。其调用命令、参数与 `readonly_mode` 的属主是 `review-backends.yaml`，本文件不重述。
 
+**指定模型**：先按 [model-routing.md 的 OpenCode 模型改选](../../dd-workflow-runtime/references/model-routing.md#opencode-模型改选) 核对模型 ID、绑定与授权；不得把默认模型当成不可更换的架构约束，也不得把本次模型选择当作修改共享配置的授权。版本或配置漂移须按本文件「能力探测与失效触发器」重新取证，不能只报告“证据过期”便建议换后端；说明所需取证及授权缺口，已获授权则执行取证，未通过仍 BLOCKED。已有 finding 时优先检查原 reviewer 连续性，换模型不继承关闭权。
+
+**单次覆盖用法**：派发请求的顶层 `model` 即本次 reviewer 模型（完整 ID），只影响本轮；canonical 与默认不动。pin 必须配同模型 proof（`model` 一致），proof 的 `source` 指向该模型的 L6 证据文件。
+
+**无证新模型自动重测（须用户预授权）**：在隔离临时仓库执行，不得接触真实代码：建仓并写保护文件记 sha；以 pin 模型 + reviewer profile 跑一次小范围只读审查并尝试写入/创建；父侧验证 sha 不变、无新增文件、工作树干净、审查方拒绝写入；通过后落盘 `tests/evidence/opencode-cli-l6-evidence.<slug>.yaml`（slug 为模型 ID 的 `/` 换 `-`，含 model、opencode 版本、profile、调用形态与验证结论），proof 引用它。需多轮复审时续接形态同样取证，否则复审 BLOCKED。
+
 **续接**：走 adapter 的 `resume` 调用形态，显式传入 `review_session_handle`（FR-MB-015）。每次续接后按「续接句柄与身份校验」从结构化 `session` 字段提取实际会话标识并比对；不得依赖"最近会话"隐式续接，不得以退出码 0 判定续接成功。
 
 **读取方式（FR-MB-005）**：**不使用 Tunnel，不要求 `work/<相对路径>` repo 名**。给定工作区 cwd 与相对 `scope` 列表，审核方直接 Read / Grep / Glob。因此：
