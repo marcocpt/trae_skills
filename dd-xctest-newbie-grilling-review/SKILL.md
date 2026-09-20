@@ -109,7 +109,7 @@ description: 面向领域新手交互式审核 XCTest 测试用例。解释领�
 7. 找出当前类别最高优先级的一个风险点；若按风险检查清单没有发现有证据支持的风险点，走“无风险分支”。
 8. 判断它属于：现有规则已覆盖（类型 A）；规则未覆盖但值得新增通用规则（类型 B）；规则未覆盖且不适合新增通用规则（类型 C）。
 9. 输出该单一风险点的证据、解释和建议。
-10. 调用 mcp chatgpt-review 发起外部审核（传输契约见「ChatGPT 外部审核」）。`content` 必须包含：风险点、被测源码与测试的文件/符号定位、规则/需求依据、AI 自己的初步判断、修改边界；代码由 ChatGPT 经 Tunnel 自行读取，不粘贴进 content。收到 reviewer 结果后不得机械接受，必须将 reviewer 证据与本地源码重新核对，再将「ChatGPT 意见 + AI 核对结论」一并展示给用户，最终裁决权仍在用户。
+10. 调用 mcp chatgpt-review 发起外部审核（传输契约见「ChatGPT 外部审核」）。`content` 必须包含：风险点、被测源码与测试的文件/符号定位、规则/需求依据、AI 自己的初步判断、修改边界；代码由 ChatGPT 经本机解析的读取插件自行读取（插件名解析见 [gpt-grilling-review/references/transport.md](../gpt-grilling-review/references/transport.md)「本机插件名解析」），不粘贴进 content。收到 reviewer 结果后不得机械接受，必须将 reviewer 证据与本地源码重新核对，再将「ChatGPT 意见 + AI 核对结论」一并展示给用户，最终裁决权仍在用户。
 11. 提问请求用户裁决。
 12. 等待用户裁决。
 13. 执行用户裁决。（若裁决为「立即修复」且修改涉及**被测源码**，执行修复后必须按「修复后强制复审」送审，直到 reviewer 明确满意，才可标记该风险点闭环并继续下一风险点）
@@ -301,7 +301,7 @@ description: 面向领域新手交互式审核 XCTest 测试用例。解释领�
 
 ### 必须发送的内容
 
-`content` 必须包含以下六项业务上下文；**不粘贴代码与 diff**，代码由 ChatGPT 按 [gpt-grilling-review](../gpt-grilling-review/SKILL.md) 传输合同经 Tunnel 自行读取：
+`content` 必须包含以下六项业务上下文；**不粘贴代码与 diff**，代码由 ChatGPT 按 [gpt-grilling-review](../gpt-grilling-review/SKILL.md) 传输合同经本机解析的读取插件自行读取（插件名解析见 `gpt-grilling-review/references/transport.md`「本机插件名解析」）：
 
 1. 风险点：具体测试、位置和问题。
 2. 被测源码定位：被测实现文件路径 + 关键符号/行范围。
@@ -343,7 +343,7 @@ description: 面向领域新手交互式审核 XCTest 测试用例。解释领�
 
 当裁决为「立即修复」且修改涉及**被测源码**（不只测试文件，含映射表、解析逻辑、契约行为等）时，修复完成后**必须**走以下复审闭环，reviewer 明确满意前不得宣称该风险点闭环、不得提交收尾结论：
 
-1. **提交前先送审**：将「修复涉及文件与测试的路径 + 修改范围说明 + 修复依据（规范/需求条款）+ 验证结果（lint / test 输出）」发给 ChatGPT 复审（传输按 [gpt-grilling-review](../gpt-grilling-review/SKILL.md) 的针对性复查合同，复用同一 `conversation_id`；修改后代码与实际 diff 由 ChatGPT 经 Tunnel 自行读取），要求 reviewer 明确回答「满意 / 不满意 + 具体问题清单」。
+1. **提交前先送审**：将「修复涉及文件与测试的路径 + 修改范围说明 + 修复依据（规范/需求条款）+ 验证结果（lint / test 输出）」发给 ChatGPT 复审（传输按 [gpt-grilling-review](../gpt-grilling-review/SKILL.md) 的针对性复查合同，复用同一 `conversation_id`；修改后代码与实际 diff 由 ChatGPT 经本机解析的读取插件自行读取），要求 reviewer 明确回答「满意 / 不满意 + 具体问题清单」。
 2. **逐项核对**：reviewer 引用的每个规范条款、映射值、行号、测试名，一律当场用 Read / Grep / WebSearch 验证，属实则采纳、有误则指出并说明理由，不得机械接受（同「ChatGPT 外部审核」结果处理）。
 3. **迭代直到满意**：reviewer 提出修改意见 → 逐项处置（采纳修复，或不采纳并给出契约/需求依据说明理由）→ 修改后重新送审 → 重复，直到 reviewer 明确回复「满意」。reviewer 的「有条件满意」不算满意：未裁决项必须显式处理（采纳、说明立场、或登记待用户裁决），处理后再送审确认。
 4. **同步检查相关需求等文档**：修复改变领域行为/契约时（新增容错策略、冻结规范勘误、变更映射/默认值、改变错误语义等），**必须同步检查**相关需求（如 `P{n}_01`）、设计（`P{n}_02`）、测试用例表（`P{n}_03`）是否需要更新或在 TODO/LATER 登记（如 `CHARACTERIZATION` / `CONTRACT_NOT_FROZEN` 标记、勘误冻结决策、undefined 字节处置契约），不得让测试冻结未经批准的行为契约。检查结果写入 TODO 文件或报告给用户。

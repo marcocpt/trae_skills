@@ -56,9 +56,9 @@
 
 ## ChatGPT 返回路径换算（强制）
 
-ChatGPT 经 Tunnel 工具按 repo 名（`work/<相对路径>`）读取本地代码，其 finding 中给出的文件位置可能是 Tunnel 内部的绝对路径（如 `/Users/dengdeng/Working/Keyboard/...`）或 repo 内路径。**弱模型本地核对（Read/Grep）前，须把任何绝对路径换算回 `work/<相对路径>` 形式再定位**：
+ChatGPT 经本机解析的读取插件按 repo 名（`work/<相对路径>`）读取本地代码（插件名解析见 [transport.md](transport.md)「本机插件名解析」），其 finding 中给出的文件位置可能是插件内部的绝对路径（如 `/Users/dengdeng/Working/Keyboard/...`）或 repo 内路径。**弱模型本地核对（Read/Grep）前，须把任何绝对路径换算回 `work/<相对路径>` 形式再定位**：
 
-- Tunnel 绝对路径 `/Users/dengdeng/Working/<X>` → `work/<X>`，再按 [transport.md](references/transport.md) 命名表解析到本地真实仓库
+- 插件给出的绝对路径（如 `/Users/dengdeng/Working/<X>`，实际根以机器本地配置 `repo_roots.work` 为准）→ 换算为 `work/<X>`，再按 [transport.md](transport.md) 命名表解析到本地真实仓库
 - 直接使用 repo 内相对路径（如 `src/foo.py`）时，相对的是 `"<repo>"` 根，不得当成工作区根
 
 **禁止拿 ChatGPT 给的绝对路径直接当本地路径读取而不换算**；换算后仍须按 SKILL 步骤 3 逐条本地核对引用属实，不得因"ChatGPT 写了绝对路径"就跳过验证。

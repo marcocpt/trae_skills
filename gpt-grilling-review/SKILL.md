@@ -283,6 +283,6 @@ reviewer 一轮输出先按 [transport.md](references/transport.md) 的「统一
 | "修改 obvious 不用等授权"；"顺手把旁边的问题也修了"；复审发现的新问题不经过分流直接修 | 未经授权不得改任何文件；只改获批事项，不夹带重构；新问题走新分流（新 finding ID + introduced_by） |
 | 修改前不记 baseline；修改/覆盖用户已有变更 | 先记录 HEAD/dirty tree/测试基线/已知失败；禁止覆盖用户已有变更 |
 | 送审不指定受审范围；部分内容未读却宣称范围审核完成 | 输入必须含受审范围，且结果须给出 `reviewed` / `unreadable` 完整覆盖 |
-| 把代码粘贴进 content；复审 content 透露 MCP/浏览器/插件等底层实现细节或绝对路径 | 按 [transport.md](references/transport.md) 对应分节的读取方式执行；content 只写业务视角、禁止绝对路径 |
+| 把代码粘贴进 content；复审 content 透露**本地 agent 侧** MCP/浏览器/插件等底层实现细节或绝对路径 | 按 [transport.md](references/transport.md) 对应分节的读取方式执行；content 只写业务视角、禁止绝对路径。**审核方侧读取插件名 `<插件名>` 必须暴露，不在此列**（见 transport「本机插件名解析」与「禁忌」） |
 | HUMAN_DECISION_REQUIRED 不给技术分析和可选方案，只写"请人工确认"；未经人工定方案就由弱模型直接修掉 | 逐条裁决前必须先给技术分析 + 可选方案（A/B/C），裁决后按获批方案实现 |
 | 复查模板缺授权范围/裁决记录/baseline | 针对性复查必须提供完整上下文，否则"未授权"无法判断 |
