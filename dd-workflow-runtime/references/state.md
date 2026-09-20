@@ -39,6 +39,13 @@
   "schema_version": 1,
   "workflow_type": "<bug-fix|feature-development|project-bootstrap>",
   "status": "active",
+  "owner": {
+    "name": "<人类负责人/裁决者；缺省取 git config user.name>",
+    "email": "<缺省取 git config user.email>",
+    "role": "owner",
+    "delegated_to": "<本轮执行者：owner 自执填 owner；委托本地 agent 填 local-agent>",
+    "evidence": "<身份来源：git config / handoff 文本 / remote 属主>"
+  },
   "worktree_path": "/absolute/path/to/worktree",
   "base_branch": "main",
   "<BRANCH_FIELD>": "<当前分支名>",
@@ -52,6 +59,9 @@
 `<BRANCH_FIELD>` 对 bug-fix / feature-development 分别为 `fix_branch` / `feature_branch`；project-bootstrap 不要求分支专用字段，使用 `worktree_path` 和 `base_branch` 即可。
 
 `status` 使用 `active`、`handoff-ready`、`completed` 或 `paused`。已有调用方未写入 `schema_version` 或 `status` 时，恢复逻辑按 schema 0 / active 兼容读取，不得直接判为损坏。
+
+`owner` 记录**人类负责人（裁决者）身份**：状态里大量出现「owner 裁决」这类角色标签，但角色不等于人；不记名字时每个新会话都要从 handoff 文本、git 作者或 remote 属主反推，而同一台机器上的并行会话常共用同一 git 身份——容易把「并行提交者」误判成另一个人。
+`name` / `email` 缺省取 `git config user.name` / `git config user.email`；`delegated_to` 记录**本轮执行权**归属：owner 明确把决策与实施交给本地 agent 时填 `local-agent`，并在 `evidence` 留一句授权原话或来源（例如「用户：你就是 owner，你直接做」）。字段缺失时按「owner 自执」兼容读取，不得判为损坏。
 
 ### feature-development 特有字段
 
@@ -146,6 +156,7 @@ Bootstrap 没有状态文件时，先从仓库中的 `docs.md`、Roadmap、Archi
 - **更新 `smoke_ci_phases`**（仅 feature-development）：每触发一次远程 UI Smoke CI，追加当前 phase 编号到此数组
 - **更新 `final_candidate_branch`**（仅 feature-development）：创建最终合并候选分支时记录
 - **更新候选 exact-SHA 字段**（仅 feature-development）：冻结候选时写 `candidate_sha`、`candidate_review`、`full_spec_gap`；完整远程 CI 终态（`success|failure|cancelled|timed_out|…`）后即写 `full_ci_run={run_id,url,head_sha,conclusion}`（无论成功失败），`PASS` 仅当 `conclusion==success && head_sha==candidate_sha`，`null` 表示未有终态
+- **更新 `owner.delegated_to`**：owner 明确把决策/实施权委托给本地 agent 时写 `local-agent`（授权原话记入 `owner.evidence`），收回时写回 `owner`；状态缺失时按「owner 自执」读取
 - **更新 `in_progress`**：merge/push/cleanup 等不可瞬时动作执行前写 `in_progress: {operation, target, source, started_at}`（见 runtime-contract §4），动作成功后写完成证据再清除；**不另设布尔兼容字段**
 - **删除**（按 `WORKFLOW_TYPE` 分支）：**bug-fix** 在 `git merge --no-ff` 成功后、清理前可删除（**禁止 merge 前删除**）；**feature-development** 在 merge 后仍须保留状态直到 Closure 完成——写 Completion Receipt、cleanup 执行并验证后才删除/归档活动状态，**禁止在 Closure 校验与 Receipt 写入前删除**（delivery-and-closure 的 Closure 流程为准）
 - **Bootstrap 写入**：Preflight 结束后写入；每个节点 Gate 通过后更新 `current_node`、`completed_nodes`、`artifacts` 和 gaps
@@ -159,6 +170,13 @@ git_dir=$(git rev-parse --git-dir)
 cat > "$git_dir/${WORKFLOW_TYPE}-state.json" <<EOF
 {
   "workflow_type": "${WORKFLOW_TYPE}",
+  "owner": {
+    "name": "$(git config user.name)",
+    "email": "$(git config user.email)",
+    "role": "owner",
+    "delegated_to": "owner",
+    "evidence": "git config"
+  },
   "worktree_path": "$(pwd)",
   "base_branch": "$BASE_BRANCH",
   "${BRANCH_FIELD}": "$(git rev-parse --abbrev-ref HEAD)",

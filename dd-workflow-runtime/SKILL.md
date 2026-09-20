@@ -71,7 +71,7 @@ Stage 创建或消费规范文档、人审视图、弱模型执行包或验证�
 
 ## 状态与恢复
 
-状态必须包含 `schema_version`、`workflow_id`、`workflow_type`、`status`、`host`、路径、当前 Stage、已完成 Stage、产物、决策和 gaps。
+状态必须包含 `schema_version`、`workflow_id`、`workflow_type`、`status`、`host`、`owner`（人类负责人身份与执行权委托，见 [state](references/state.md)）、路径、当前 Stage、已完成 Stage、产物、决策和 gaps。
 
 每个 Stage Gate 通过后立即原子写入。恢复时验证：
 
