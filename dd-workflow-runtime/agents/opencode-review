@@ -25,6 +25,11 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 BACKEND_ID = "opencode-cli"
+# FR-MB-004 amendment (2026-09-23): opencode-cli is waived from mechanical
+# read-only, so an accepted round carries the canonical non-readonly marker
+# the Router also injects.  A direct adapter invocation (RV-004) would
+# otherwise drop the anchor downstream uses to refuse CLOSED.
+READONLY_WAIVER_MARKER = f"not-required:{BACKEND_ID}:readonly-waived-by-decision"
 REQUEST_SCHEMA = "dd-review-request/1"
 RESULT_SCHEMA = "dd-review-result/1"
 ADVISORY_RESULT_SCHEMA = "dd-advisory-result/1"
@@ -77,6 +82,18 @@ def _canonical_reviewer_identity(agent_name: str) -> tuple[str, str | None]:
     if not isinstance(model, str) or not MODEL_ID_RE.fullmatch(model):
         return f"{agent_name}/unknown", f"invalid canonical model id {model!r}"
     return f"{agent_name}/{model}", None
+
+
+def _readonly_confirmation(status: str, accepted_statuses: tuple) -> Dict[str, Any]:
+    """Result-side readonly confirmation for this waived backend.
+
+    The adapter never claims readonly authority.  An accepted round carries the
+    canonical non-readonly marker so a direct invocation keeps the same anchor
+    the Router injects; a non-accepted (BLOCKED) round has no waiver to record.
+    """
+    if status in accepted_statuses:
+        return {"confirmed": False, "evidence": READONLY_WAIVER_MARKER}
+    return {"confirmed": False, "evidence": None}
 
 
 def _blocked_result(request: Dict[str, Any], category: str, detail: str) -> Dict[str, Any]:
@@ -409,17 +426,23 @@ def _frozen_baseline_failure(request: Dict[str, Any]) -> tuple[str, str] | None:
     """
     repo = Path(request["repo"])
     try:
-        head = subprocess.run(
+        head_run = subprocess.run(
             ["git", "-C", str(repo), "rev-parse", "HEAD"],
             capture_output=True, text=True, timeout=10,
-        ).stdout.strip()
-        if head != request["head_sha"]:
+        )
+        if head_run.returncode != 0:
+            return "evidence_mismatch", f"git rev-parse failed: {head_run.stderr.strip()[:200]}"
+        if head_run.stdout.strip() != request["head_sha"]:
             return "baseline_mismatch", "HEAD differs from head_sha"
-        dirty = subprocess.run(
+        status_run = subprocess.run(
             ["git", "-C", str(repo), "status", "--porcelain=v1", "--untracked-files=all"],
             capture_output=True, text=True, timeout=10,
-        ).stdout.strip()
-        if dirty:
+        )
+        # An unreadable/失败 status call must not be mistaken for "clean": a
+        # non-zero exit with empty stdout would otherwise fail open.
+        if status_run.returncode != 0:
+            return "evidence_mismatch", f"git status failed: {status_run.stderr.strip()[:200]}"
+        if status_run.stdout.strip():
             return "baseline_mismatch", "worktree dirty"
     except Exception as exc:
         return "evidence_mismatch", f"git check failed: {exc}"
@@ -625,7 +648,7 @@ def main() -> int:
             ],
             "evidence": list(obj["evidence"]),
             "failure_category": obj.get("failure_category") if status == "BLOCKED" else None,
-            "readonly_confirmation": {"confirmed": False, "evidence": None},
+            "readonly_confirmation": _readonly_confirmation(status, ("ADVISORY",)),
             "lifecycle": {"started": True, "completed": status == "ADVISORY"},
         }
         if session is not None:
@@ -654,7 +677,7 @@ def main() -> int:
         "findings": findings,
         "evidence": list(obj["evidence"]),
         "failure_category": obj.get("failure_category") if status == "BLOCKED" else None,
-        "readonly_confirmation": {"confirmed": False, "evidence": None},
+        "readonly_confirmation": _readonly_confirmation(status, ("PASS", "FINDINGS")),
         "lifecycle": {"started": True, "completed": status in ("PASS", "FINDINGS")},
     }
     if session is not None:

@@ -355,6 +355,64 @@ class AdapterIntegrationTests(unittest.TestCase):
         self.assertEqual(result["failure_category"], "baseline_mismatch")
 
 
+    def test_accepted_finding_round_carries_waiver_marker(self):
+        # FR-MB-004 amendment: a direct adapter invocation (RV-004) must keep
+        # the canonical non-readonly marker the Router would inject, otherwise
+        # the downstream "never CLOSED from a waived backend" anchor is lost.
+        stream = _event_stream(json.dumps(_valid_reviewer_json("FINDINGS")))
+        ret, out = self._run_adapter_with_fake_opencode(stream)
+        result = json.loads(out)
+        self.assertEqual(result["status"], "FINDINGS")
+        self.assertFalse(result["readonly_confirmation"]["confirmed"])
+        self.assertEqual(result["readonly_confirmation"]["evidence"], ADAPTER_MOD.READONLY_WAIVER_MARKER)
+
+    def test_accepted_pass_round_carries_waiver_marker(self):
+        stream = _event_stream(json.dumps(_valid_reviewer_json("PASS")))
+        ret, out = self._run_adapter_with_fake_opencode(stream)
+        result = json.loads(out)
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["readonly_confirmation"]["evidence"], ADAPTER_MOD.READONLY_WAIVER_MARKER)
+
+    def test_blocked_round_does_not_carry_waiver_marker(self):
+        # A blocked round was never accepted, so it records no waiver.
+        stream = _event_stream('```json\n{"status":"PASS"}\n```')
+        ret, out = self._run_adapter_with_fake_opencode(stream)
+        result = json.loads(out)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIsNone(result["readonly_confirmation"]["evidence"])
+
+    def test_baseline_check_execution_failure_fails_closed(self):
+        # A failing `git status` (non-zero exit, empty stdout) must not be read
+        # as "clean" (fail-open); it becomes evidence_mismatch BLOCKED.
+        import io
+
+        req = json.dumps(self.request())
+        real_run = subprocess.run
+
+        def side_effect(cmd, **kwargs):
+            if cmd[0] == "opencode":
+                raise AssertionError("opencode must not be invoked when the baseline check fails")
+            if cmd[0] == "git" and cmd[3] == "status":
+                failed = mock.Mock()
+                failed.stdout = ""
+                failed.stderr = "fatal: unable to read repository"
+                failed.returncode = 128
+                return failed
+            return real_run(cmd, **kwargs)
+
+        with mock.patch("subprocess.run") as mocked:
+            mocked.side_effect = side_effect
+            with mock.patch("sys.stdin", io.StringIO(req)):
+                with mock.patch("sys.stdout", new_callable=io.StringIO) as fake_out:
+                    with mock.patch.object(sys, "argv", ["opencode-review", "review"]):
+                        ret = ADAPTER_MOD.main()
+                        out = fake_out.getvalue()
+        self.assertEqual(ret, 0)
+        result = json.loads(out)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["failure_category"], "evidence_mismatch")
+
+
 class ExtractSessionIdTests(unittest.TestCase):
     def test_extracts_first_session_id(self):
         stream = (
@@ -606,6 +664,13 @@ class AdvisoryModeTests(unittest.TestCase):
         self.assertEqual(obj["status"], "ADVISORY")
         self.assertEqual(obj["decision_points"][0]["id"], "DP-1")
         self.assertNotIn("findings", obj)
+
+    def test_accepted_advisory_round_carries_waiver_marker(self):
+        stream = _event_stream(json.dumps(self.advisory_payload()))
+        ret, out = self._run(stream)
+        obj = json.loads(out)
+        self.assertEqual(obj["status"], "ADVISORY")
+        self.assertEqual(obj["readonly_confirmation"]["evidence"], ADAPTER_MOD.READONLY_WAIVER_MARKER)
 
     def test_advisory_round_rejects_finding_shape(self):
         finding_payload = {
