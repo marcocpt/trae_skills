@@ -50,7 +50,7 @@ python3 "$RUNTIME_SKILL_ROOT/agents/check-review-route.py" \
 
 - 确定性验证通过后才可发起独立强审（FR-007）；
 - 实现执行者是唯一写入者；强审者只读（FR-008）；
-- Reviewer 的只读边界无法被当前执行环境强制时，该 `native-agent` 能力检查视为失败；禁止派生后以提示词自律代替隔离，必须转已授权的强审路径或 `BLOCKED`；
+- Reviewer 的只读边界无法被当前执行环境强制时，该 `native-agent` 能力检查视为失败；禁止派生后以提示词自律代替隔离，必须转已授权的强审路径或 `BLOCKED`。**唯一例外**（FR-MB-004 修订，2026-09-23）：registry 中以 `readonly_mode: none` + `readonly_exception` 决策记录显式豁免的非只读后端（当前仅 external `opencode-cli`），其轮次可用于 finding 发现与复审参考，但不得作为 finding CLOSED 依据，恢复条件见 `docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md`；
 - 强审绑定冻结基线，基线变化即结论失效，须重验重审（FR-009）；
 - Reviewer 只返回三态 PASS / FINDINGS / BLOCKED，并说明已审与未读范围（FR-010）；"等待授权"由主调度者的编排状态承载，不是 Reviewer 返回值；
 - 返工上限默认 2 轮（`max_rework_cycles`），超限停止并报告阻塞（FR-012）；
@@ -64,7 +64,7 @@ python3 "$RUNTIME_SKILL_ROOT/agents/check-review-route.py" \
 | 宿主 | 原生角色绑定 | 日常路径 | 外部强审 |
 |---|---|---|---|
 | Codex | 支持（独立模型、推理强度、只读 Agent）；`config_file` 必须直连 canonical 普通文件 | 已证明 read-only 父：原生 reviewer；其他父模式：派生前守卫禁止直接 Reviewer Gate，改用单独 read-only 父、已授权 external 或 BLOCKED | chatgpt-review MCP |
-| OpenCode | 支持（agent 配置 + 权限白名单）；worker=主 session、reviewer=subagent，具体模型由 `model-bindings.yaml` 声明；同模型独立审查的隔离靠角色、只读权限与冻结基线，非模型能力差异 | 原生 | chatgpt-review MCP |
+| OpenCode | 支持（agent 配置 + 权限白名单）；worker=主 session、reviewer=subagent，具体模型由 `model-bindings.yaml` 声明；同模型独立审查的隔离靠角色、只读权限与冻结基线，非模型能力差异。**注（2026-09-23）**：OpenCode Zen 免费档拒绝一切能力受限 agent；`opencode-native` 只读路径因此在该套餐下不可用，external `opencode-cli` 已按 FR-MB-004 修订降级为非只读（不得 CLOSED） | 原生 | chatgpt-review MCP |
 | Qoder | 支持（frontmatter model/effort、worktree 隔离） | 原生 | chatgpt-review MCP |
 | ZCode | 支持（Beta；subagent 不能继续派生）；已绑套餐内最强 GLM-5.3 + 强制 high 思考档（主会话同为 5.3 时为同模型独立审查，单供应商上限） | 主 Agent 编排原生角色（高风险走 external） | chatgpt-review MCP |
 | CodeBuddy（CLI 能力域） | 支持（插件 agent yaml） | 原生 | chatgpt-review MCP |
@@ -86,7 +86,7 @@ python3 "$RUNTIME_SKILL_ROOT/agents/check-review-route.py" \
 
 - 派发请求可在顶层带可选 `model`（完整 `provider/model` ID，如 `opencode/union-alpha`），仅本次生效；canonical 文件不动，下次恢复默认。
 - Router 只做形态校验；pin 只透传给 registry 声明 `per_call_model: true` 的后端（当前仅 `opencode-cli`，以 `--model` 调用，profile 的 mode 与只读权限不变），不支持的后端遇到 pin 直接 fail-closed，不静默忽略。
-- pin 必须配同模型的 L6 取证：proof 的 `model` 须与 pin 一致，否则 `readonly_violation`。无证新模型按用户预授权自动重测（流程见 transport），测不过仍 BLOCKED。
+- pin 必须配同模型的 L6 取证：proof 的 `model` 须与 pin 一致，否则 `readonly_violation`；`readonly_mode: none` 的豁免后端除外（FR-MB-004 修订，2026-09-23：其 dispatch 不校验只读 proof，但轮次不得作为 CLOSED 依据）。无证新模型按用户预授权自动重测（流程见 transport），测不过仍 BLOCKED。
 - pin 只允许 initial；resume 带 pin 直接拒绝——换模型即换 reviewer，不继承原会话关闭权。
 - worker 说明：外部调用时 worker 即当前执行会话，Skill 不能切换它的模型；“两角色一起换”指 canonical 默认保持同模型、不产生持久的 reviewer 单侧漂移，单轮 pin 只固定 reviewer 并如实记录身份。
 

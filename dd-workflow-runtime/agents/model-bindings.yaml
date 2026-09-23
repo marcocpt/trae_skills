@@ -64,14 +64,19 @@ hosts:
       model: opencode/muse-spark-1.3-contributor-free     # same-model independent review（与 worker 同模型，非更强模型）
       permission_default_deny: true
       readonly_allows: [read, glob, grep, list]
-      # external opencode-cli backend 的 invocation profile（primary-mode，同模型同权限，
-      # 非新模型角色）；validate-bindings.py 机械校验其与 registry --agent 目标一致
+      # ^ 原生 subagent profile 的只读合同保持不变；opencode-native 后端仍声明
+      #   readonly_required: true。免费档下该路径会 403（见 status 注记），
+      #   在 provider/套餐变化前不可实际使用（LATER-20260923）。
+      # external opencode-cli backend 的 invocation profile（primary-mode，同模型；
+      # FR-MB-004 修订 2026-09-23：机械只读块已按用户裁决豁免，见 registry
+      # readonly_required: false + readonly_mode: none + readonly_exception 决策记录；
+      # validate-bindings.py 机械校验 profile 与该声明一致）
       cli_agent_file: opencode/strong-reviewer-cli.md
       # advisory 轮（决策建议，LATER-20260907）专用 profile：单模式契约，规避
       # muse-spark 双模合同遵循失败（决策建议被包装成 finding 的实测）
       advisory_cli_agent_file: opencode/strong-reviewer-advisory-cli.md
     install: "~/.config/opencode/agents/"
-    status: installed-discovered      # L3 已过；2026-09-19 由 muse-spark-1.2-contributor-free 改绑 muse-spark-1.3-contributor-free（保持绑定为较新档位）；改绑不解决 403 FreeTierError——真因是带权限限制的 agent 被免费档拒绝，与模型档位无关；改绑后 L6 由 opencode-cli backend 重新取证
+    status: installed-discovered      # L3 已过；2026-09-19 由 muse-spark-1.2-contributor-free 改绑 muse-spark-1.3-contributor-free（保持绑定为较新档位）；2026-09-23 实测：OpenCode Zen 免费档对任何带 permission/tools 限制的 agent 返回 403 FreeTierError（真因是免费档策略，与模型档位无关；1.18.32 已是最新版），用户裁决 opencode-cli 改为非只读强审（readonly_mode: none，结果不得作为 CLOSED 依据）；原生 strong-reviewer 路径维持只读合同但在免费档下不可用（LATER-20260923）
 
   codebuddy:
     reviewer:

@@ -20,13 +20,19 @@ roles:
 # advisory_result_schema.  Members must satisfy the FR-MB-001 qualification
 # contract: a runtime-owned structured session identity (FR-MB-016), an
 # adapter-provided continuation form (FR-MB-015), and a backend-bound readonly
-# proof covering that exact invocation form (FR-MB-001.3 / FR-MB-004.3).
+# proof covering that exact invocation form (FR-MB-001.3 / FR-MB-004.3) --
+# unless the backend is a decision-recorded non-readonly waiver
+# (readonly_mode: none; FR-MB-004 amendment, 2026-09-23), in which case its
+# rounds may never back a finding CLOSED (gpt-grilling-review transport).
 #
-# opencode-cli qualifies (2026-09-03): declares resume + session_identity and
-# its continuation-form readonly evidence is captured.  chatgpt-tunnel stays
-# out: it is transport-owned per DEC-MB-04 (its session contract lives in
-# gpt-grilling-review/references/transport.md and is deliberately not
-# registered here — not a pending decision).
+# opencode-cli qualifies (2026-09-03; readonly waived 2026-09-23): declares
+# resume + session_identity.  Its continuation-form readonly evidence is
+# historical since the OpenCode Zen free tier rejects capability-restricted
+# agents (403); the waiver is recorded in review-backends.yaml
+# (readonly_required: false / readonly_mode: none / readonly_exception).
+# chatgpt-tunnel stays out: it is transport-owned per DEC-MB-04 (its session
+# contract lives in gpt-grilling-review/references/transport.md and is
+# deliberately not registered here — not a pending decision).
 # codex-cli qualifies (2026-09-07, supersedes the 2026-09-03 fail-closed user
 # decision after the user ordered the forensic run): the adapter now maps
 # resume onto `codex exec resume <thread_id> --json`, reports the engine-minted

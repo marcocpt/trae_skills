@@ -117,7 +117,7 @@ recovery_evidence: []
 - 审查按 [dd-workflow-runtime/review-gate](../dd-workflow-runtime/references/review-gate.md) 的 A/B/C 语义自检；命中高风险触发器时追加对应检查并按审查等级参数升级；检查范围和 CI 证据成本随之调整，但不删除验收条件或确定性验证；
 - 升级到独立强审时，执行路径、角色合同与宿主能力按 [dd-workflow-runtime/model-routing](references/model-routing.md) 路由。
 - Codex 解析到 `native-agent` 前，必须先通过 fail-closed 检查：从本 Skill 实际根目录运行 `agents/check-review-route.py`；provenance 与父 sandbox 判定细则见 [dd-workflow-runtime/model-routing](references/model-routing.md)。
-- Generic Review Backend Router v1 经 `agents/dispatch-review.py` 按 `agents/review-backends.yaml` + `agents/routing-policy.yaml` 单跳派发；派发前必须有冻结 baseline、确定性验证和外部授权/只读证据。`max_hops=1` 禁止 backend 再次路由，不直接选择 `codex-native`；MCP 是单次 review access mechanism，不是 workflow orchestrator，adapter 不得写工作树、提交、修复或关闭 finding。细则见 [dd-workflow-runtime/model-routing](references/model-routing.md)。
+- Generic Review Backend Router v1 经 `agents/dispatch-review.py` 按 `agents/review-backends.yaml` + `agents/routing-policy.yaml` 单跳派发；派发前必须有冻结 baseline、确定性验证和外部授权/只读证据（`readonly_mode: none` 的裁决豁免后端不要求只读证据，但其轮次不得作为 CLOSED 依据，FR-MB-004 修订 2026-09-23）。`max_hops=1` 禁止 backend 再次路由，不直接选择 `codex-native`；MCP 是单次 review access mechanism，不是 workflow orchestrator，adapter 不得写工作树、提交、修复或关闭 finding。细则见 [dd-workflow-runtime/model-routing](references/model-routing.md)。
 
 ## Workflow Gate 与 Delivery Gate
 

@@ -1,0 +1,97 @@
+# FR-MB-004 修订证据：opencode-cli 非只读豁免（2026-09-23 用户裁决）
+#
+# 本文件记录"为什么豁免"的可复现实测矩阵，以及豁免落地后的机械校验点。
+# 豁免本体声明在 review-backends.yaml（readonly_required: false +
+# readonly_mode: none + readonly_exception），决策记录见
+# docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md。
+decision: docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md
+backend: opencode-cli
+captured_at: 2026-09-23T09:00:00Z
+opencode_version: 1.18.32          # 检查时 npm latest 同为 1.18.32，无可用升级修复
+canonical_model: opencode/muse-spark-1.3-contributor-free
+provider: OpenCode Zen（免费档）
+probe_environment:
+  isolation: 临时 git 仓库 /tmp/dd-opencode-probe-*（不接触真实仓库）
+  readonly_profile: dd-workflow-runtime/agents/opencode/strong-reviewer-cli.md
+  method: "opencode run --agent <profile> --format json"
+
+# 触发因素隔离矩阵（每行只变一个变量，其余相同）
+matrix:
+  - case: "默认 agent（无能力限制）+ 免费档模型"
+    result: pass
+    note: 正常返回文本
+  - case: "只读 profile（permission 默认拒绝 + read/glob/grep/list 放行）+ 免费档模型"
+    result: http_403
+    error: "FreeTierError: OpenCode's free tier can only be used from within OpenCode"
+  - case: "tools: {write/edit/bash/patch: false} 替代 permission 块 + 免费档模型"
+    result: http_403
+    note: 门槛识别"能力受限"本身，与限制语法无关
+  - case: "项目 config 层 permission（edit/write/bash deny）+ 默认 build agent"
+    result: http_403
+    note: 与限制来源（agent 级 vs config 级）无关
+  - case: "显式 permission: {\"*\": allow} 的 agent + 免费档模型"
+    result: pass
+    note: 只要不限制即可通过
+  - case: "只读 profile + 付费档模型 opencode/muse-spark-1.3"
+    result: http_402
+    error: "Insufficient account funds"
+  - case: "只读 profile + deepseek/deepseek-v4-pro（对照：非 Zen Provider）"
+    result: pass
+    note: 证明门槛是 Zen 免费档策略，非 agent/CLI 机制故障；该路径保留为将来替代方案
+
+# 端到端验证（豁免落地前的形态验证，非关闭级审查）
+end_to_end:
+  - form: "adapter initial（opencode-review，readonly profile，无 per-call pin）"
+    result: BLOCKED / backend_execution_failed
+    error: "opencode exit 1（即上述 403）"
+  - form: "adapter initial + per-call pin deepseek/deepseek-v4-pro"
+    result: FINDINGS（正确命中 fixture 的静默除零 bug）
+    duration: 71s
+    note: pin 只支持单轮；contract 规定 resume 不得 pin，故 canonical 模型固定时多轮闭环会断
+  - form: "resume 形态（--session <handle>，不 pin，canonical 免费档模型）"
+    result: BLOCKED
+    error: "opencode exit 1（403）"
+    note: 多轮续接按原合同不可用——这是本次豁免要解决的直接阻塞
+  - form: "受限 profile + deepseek 模型 initial → resume（对照）"
+    result: pass
+    note: 同 session 续接成功，证明会话机制本身完好
+
+# 只读性核对（豁免前的对照：受限 profile 在 deepseek 路径下确实不能写入）
+readonly_observation:
+  protected_file_unchanged: true
+  worktree_clean_after_round: true
+  head_sha_unchanged: true
+  new_files: []
+
+# 豁免落地后的机械校验点（跨产物一致性，validate-bindings.py / dispatch-review.py 强制）
+mechanical_checks:
+  - "registry: readonly_mode=none ⇔ readonly_required=false，且必须携带非空 readonly_exception"
+  - "registry: mode=none 的后端结果只携带 not-required:<backend>:readonly-waived-by-decision，不得出现 router-validated 只读确认"
+  - "stateful 候选序：readonly_required=false 的成员免续接只读取证；其余成员仍强制"
+  - "bindings: profile 权限块与 registry readonly_required 声明一致（豁免形态下不得再含权限限制块）"
+  - "关闭层：豁免后端结果不得作为 finding CLOSED 依据（gpt-grilling-review transport 文本条款）"
+
+# 豁免落地后的端到端复验（2026-09-23，canonical 免费档模型，无 per-call pin）
+post_waiver_e2e:
+  - form: "adapter initial（opencode-review，canonical muse-spark-1.3-contributor-free）"
+    result: FINDINGS
+    duration: 16s
+    note: 正确命中 fixture 静默除零 bug；reviewed 完整覆盖 scope
+  - form: "adapter initial（continuation=initial）→ resume（复核轮）"
+    result: FINDINGS / FINDINGS
+    session: "initial 与 resume 返回同一 sessionID（ses_f3252de01ffeH7ELUW4VZ0p00c），baseline 无漂移，RV-001 保留"
+    note: 续接形态已不再 403（相比豁免前的 BLOCKED）
+  - form: "Router 级 dispatch（真实 registry，mode=advisory，stateful 候选）"
+    result: ADVISORY
+    backend: opencode-cli
+    readonly_confirmation: "not-required:opencode-cli:readonly-waived-by-decision"
+    duration: 10s
+    note: 非只读标记按设计出现在规范结果中，routing.selected_backend=opencode-cli
+
+superseded_evidence:
+  - dd-workflow-runtime/tests/evidence/opencode-cli-l6-evidence.yaml
+  - dd-workflow-runtime/tests/evidence/opencode-resume-readonly-evidence.yaml
+  - dd-workflow-runtime/tests/evidence/opencode-advisory-readonly-evidence.yaml
+superseded_note: >-
+  上述三份只读取证为修订前合同的历史事实（opencode 1.18.25/1.18.29），在豁免存续
+  期间不构成当前合同证据；恢复只读时须按 FR-MB-012 重新取证，不得改写旧证据的版本号。

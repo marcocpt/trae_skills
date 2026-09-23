@@ -217,14 +217,66 @@ def _opencode_cli_command(path: Path) -> list[str] | None:
     return cmd
 
 
+def _opencode_cli_readonly_required(path: Path) -> bool | None:
+    """从 review-backends.yaml 提取 opencode-cli 的 readonly_required。
+
+    该字段是 opencode-cli 只读合同的单一事实源；profile 内容必须与其一致，
+    不在 bindings 侧另建第二份声明（FR-MB-004 修订，2026-09-23）。
+    """
+    current: str | None = None
+    for raw in path.read_text().splitlines():
+        stripped = raw.strip()
+        if re.fullmatch(r"[a-zA-Z][\w-]*:", stripped) and not raw.startswith(" "):
+            current = None
+            continue
+        match = re.match(r"^  ([\w-]+):", raw)
+        if match:
+            current = match.group(1)
+            continue
+        if current == "opencode-cli":
+            m = re.match(r"^\s*readonly_required:\s*(true|false)\s*(#.*)?$", raw, re.I)
+            if m:
+                return m.group(1).lower() == "true"
+    return None
+
+
+def _check_cli_profile_readonly(
+    fm: str,
+    label: str,
+    readonly_required: bool | None,
+    errors: list[str],
+) -> None:
+    """profile 的只读块必须与 registry 声明一致（跨产物一致性校验）。
+
+    - readonly_required=true：必须有默认拒绝与精确只读放行（原合同不变）；
+    - readonly_required=false（经裁决豁免）：不得再含默认拒绝块——否则免费档
+      会以 403 拒绝该 agent，且与 registry 声明漂移（FR-MB-004 修订，2026-09-23）。
+    """
+    has_deny = re.search(r'^\s*"\*":\s*deny\s*$', fm, re.M) is not None
+    allows = sorted(m.group(1) for m in re.finditer(r"^\s*([\w*-]+):\s*allow\s*$", fm, re.M))
+    if readonly_required is True:
+        if not has_deny:
+            errors.append(f'{label}: 缺默认拒绝 "*" deny')
+        if allows != sorted(OPENCODE_READONLY_ALLOWS):
+            errors.append(
+                f"{label}: 只读放行必须精确为 {sorted(OPENCODE_READONLY_ALLOWS)}，实际 {allows}"
+            )
+    elif readonly_required is False:
+        if has_deny or allows:
+            errors.append(
+                f"{label}: registry 声明 readonly_required=false（经裁决豁免），profile 不得再含权限限制块"
+            )
+
+
 def check_opencode_cli_agent(bindings: dict) -> list[str]:
     """OBS-OPENCODE-L6-001 回归守卫：registry 指向的 agent 必须可被 primary 执行。
 
     支持两种 registry 形态：
     - 旧：executable opencode + command 含 --agent X（直接 CLI）
     - 新：executable opencode-review + command [review]（thin adapter，内部固定 AGENT_NAME）
-    两种形态均校验最终 effective agent 为 primary、与 canonical reviewer 同模型、
-    精确只读放行，并保护原生 subagent 不被改成 primary。
+    两种形态均校验最终 effective agent 为 primary、与 canonical reviewer 同模型，
+    profile 权限块与 registry 的 readonly_required 声明一致（FR-MB-004 修订后可为
+    裁决豁免的非只读形态），并保护原生 subagent 不被改成 primary。
     """
     errors: list[str] = []
     oc = bindings.get("opencode")
@@ -302,13 +354,19 @@ def check_opencode_cli_agent(bindings: dict) -> list[str]:
     model = re.search(rf"^model:\s*{re.escape(str(expected_model))}\s*(#.*)?$", fm, re.M)
     if not model:
         errors.append(f"opencode/{target}: model 必须与 canonical reviewer 一致：{expected_model!r}")
-    if not re.search(r'^\s*"\*":\s*deny\s*$', fm, re.M):
-        errors.append(f'opencode/{target}: 缺默认拒绝 "*" deny')
-    allows = sorted(m.group(1) for m in re.finditer(r"^\s*([\w*-]+):\s*allow\s*$", fm, re.M))
-    if allows != sorted(OPENCODE_READONLY_ALLOWS):
-        errors.append(
-            f"opencode/{target}: 只读放行必须精确为 {sorted(OPENCODE_READONLY_ALLOWS)}，实际 {allows}"
-        )
+    readonly_required = _opencode_cli_readonly_required(OPENCODE_REGISTRY)
+    if readonly_required is None:
+        errors.append("registry/opencode-cli: 无法解析 readonly_required")
+    _check_cli_profile_readonly(fm, f"opencode/{target}", readonly_required, errors)
+    if advisory_target is not None:
+        advisory_path = AGENTS_DIR / "opencode" / f"{advisory_target}.md"
+        if advisory_path.is_file():
+            _check_cli_profile_readonly(
+                advisory_path.read_text().split("---")[1],
+                f"opencode/{advisory_target}",
+                readonly_required,
+                errors,
+            )
     return errors
 
 

@@ -51,6 +51,7 @@
 - L7 invoked-schema: pass（真实审查调用返回 PASS 结论，含已审/未读范围、基线核对）
 - 结论：**七级全链贯通（L5 为结构性 N/A），OpenCode 原生强审路径可用**
 - 2026-08-26 换绑注记：canonical 模型已从 `deepseek/deepseek-reasoner` 改为 `opencode/x-preview-f-free`，同日再改为 `opencode/muse-spark-1.2-contributor-free`（Muse Spark 1.2 Free；worker 与 reviewer same-model independent review，见 model-bindings.yaml）。上方 L4-L7 pass 为旧模型下的历史事实，保留不改；新模型下原生路径的 L4/L6/L7 需重新取证后方可引用。
+- 2026-09-23 豁免注记：OpenCode Zen 免费档对一切带能力限制的 agent 返回 403 FreeTierError（实测矩阵 `tests/evidence/opencode-nonreadonly-decision-20260923.yaml`），**原生只读路径在该套餐下不可用**（上方 L6 为 deepseek 时代的旧证据，已不可复现）；external `opencode-cli` 经用户裁决降级为非只读（FR-MB-004 修订，不得 CLOSED），恢复条件见 `docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md`。本段为状态注记，不修改上方历史记录。
 
 ## Qoder（agents/qoder/strong-reviewer.md，canonical only）
 

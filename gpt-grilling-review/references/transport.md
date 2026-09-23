@@ -22,7 +22,7 @@
 - **存在于 registry 不等于可用于 grilling**。可选后端必须同时满足三项能力条件：
   1. 有状态续接能力（adapter 提供 `resume` 调用形态，FR-MB-015）；
   2. 结构化会话标识输出合同（FR-MB-016）；
-  3. 与本次调用形态匹配的有效只读证明（FR-MB-012、FR-MB-004 第 3 条）。
+  3. 与本次调用形态匹配的有效只读证明（FR-MB-012、FR-MB-004 第 3 条）；**声明 `readonly_mode: none` 的豁免后端**（FR-MB-004 修订，2026-09-23）以"显式豁免 + 决策记录 + 不得 CLOSED"替代本条件，见「只读」第 4 条。
 - **缺省** → 使用默认后端 `chatgpt-tunnel`。
 - **显式给出但无法识别或不满足上述三项条件** → 判 `configuration_invalid` 并 BLOCKED，**不得静默回退**到默认后端（typo 变成默认后端是 fail-open）。
 - **本文件不登记"当前哪些后端可选"的状态快照**。资格状态、续接形态与续接只读取证的属主是 `review-backends.yaml` 及 backend-bound evidence；`stateful` 候选序列的属主是 `routing-policy.yaml` 的 `stateful_roles`。本文件只按上方三项条件做规范性判定——**不满足即不可选**，无需也不得在此处维护第二份状态清单（否则证据或版本一变就立刻产生第二套 active 事实源）。
@@ -54,11 +54,12 @@
 
 ### 只读（FR-MB-004）
 
-各 backend 的 `readonly_mode`、参数与 backend-bound 只读证据属主是 `review-backends.yaml` 及其证据文件，本文件不复制该表。grilling 侧只守三条：
+各 backend 的 `readonly_mode`、参数与 backend-bound 只读证据属主是 `review-backends.yaml` 及其证据文件，本文件不复制该表。grilling 侧只守四条：
 
-1. 任何后端无法机械强制只读时，该后端本次不可用。
+1. 任何后端无法机械强制只读时，该后端本次不可用；**唯一例外**是 registry 中以 `readonly_mode: none` + `readonly_exception` 决策记录显式声明豁免的后端（FR-MB-004 修订，2026-09-23）。豁免后端按第 4 条降级使用，静默放开仍是配置错误。
 2. 绕过沙箱或审批的危险模式一律 fail-closed。
 3. **续接属于新的调用形态**：只有现有 backend-bound 只读证据明确覆盖该续接形态时才能沿用，否则必须重新取证。
+4. **豁免后端（`readonly_mode: none`）**：其轮次可用于 finding 发现与复审参考，但其结果**不得作为 finding `CLOSED` 依据**（CLOSED 仍须由只读合规后端落地）；补偿控制是每轮 baseline 复验（FR-MB-019）——reviewer 若改动了受审内容，该轮按 `baseline_mismatch` 作废，因此豁免只影响"结论可信来源"，不豁免基线纪律。结果中 `readonly_confirmation` 为 `not-required:<backend>:readonly-waived-by-decision`，不得把它当作只读确认处置。
 
 ### 受审候选身份与基线复验（FR-MB-019）
 
@@ -335,13 +336,13 @@ STATUS: HUMAN_DECISION_REQUIRED
 
 ### `opencode-cli`
 
-**资格**：由 `review-backends.yaml` 的续接形态、会话标识与 backend-bound 只读取证，以及 `routing-policy.yaml` 的 stateful 候选序列共同决定；**本节不记录当前资格状态**。其调用命令、参数与 `readonly_mode` 的属主是 `review-backends.yaml`，本文件不重述。
+**资格**：由 `review-backends.yaml` 的续接形态、会话标识与只读声明，以及 `routing-policy.yaml` 的 stateful 候选序列共同决定；**本节不记录当前资格状态**。其调用命令、参数与 `readonly_mode` 的属主是 `review-backends.yaml`，本文件不重述。
 
 **指定模型**：先按 [model-routing.md 的 OpenCode 模型改选](../../dd-workflow-runtime/references/model-routing.md#opencode-模型改选) 核对模型 ID、绑定与授权；不得把默认模型当成不可更换的架构约束，也不得把本次模型选择当作修改共享配置的授权。版本或配置漂移须按本文件「能力探测与失效触发器」重新取证，不能只报告“证据过期”便建议换后端；说明所需取证及授权缺口，已获授权则执行取证，未通过仍 BLOCKED。已有 finding 时优先检查原 reviewer 连续性，换模型不继承关闭权。
 
 **单次覆盖用法**：派发请求的顶层 `model` 即本次 reviewer 模型（完整 ID），只影响本轮；canonical 与默认不动。pin 必须配同模型 proof（`model` 一致），proof 的 `source` 指向该模型的 L6 证据文件。
 
-**无证新模型自动重测（须用户预授权）**：在隔离临时仓库执行，不得接触真实代码：建仓并写保护文件记 sha；以 pin 模型 + reviewer profile 跑一次小范围只读审查并尝试写入/创建；父侧验证 sha 不变、无新增文件、工作树干净、审查方拒绝写入；通过后落盘 `tests/evidence/opencode-cli-l6-evidence.<slug>.yaml`（slug 为模型 ID 的 `/` 换 `-`，含 model、opencode 版本、profile、调用形态与验证结论），proof 引用它。需多轮复审时续接形态同样取证，否则复审 BLOCKED。
+**无证新模型自动重测（须用户预授权）**：在隔离临时仓库执行，不得接触真实代码：建仓并写保护文件记 sha；以 pin 模型 + reviewer profile 跑一次小范围只读审查并尝试写入/创建；父侧验证 sha 不变、无新增文件、工作树干净、审查方拒绝写入；通过后落盘 `tests/evidence/opencode-cli-l6-evidence.<slug>.yaml`（slug 为模型 ID 的 `/` 换 `-`，含 model、opencode 版本、profile、调用形态与验证结论），proof 引用它。需多轮复审时续接形态同样取证，否则复审 BLOCKED。**豁免后端例外**（FR-MB-004 修订，2026-09-23）：`opencode-cli` 已声明 `readonly_mode: none`，pin 新模型不再要求 L6 只读 proof（dispatch 不校验该条件），但新模型仍须实际可服务，且其轮次同样不得作为 CLOSED 依据。
 
 **续接**：走 adapter 的 `resume` 调用形态，显式传入 `review_session_handle`（FR-MB-015）。每次续接后按「续接句柄与身份校验」从结构化 `session` 字段提取实际会话标识并比对；不得依赖"最近会话"隐式续接，不得以退出码 0 判定续接成功。
 
@@ -350,9 +351,13 @@ STATUS: HUMAN_DECISION_REQUIRED
 - content 里写**仓库内相对路径清单**与关注点，不写 `work/<相对路径>` repo 名，也不写绝对路径；
 - 本后端不适用上面「仓库命名」与「repo 名解析规则」两节，那两节只属于 `chatgpt-tunnel`。
 
-**只读**：属 agent 权限合同（默认拒绝 + 只读工具白名单），机制与证据属主是 registry 的 `readonly_mode` 及 backend-bound 证据文件。
+**只读（现状：已豁免，2026-09-23 用户裁决）**：registry 将该后端声明为 `readonly_required: false` + `readonly_mode: none` + `readonly_exception`（决策记录 `docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md`）。原因：OpenCode Zen 免费档对任何带能力限制的 agent 返回 403 FreeTierError，机械只读在可用套餐内不可达（实测矩阵见 `dd-workflow-runtime/tests/evidence/opencode-nonreadonly-decision-20260923.yaml`）。因此：
 
-**取证边界**：本后端续接形态的只读证据属主是 `dd-workflow-runtime/tests/evidence/opencode-resume-readonly-evidence.yaml`（4 份原始事件流），其中记录了该次取证的确切 backend / agent / CLI 版本 / 调用形态与事件级结论。该证据**版本与形态绑定**——CLI 版本、agent、调用形态任一变化即失效，须重新取证（FR-MB-012）。**本文件不复制其事件级结论**。
+- 其轮次按「只读（FR-MB-004）」第 4 条降级使用：**不得作为 finding CLOSED 依据**；
+- 结果 `readonly_confirmation` 为 `not-required:opencode-cli:readonly-waived-by-decision`，把它当作只读确认处置是违约；
+- 两个 CLI profile（`strong-reviewer-cli` / `strong-reviewer-advisory-cli`）的只读职责仅剩提示词约定，不得据此宣称只读合规；profile 也不得再携带权限限制块（免费档会 403，`validate-bindings.py` 机械校验一致性）。
+
+**取证边界**：修订前的只读取证——续接形态 `dd-workflow-runtime/tests/evidence/opencode-resume-readonly-evidence.yaml`（opencode 1.18.25）与 L6 `opencode-cli-l6-evidence.yaml`（1.18.29）——是历史事实，在豁免存续期间不构成当前合同证据；恢复只读时须按 FR-MB-012 重新采集，**不得改写旧证据的版本号冒充重新取证**。
 
 **结果**：按请求 mode 返回——finding 轮返回 `dd-review-result/1`，advisory 轮返回 `dd-advisory-result/1`（均由 runtime schema/validator 属主机械保证，FR-MB-017），本文件只引用，F/V/H 分流仍按 [SKILL.md](../SKILL.md) 的语义执行，advisory 的决策点模型按 [advisory-review.md](advisory-review.md) 执行，不得由 provider 定义另一套枚举含义。
 
@@ -368,4 +373,5 @@ STATUS: HUMAN_DECISION_REQUIRED
 | "后端退出了换个后端接着审就行" | 已产生 finding 后换后端 = 换 reviewer，判 `reviewer_continuity_lost` 并 BLOCKED，不得称之为继续原会话 |
 | "首轮证明只读了，续接沿用就行" | 续接是新调用形态，须有覆盖该形态的 backend-bound 证据，否则重新取证 |
 | "退出码 0 说明续接成功了" | 必须做结构化会话标识比对，不等即 `session_resume_mismatch` |
-| "这个后端在 registry 里，所以能用于多轮" | registry 只登记能力，多轮还须满足续接、会话标识、续接只读取证三项条件 |
+| "这个后端在 registry 里，所以能用于多轮" | registry 只登记能力，多轮还须满足续接、会话标识、续接只读取证三项条件（声明 `readonly_mode: none` 的豁免后端按「只读」第 4 条降级，不是绕过） |
+| "豁免后端返回 PASS，我可以关闭 finding 了" | 豁免后端（`readonly_confirmation` = `not-required:*`）的结果不得作为 CLOSED 依据；CLOSED 必须由只读合规后端落地，否则按红线纠正 |

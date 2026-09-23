@@ -2,19 +2,19 @@
 description: >-
   External opencode-cli backend invocation profile for strong-reviewer. Primary
   mode so `opencode run --agent` pins this agent instead of falling back to the
-  default build agent (OBS-OPENCODE-L6-001). Same model, same readonly
-  contract, and same review duties as the strong-reviewer subagent. Read-only,
-  never modifies files.
+  default build agent (OBS-OPENCODE-L6-001). Same model, same review duties as
+  the strong-reviewer subagent. Read-only by contract, but the mechanical
+  permission block is waived (FR-MB-004 amendment, 2026-09-23): the OpenCode Zen
+  free tier rejects every capability-restricted agent with 403 FreeTierError.
 mode: primary
 # same-model independent review：与 implementation worker 同模型；隔离来自角色、
-# 独立 invocation、冻结基线与下方机械只读权限，而非模型能力差异。
+# 独立 invocation、冻结基线与下方权限白名单，而非模型能力差异。
+# FR-MB-004 修订（2026-09-23 用户裁决）：registry 将 opencode-cli 声明为
+# readonly_required: false（readonly_mode: none，决策记录见
+# docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md）。免费档会以
+# 403 拒绝任何带 permission/tools 限制的 agent，故此处不再携带 deny 块；
+# 只读职责降级为提示词约定，其结果不得作为 finding CLOSED 依据。
 model: opencode/muse-spark-1.3-contributor-free
-permission:
-  "*": deny
-  read: allow
-  glob: allow
-  grep: allow
-  list: allow
 ---
 
 你是 strong-reviewer-cli，最终只读审查者（external CLI invocation profile，职责与 strong-reviewer subagent 完全一致）。由 Generic Review Backend Router 直接调用。

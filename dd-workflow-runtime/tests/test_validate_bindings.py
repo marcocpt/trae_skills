@@ -48,6 +48,15 @@ permission:
 body
 """
 
+WAIVED_PRIMARY_PROFILE = """---
+description: external cli invocation profile (readonly waived by decision)
+mode: primary
+model: opencode/muse-spark-1.2-contributor-free
+---
+
+body
+"""
+
 REGISTRY_TEMPLATE = """schema: dd-review-backends/1
 
 backends:
@@ -60,11 +69,17 @@ backends:
     executable: opencode-review
     command: [review]
     forbid_args: [--auto]
+    readonly_required: true
 
   codex-native:
     type: native
     command: [exec, --sandbox, read-only]
 """
+
+WAIVED_REGISTRY_TEMPLATE = REGISTRY_TEMPLATE.replace(
+    "    readonly_required: true",
+    "    readonly_required: false\n    readonly_mode: none",
+)
 
 ADAPTER_TEMPLATE = 'AGENT_NAME = "{target}"\n'
 
@@ -215,6 +230,25 @@ class CheckOpenCodeCliAgentTests(unittest.TestCase):
         path.write_text(PRIMARY_PROFILE.replace("  list: allow", "  list: allow\n  write: allow"))
         errors = self.run_check()
         self.assertTrue(any("只读放行必须精确为" in e for e in errors))
+
+    def test_waived_registry_accepts_profile_without_permission_block(self) -> None:
+        (self.agents_dir / "review-backends.yaml").write_text(WAIVED_REGISTRY_TEMPLATE)
+        (self.agents_dir / "opencode" / "strong-reviewer-cli.md").write_text(WAIVED_PRIMARY_PROFILE)
+        self.assertEqual(self.run_check(), [])
+
+    def test_waived_registry_rejects_profile_with_permission_block(self) -> None:
+        # FR-MB-004 修订（2026-09-23）：豁免形态下 profile 若仍带权限限制块，
+        # 免费档会 403 且与 registry 声明漂移，必须报错。
+        (self.agents_dir / "review-backends.yaml").write_text(WAIVED_REGISTRY_TEMPLATE)
+        errors = self.run_check()
+        self.assertTrue(any("不得再含权限限制块" in e for e in errors))
+
+    def test_unparsable_readonly_required_is_rejected(self) -> None:
+        (self.agents_dir / "review-backends.yaml").write_text(
+            REGISTRY_TEMPLATE.replace("    readonly_required: true\n", "")
+        )
+        errors = self.run_check()
+        self.assertTrue(any("无法解析 readonly_required" in e for e in errors))
 
     def test_missing_cli_agent_file_is_rejected(self) -> None:
         (self.agents_dir / "opencode" / "strong-reviewer-cli.md").unlink()

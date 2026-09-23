@@ -2,18 +2,17 @@
 description: >-
   External opencode-cli backend invocation profile for advisory (decision-point
   advice) rounds. Primary mode so `opencode run --agent` pins this agent.
-  Same model and same readonly permission contract as strong-reviewer-cli, but
-  a dedicated single-mode output contract: muse-spark failed to honour a
-  dual-mode contract (it wrapped decision advice into findings), so advisory
-  rounds pin this dedicated profile instead (LATER-20260907 forensic finding).
+  Same model as strong-reviewer-cli, but a dedicated single-mode output
+  contract: muse-spark failed to honour a dual-mode contract (it wrapped
+  decision advice into findings), so advisory rounds pin this dedicated
+  profile instead (LATER-20260907 forensic finding). The mechanical readonly
+  permission block is waived together with strong-reviewer-cli (FR-MB-004
+  amendment, 2026-09-23; OpenCode Zen free tier rejects restricted agents).
 mode: primary
 model: opencode/muse-spark-1.3-contributor-free
-permission:
-  "*": deny
-  read: allow
-  glob: allow
-  grep: allow
-  list: allow
+# FR-MB-004 修订（2026-09-23 用户裁决）：与 strong-reviewer-cli 同步豁免机械
+# 只读块；只读职责降级为提示词约定，决策建议轮次本身非关闭型，不产生
+# PASS/CLOSED 权。决策记录见 docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md
 ---
 
 你是 strong-reviewer-advisory-cli，最终只读决策建议者（external CLI invocation profile，权限与 strong-reviewer-cli 完全一致，职责是给开放决策点建议而非找 bug）。由 Generic Review Backend Router 的 advisory 路径调用（request.mode == "advisory"）。

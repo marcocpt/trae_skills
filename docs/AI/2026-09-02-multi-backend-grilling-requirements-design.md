@@ -9,6 +9,7 @@
 > - v0.4 之后补登 v0.1 阶段的本地审核意见（MB-REVIEW-001~013）：该命名空间**此前从未进入任何复核台账**，v0.2~v0.4 只处置了 MB-GRILL 命名空间，属静默遗漏。逐条核对后：10 条已在 v0.2~v0.4 落地，3 条（005 / 011 / 012）未处置。本版 v0.5 新增 FR-MB-019 / FR-MB-020、改写 NFR-MB-001、§10 补 2 条红线，并在 §11.5 登记核对结论与新增阻塞项。
 > - 版本状态：v0.9-DRAFT。v0.6 第六轮 PASS（§11.8）；v0.7 方案 A 落地 CLOSED（§11.9）；v0.8 落地 021/020（§11.10）经**第七轮 targeted 复核返回 `REOPEN`**：MB-GRILL-021 CLOSED、MB-GRILL-020 修复不完整（chatgpt-tunnel 不满足 FR-MB-001 三项资格即入序列，validator 无资格校验）、**新增 MB-GRILL-028**（router_selectable: false 对 external 无通用禁令，introduced_by=021）。v0.9 处置经**第八轮确认（§11.12）**：**MB-GRILL-028 CLOSED、MB-GRILL-021 维持 CLOSED、MB-GRILL-020 维持 REOPEN（空序列过渡态合规，无额外缺口）**，零新 finding。MB-GRILL-019 与文档已 commit（`ec8844f` / `f6a8f11`）并推送；028 修复与 020 过渡态经主审确认后 commit。**批准仍阻塞于**：MB-GRILL-020 完全闭合（FR-MB-015/016 runtime 会话标识合同 + adapter initial/resume 形态 + 续接形态只读取证）与 §8 两处 VERIFICATION_REQUIRED 取证。
 > - v0.5 第五轮复审返回 `STATUS: REOPEN`：1 HIGH（022，§0 表述与 worktree 状态矛盾）+ 4 MEDIUM。v0.6 处置全部 5 项；**本地核对另发现 2 项主审未识别的问题**（027 HIGH / 024 补充）：runtime 已存在 `_verify_frozen_baseline` 与 `baseline_mismatch`（`dispatch-review.py:567`），FR-MB-019 的"现状无此机制"陈述有误、新造的 `baseline_drift` 与既有状态名冲突、且既有机制要求工作树干净与 grilling 多轮语义冲突；FR-MB-020 的阻塞状态清单漏列 12 个 runtime 既有 `failure_category`。详见 §11.7。
+> - **FR-MB-004 修正案（2026-09-23 用户裁决）**：OpenCode Zen 免费档拒绝一切能力受限 agent（403 FreeTierError，`opencode 1.18.32` 为最新版无升级可解），机械只读不可达；用户裁决为 opencode-cli 引入显式非只读豁免（`readonly_mode: none` + 决策记录 + 不得 CLOSED + 每轮 baseline 复验兜底）。落地清单与恢复条件见 `docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md`，实测矩阵见 `dd-workflow-runtime/tests/evidence/opencode-nonreadonly-decision-20260923.yaml`。
 
 ---
 
@@ -108,7 +109,7 @@ SKILL.md 的 finding 生命周期、三字段、CLOSED 判据、DISPUTED、HARD-
 |---|---|---|
 | `chatgpt-tunnel` | 审核方经授权通道自读；本地**不发送绝对仓库路径或文件内容**，仅发送 Tunnel repo 名与相对清单 | `review-backends.yaml` 的 `readonly_mode` 及 backend-bound 只读证据 |
 | `mcp-review` | 快照发送（Router 单跳形态，grilling 不用于多轮） | 同上 |
-| `opencode-cli` | agent 权限合同：默认拒绝 + 只读工具白名单 | 同上 |
+| `opencode-cli` | agent 权限合同：默认拒绝 + 只读工具白名单；**2026-09-23 修正案后为豁免形态**（免费档 403，`readonly_mode: none`，不得 CLOSED） | 同上 |
 | `codex-cli` | CLI 沙箱参数（首轮调用形态） | 同上 |
 | `codex-native` | 派生前须经 Codex 原生守卫（`native_guard` 字段所指脚本） | 同上 |
 | `opencode-native` | 按 registry 中该 backend 自身声明的只读模式与守卫 | 同上 |
@@ -118,7 +119,14 @@ SKILL.md 的 finding 生命周期、三字段、CLOSED 判据、DISPUTED、HARD-
 1. Codex 原生派生守卫只适用于 `codex-native`（registry 中该 backend 声明了 `native_guard`），**不得**套用到 `opencode-native`，也**不得**写成 `codex-cli` 的通用要求。
 2. 绕过沙箱或审批的危险模式一律 fail-closed。
 3. **续接属于新的调用形态**：只有现有 backend-bound 只读证据明确覆盖该续接形态时才能沿用旧证据，否则必须重新取证（FR-MB-012、第 8 节）。
-4. 任何后端无法机械强制只读时，该后端本次不可用。
+4. 任何后端无法机械强制只读时，该后端本次不可用；**唯一例外**见修正案。
+
+**修正案（2026-09-23 用户裁决，FR-MB-004 amendment）**：OpenCode Zen 免费档拒绝一切带能力限制的 agent（403 FreeTierError，实测矩阵见 `dd-workflow-runtime/tests/evidence/opencode-nonreadonly-decision-20260923.yaml`），机械只读在可用套餐内不可达。经用户裁决：
+
+- 新增豁免形态：registry 可以显式声明 `readonly_required: false` + `readonly_mode: none` + `readonly_exception`（决策记录路径）；三者必须成对出现，缺一即 `configuration_invalid`（`dispatch-review.py` 机械校验），静默放开只读仍是配置错误。
+- 豁免后端的轮次仅用于 finding 发现与复审参考，**不得作为 finding CLOSED 依据**（CLOSED 仍须由只读合规后端落地）；结果携带 `readonly_confirmation = {confirmed: false, evidence: "not-required:<backend>:readonly-waived-by-decision"}`。
+- 补偿控制：每轮 baseline 复验（FR-MB-019）保持不变——reviewer 若改动受审内容，该轮按 `baseline_mismatch` 作废。
+- 首个（当前唯一）豁免后端：`opencode-cli`；`opencode-native` 未豁免、维持只读合同（免费档下不可实际使用）。恢复条件与动作见 `docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md`。
 
 对应 finding：MB-GRILL-008。
 

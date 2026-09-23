@@ -37,6 +37,13 @@ KNOWN_MODES = frozenset({"finding", "advisory"})
 ADVISORY_CAPABILITY = "advisory"
 MCP_READONLY_MODE = "snapshot-send-only"
 TUNNEL_READONLY_MODE = "tunnel-self-read-only"
+# Explicit non-readonly mode (FR-MB-004 amendment, 2026-09-23 user decision):
+# a backend whose provider refuses capability-restricted agents may run with
+# `readonly_required: false` + this mode.  It is a mechanically visible
+# exception, never a default: it must carry a `readonly_exception` decision
+# record, its accepted results keep `readonly_confirmation.confirmed = false`,
+# and it can never back a finding CLOSED (transport contract).
+NONE_READONLY_MODE = "none"
 # Canonical readonly_mode vocabulary owned by this registry (FR-MB-004).  A
 # backend may only declare one of these modes so the grilling capability check
 # (FR-MB-001.3) can bind backend-bound readonly evidence mechanically.
@@ -47,6 +54,7 @@ KNOWN_READONLY_MODES = frozenset(
         "codex-read-only-transport",
         "agent-read-only-contract",
         "codex-route-guard",
+        NONE_READONLY_MODE,
     }
 )
 # Backends reserved for gpt-grilling-review's stateful loop (DEC-MB-02).  They
@@ -404,12 +412,30 @@ def validate_registry_policy(registry: Dict[str, Any], policy: Dict[str, Any]) -
         capabilities = spec.get("capabilities")
         if not isinstance(capabilities, list) or not all(isinstance(item, str) for item in capabilities):
             errors.append(f"{path}.capabilities: string list required")
-        if spec.get("readonly_required") is not True:
-            errors.append(f"{path}.readonly_required: must be true")
-        if not isinstance(spec.get("readonly_mode"), str) or not spec.get("readonly_mode"):
+        readonly_required = spec.get("readonly_required")
+        if readonly_required not in (True, False):
+            errors.append(f"{path}.readonly_required: must be a boolean")
+        readonly_mode = spec.get("readonly_mode")
+        if not isinstance(readonly_mode, str) or not readonly_mode:
             errors.append(f"{path}.readonly_mode: required")
-        elif spec.get("readonly_mode") not in KNOWN_READONLY_MODES:
-            errors.append(f"{path}.readonly_mode: unknown readonly mode {spec.get('readonly_mode')!r}")
+        elif readonly_mode not in KNOWN_READONLY_MODES:
+            errors.append(f"{path}.readonly_mode: unknown readonly mode {readonly_mode!r}")
+        elif readonly_mode == NONE_READONLY_MODE:
+            # Non-readonly exception (FR-MB-004 amendment, 2026-09-23): the
+            # mode is only valid as an explicit, decision-recorded waiver.
+            # Anything else is a silent relaxation and must fail closed.
+            if readonly_required is not False:
+                errors.append(
+                    f"{path}.readonly_required: must be false when "
+                    f"readonly_mode is {NONE_READONLY_MODE!r}"
+                )
+            if not isinstance(spec.get("readonly_exception"), str) or not spec.get("readonly_exception"):
+                errors.append(
+                    f"{path}.readonly_exception: required decision record when "
+                    f"readonly_mode is {NONE_READONLY_MODE!r}"
+                )
+        elif readonly_required is not True:
+            errors.append(f"{path}.readonly_required: must be true")
         if "per_call_model" in spec and spec.get("per_call_model") is not True:
             errors.append(f"{path}.per_call_model: must be true when declared")
         for exit_key in ("availability_exit_codes", "transient_exit_codes"):
@@ -602,7 +628,10 @@ def validate_registry_policy(registry: Dict[str, Any], policy: Dict[str, Any]) -
                                 f"{path}.backends: {item} lacks a structured session identity "
                                 "contract (FR-MB-016)"
                             )
-                        if spec.get("continuation_readonly_evidence") is not True:
+                        if (
+                            spec.get("continuation_readonly_evidence") is not True
+                            and spec.get("readonly_required") is not False
+                        ):
                             errors.append(
                                 f"{path}.backends: {item} has no backend-bound readonly evidence "
                                 "covering the continuation form (FR-MB-004.3 / FR-MB-012)"
@@ -981,10 +1010,17 @@ def _check_backend_eligibility(
             "capability_unavailable",
             f"{backend_id} does not support a per-call model pin",
         )
+    if backend.get("readonly_required") is not True:
+        # Non-readonly exception (FR-MB-004 amendment, 2026-09-23): the waiver
+        # was declared and decision-recorded at registry level, so there is no
+        # proof to bind.  Accepted results carry the explicit non-readonly
+        # marker instead of a Router-validated confirmation, and the grilling
+        # transport forbids using such a result to close a finding.
+        return None
     proof = _readonly_evidence_valid(request, backend_id, backend)
-    if backend.get("readonly_required") and proof is None:
+    if proof is None:
         raise TerminalReviewFailure("readonly_violation", f"backend-bound L6 read-only evidence is required before {backend_id}")
-    return proof or {}
+    return proof
 
 
 def _normalize_readonly(value: Any) -> Dict[str, Any]:
@@ -1021,6 +1057,7 @@ def _normalize_result(
     backend_id: str,
     started_at: str,
     validated_readonly_evidence: Optional[Dict[str, Any]] = None,
+    readonly_required: bool = True,
 ) -> Dict[str, Any]:
     if not isinstance(raw, dict):
         raise TerminalReviewFailure("schema_invalid", "backend result must be a mapping")
@@ -1091,6 +1128,7 @@ def _normalize_result(
         backend_id,
         validated_readonly_evidence,
         _normalize_readonly(raw.get("readonly_confirmation")),
+        readonly_required,
     )
 
     lifecycle = raw.get("lifecycle", {})
@@ -1247,6 +1285,7 @@ def _normalize_advisory_result(
     backend_id: str,
     started_at: str,
     validated_readonly_evidence: Optional[Dict[str, Any]] = None,
+    readonly_required: bool = True,
 ) -> Dict[str, Any]:
     """Normalize one advisory dispatch result into dd-advisory-result/1.
 
@@ -1346,6 +1385,7 @@ def _normalize_advisory_result(
         backend_id,
         validated_readonly_evidence,
         _normalize_readonly(raw.get("readonly_confirmation")),
+        readonly_required,
     )
     lifecycle = raw.get("lifecycle", {})
     if lifecycle is not None and not isinstance(lifecycle, dict):
@@ -1390,6 +1430,7 @@ def _resolve_readonly_confirmation(
     backend_id: str,
     validated_readonly_evidence: Optional[Dict[str, Any]],
     provider_readonly: Dict[str, Any],
+    readonly_required: bool = True,
 ) -> Dict[str, Any]:
     """Bind the result-side readonly confirmation to the Router-validated L6 proof.
 
@@ -1399,10 +1440,20 @@ def _resolve_readonly_confirmation(
     non-authoritative provider observation (OBS-L7-001).  The decision uses
     the caller's ALREADY-NORMALIZED status (case-folded, FAIL alias applied)
     -- never a re-parse of the raw payload.
+
+    For a decision-recorded non-readonly backend (`readonly_required` false)
+    the accepted result keeps an explicit non-readonly marker: no readonly
+    fact exists to confirm, and the marker makes the waiver machine-visible
+    in every result instead of hiding it (FR-MB-004 amendment, 2026-09-23).
     """
     if not accepted_statuses:
         raise AssertionError("accepted_statuses must not be empty")
     if normalized_status in accepted_statuses:
+        if readonly_required is not True:
+            return {
+                "confirmed": False,
+                "evidence": f"not-required:{backend_id}:readonly-waived-by-decision",
+            }
         # The adapter/provider is not a read-only authority.  Eligibility has
         # already matched the caller's backend-bound L6 proof; only the
         # Router may turn that verified fact into the accepted result-side
@@ -1617,6 +1668,7 @@ def dispatch_review(
                     backend_id,
                     started_at,
                     readonly_evidence,
+                    backend.get("readonly_required") is not False,
                 )
             else:
                 normalized = _normalize_result(
@@ -1625,6 +1677,7 @@ def dispatch_review(
                     backend_id,
                     started_at,
                     readonly_evidence,
+                    backend.get("readonly_required") is not False,
                 )
             if normalized["status"] == "BLOCKED" and normalized["failure_category"] in fallback_categories:
                 attempts.append({

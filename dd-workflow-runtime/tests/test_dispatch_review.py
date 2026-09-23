@@ -605,6 +605,57 @@ class ReviewRouterTests(unittest.TestCase):
             ROUTER._normalize_result(raw, request, "mcp-review", "started")
         self.assertEqual(raised.exception.category, "readonly_violation")
 
+    def test_waived_nonreadonly_backend_results_carry_explicit_marker(self) -> None:
+        # FR-MB-004 修订（2026-09-23 用户裁决）：豁免后端不需要 L6 证据即可
+        # 接受结果，但结果必须携带显式非只读标记，绝不伪造成 router-validated
+        # 只读确认（该标记是下游"不得用于 CLOSED"判定的机械锚点）。
+        registry, policy = _configuration()
+        spec = registry["backends"]["opencode-cli"]
+        spec["readonly_required"] = False
+        spec["readonly_mode"] = ROUTER.NONE_READONLY_MODE
+        spec["readonly_exception"] = "docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md"
+        spec.pop("continuation_readonly_evidence", None)
+        policy["roles"]["strong-reviewer"]["backends"] = ["opencode-cli"]
+        request = self.request(readonly_evidence=[])
+        runner = BackendScriptRunner({
+            "opencode-cli": self.result(
+                "opencode-cli", request, readonly_confirmation={"confirmed": False}
+            ),
+        })
+        result = ROUTER.dispatch_review(request, registry, policy, runner)
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["backend"], "opencode-cli")
+        self.assertFalse(result["readonly_confirmation"]["confirmed"])
+        self.assertEqual(
+            result["readonly_confirmation"]["evidence"],
+            "not-required:opencode-cli:readonly-waived-by-decision",
+        )
+        self.assertNotIn("readonly_evidence", result["routing"])
+        self.assertEqual(runner.calls, ["opencode-cli"])
+
+    def test_waived_backend_does_not_relax_readonly_required_peers(self) -> None:
+        # 豁免只对声明 none 的后端生效：同一 registry 里未豁免的后端仍必须
+        # fail-closed 于缺失的 L6 证据。
+        registry, policy = _configuration()
+        spec = registry["backends"]["opencode-cli"]
+        spec["readonly_required"] = False
+        spec["readonly_mode"] = ROUTER.NONE_READONLY_MODE
+        spec["readonly_exception"] = "docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md"
+        spec.pop("continuation_readonly_evidence", None)
+        request = self.request(readonly_evidence=[])
+        runner = BackendScriptRunner({
+            "mcp-review": self.result("mcp-review", request),
+        })
+        result = ROUTER.dispatch_review(request, registry, policy, runner)
+        self.assertEqual(result["status"], "BLOCKED")
+        # readonly_violation 是终止型失败：不落入 fallback，直接 fail-closed。
+        self.assertEqual(result["failure_category"], "readonly_violation")
+        self.assertEqual(
+            [attempt.get("failure_category") for attempt in result["routing"]["attempted"]],
+            ["readonly_violation"],
+        )
+        self.assertEqual(runner.calls, [])
+
     def test_findings_cannot_be_accepted_without_router_l6_evidence(self) -> None:
         request = self.request(readonly_evidence=[])
         finding = {
@@ -843,7 +894,14 @@ class RoutingConfigTests(unittest.TestCase):
             spec = registry["backends"][backend_id]
             self.assertIn("resume", spec["invocation_forms"])
             self.assertIsInstance(spec["session_identity"], dict)
-            self.assertIs(spec["continuation_readonly_evidence"], True)
+        # FR-MB-004 修订（2026-09-23 用户裁决）：opencode-cli 豁免只读后不再
+        # 持有续接只读取证，但豁免必须是显式声明（none + 决策记录）而非省略；
+        # codex-cli 仍走原只读合同。
+        self.assertIs(registry["backends"]["codex-cli"]["continuation_readonly_evidence"], True)
+        waived = registry["backends"]["opencode-cli"]
+        self.assertIs(waived["readonly_required"], False)
+        self.assertEqual(waived["readonly_mode"], ROUTER.NONE_READONLY_MODE)
+        self.assertTrue(waived.get("readonly_exception"))
 
     def test_stateful_roles_accept_empty_order_as_transitional_state(self) -> None:
         registry, policy = _configuration()
@@ -892,6 +950,45 @@ class RoutingConfigTests(unittest.TestCase):
         registry["backends"]["chatgpt-tunnel"]["readonly_mode"] = "bogus-mode"
         errors = ROUTER.validate_registry_policy(registry, policy)
         self.assertTrue(any("unknown readonly mode" in error for error in errors))
+
+    def test_none_readonly_mode_requires_decision_record(self) -> None:
+        # FR-MB-004 修订（2026-09-23）：none 只能是显式裁决的豁免，必须附带
+        # 决策记录，缺记录即 fail-closed —— 静默放开只读是配置错误。
+        registry, policy = _configuration()
+        spec = registry["backends"]["opencode-cli"]
+        spec["readonly_required"] = False
+        spec["readonly_mode"] = ROUTER.NONE_READONLY_MODE
+        errors = ROUTER.validate_registry_policy(registry, policy)
+        self.assertTrue(any("readonly_exception" in error for error in errors), errors)
+        spec["readonly_exception"] = "docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md"
+        self.assertEqual(ROUTER.validate_registry_policy(registry, policy), [])
+
+    def test_none_readonly_mode_cannot_keep_readonly_required(self) -> None:
+        registry, policy = _configuration()
+        spec = registry["backends"]["opencode-cli"]
+        spec["readonly_mode"] = ROUTER.NONE_READONLY_MODE
+        spec["readonly_exception"] = "docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md"
+        errors = ROUTER.validate_registry_policy(registry, policy)
+        self.assertTrue(
+            any("must be false when readonly_mode is" in error for error in errors), errors
+        )
+
+    def test_nonreadonly_member_may_join_stateful_order_without_continuation_evidence(self) -> None:
+        registry, policy = _configuration()
+        spec = registry["backends"]["opencode-cli"]
+        spec.pop("continuation_readonly_evidence", None)
+        spec["readonly_required"] = False
+        spec["readonly_mode"] = ROUTER.NONE_READONLY_MODE
+        spec["readonly_exception"] = "docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md"
+        self.assertEqual(ROUTER.validate_registry_policy(registry, policy), [])
+
+    def test_readonly_required_member_still_needs_continuation_evidence(self) -> None:
+        registry, policy = _configuration()
+        registry["backends"]["opencode-cli"].pop("continuation_readonly_evidence", None)
+        errors = ROUTER.validate_registry_policy(registry, policy)
+        self.assertTrue(
+            any("no backend-bound readonly evidence" in error for error in errors), errors
+        )
 
     def test_router_selectable_mcp_keeps_snapshot_mode_requirement(self) -> None:
         registry, policy = _configuration()
