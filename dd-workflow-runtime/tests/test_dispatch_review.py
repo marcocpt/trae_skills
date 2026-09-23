@@ -633,6 +633,46 @@ class ReviewRouterTests(unittest.TestCase):
         self.assertNotIn("readonly_evidence", result["routing"])
         self.assertEqual(runner.calls, ["opencode-cli"])
 
+    def test_waived_backend_midround_mutation_voids_the_round(self) -> None:
+        # RV-001（FR-MB-004 修订的补偿控制）：豁免后端非只读，轮次结束后必须
+        # 复验候选基线；审查中途改动受审内容时按 baseline_mismatch 作废该轮，
+        # 不得归一出被接受的结果。
+        registry, policy = _configuration()
+        spec = registry["backends"]["opencode-cli"]
+        spec["readonly_required"] = False
+        spec["readonly_mode"] = ROUTER.NONE_READONLY_MODE
+        spec["readonly_exception"] = "docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md"
+        spec.pop("continuation_readonly_evidence", None)
+        policy["roles"]["strong-reviewer"]["backends"] = ["opencode-cli"]
+        request = self.request(readonly_evidence=[])
+
+        def mutating_round(backend: Dict[str, Any], adapter_request: Dict[str, Any]) -> Dict[str, Any]:
+            (self.repo / "midround-mutation.txt").write_text("mutation\n")
+            return self.result("opencode-cli", request, readonly_confirmation={"confirmed": False})
+
+        runner = BackendScriptRunner({"opencode-cli": mutating_round})
+        result = ROUTER.dispatch_review(request, registry, policy, runner)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["failure_category"], "baseline_mismatch")
+        self.assertEqual(runner.calls, ["opencode-cli"])
+
+    def test_readonly_required_peers_need_no_postround_recheck(self) -> None:
+        # 复验是豁免形态专属补偿控制：只读后端不做 post-round 复验（行为不变）。
+        request = self.request(readonly_evidence=[])
+        runner = BackendScriptRunner({
+            "opencode-cli": self.result("opencode-cli", request, readonly_confirmation={"confirmed": False}),
+        })
+        registry, policy = _configuration()
+        spec = registry["backends"]["opencode-cli"]
+        spec["readonly_required"] = False
+        spec["readonly_mode"] = ROUTER.NONE_READONLY_MODE
+        spec["readonly_exception"] = "docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md"
+        spec.pop("continuation_readonly_evidence", None)
+        policy["roles"]["strong-reviewer"]["backends"] = ["opencode-cli"]
+        # 干净的仓库轮次照常通过（复验不引入误报）。
+        result = ROUTER.dispatch_review(request, registry, policy, runner)
+        self.assertEqual(result["status"], "PASS")
+
     def test_waived_backend_does_not_relax_readonly_required_peers(self) -> None:
         # 豁免只对声明 none 的后端生效：同一 registry 里未豁免的后端仍必须
         # fail-closed 于缺失的 L6 证据。
@@ -962,6 +1002,29 @@ class RoutingConfigTests(unittest.TestCase):
         self.assertTrue(any("readonly_exception" in error for error in errors), errors)
         spec["readonly_exception"] = "docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md"
         self.assertEqual(ROUTER.validate_registry_policy(registry, policy), [])
+
+    def test_waiver_decision_record_must_exist(self) -> None:
+        # RV-003：readonly_exception 是仓库相对路径，悬空路径等于一次静默放开，
+        # 必须由加载层 fail-closed 拒绝。
+        registry, policy = _configuration()
+        spec = registry["backends"]["opencode-cli"]
+        spec["readonly_required"] = False
+        spec["readonly_mode"] = ROUTER.NONE_READONLY_MODE
+        spec["readonly_exception"] = "docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md"
+        registry_path = AGENTS_DIR / "review-backends.yaml"
+        self.assertEqual(ROUTER._verify_waiver_decision_records(registry, registry_path), [])
+        spec["readonly_exception"] = "docs/AI/later/does-not-exist.md"
+        errors = ROUTER._verify_waiver_decision_records(registry, registry_path)
+        self.assertTrue(any("decision record not found" in error for error in errors), errors)
+
+    def test_waiver_loader_check_ignores_readonly_backends(self) -> None:
+        # 加载层检查只针对 none 豁免：只读后端不要求 readonly_exception。
+        registry, _ = _configuration()
+        registry["backends"]["opencode-cli"]["readonly_exception"] = "docs/AI/later/does-not-exist.md"
+        self.assertEqual(
+            ROUTER._verify_waiver_decision_records(registry, AGENTS_DIR / "review-backends.yaml"),
+            [],
+        )
 
     def test_none_readonly_mode_cannot_keep_readonly_required(self) -> None:
         registry, policy = _configuration()

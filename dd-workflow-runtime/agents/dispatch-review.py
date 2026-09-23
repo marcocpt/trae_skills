@@ -644,6 +644,30 @@ def validate_registry_policy(registry: Dict[str, Any], policy: Dict[str, Any]) -
     return errors
 
 
+def _verify_waiver_decision_records(registry: Dict[str, Any], registry_path: Path) -> List[str]:
+    """每个 none 豁免必须指向真实存在的决策记录（FR-MB-004 修订，2026-09-23）。
+
+    只在加载层校验：`readonly_exception` 约定为相对仓库根（registry 的祖父目录）
+    的路径；悬空路径意味着一次静默放开，必须 fail-closed（RV-003）。
+    """
+    errors: List[str] = []
+    backends = registry.get("backends")
+    if not isinstance(backends, dict):
+        return errors
+    repo_root = registry_path.resolve().parents[2]
+    for backend_id, spec in backends.items():
+        if not isinstance(spec, dict) or spec.get("readonly_mode") != NONE_READONLY_MODE:
+            continue
+        record = spec.get("readonly_exception")
+        if not isinstance(record, str) or not record:
+            continue  # 缺字段由 validate_registry_policy 报错，避免重复
+        if not (repo_root / record).is_file():
+            errors.append(
+                f"backends.{backend_id}.readonly_exception: decision record not found: {record!r}"
+            )
+    return errors
+
+
 def load_configuration(
     registry_path: Path,
     policy_path: Path,
@@ -652,6 +676,7 @@ def load_configuration(
     registry = load_yaml(registry_path)
     policy = load_yaml(policy_path)
     errors = validate_registry_policy(registry, policy)
+    errors.extend(_verify_waiver_decision_records(registry, registry_path))
     if model_bindings_path is not None:
         errors.extend(validate_model_bindings_isolation(model_bindings_path))
     if errors:
@@ -1661,6 +1686,13 @@ def dispatch_review(
                 adapter_request["model"] = request["model"]
             started_at = _utc_now()
             raw = runner(backend, adapter_request) if runner is not None else _run_cli_backend(backend, adapter_request)
+            if backend.get("readonly_required") is not True:
+                # FR-MB-004 amendment (2026-09-23, RV-001): a waived backend is
+                # not mechanically read-only, so its documented compensating
+                # control is a post-round candidate re-verification -- any
+                # mid-round mutation voids the round as baseline_mismatch
+                # (fail-closed) instead of normalizing into an accepted result.
+                _verify_frozen_baseline(request)
             if mode == "advisory":
                 normalized = _normalize_advisory_result(
                     raw,

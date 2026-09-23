@@ -80,7 +80,8 @@
    - 具备有状态续接能力（adapter 提供 `resume` 调用形态，见 FR-MB-015）；
    - 具备结构化会话标识输出合同（见 FR-MB-016）；
    - 具备与本次调用形态匹配的有效只读证明（见 FR-MB-012）。
-   **存在于 registry 不等于可用于 grilling**：只支持单跳的 `mcp-review`、未定义续接合同或缺失只读证据的 backend 一律不可选。
+   **例外（FR-MB-004 修正案，2026-09-23）**：声明 `readonly_mode: none` + `readonly_exception` 决策记录的豁免后端免第 3 项只读证明，改以"显式豁免 + 不得作为 finding CLOSED 依据"约束（RV-002 修复：消除与 runtime/transport 的两套资格定义）。
+   **存在于 registry 不等于可用于 grilling**：只支持单跳的 `mcp-review`、未定义续接合同或缺失只读证据的 backend 一律不可选（豁免后端按上述例外处理）。
 2. **缺省**（未指定）→ 使用默认后端 `chatgpt-tunnel`（向后兼容）。
 3. **显式给出但无法识别或不满足上述能力条件** → 判为 `configuration_invalid` 并 BLOCKED，**不得静默回退**到默认后端（typo 变成默认后端是 fail-open）。
 4. 用户可输入的别名与 canonical ID 的映射只有一处定义（runtime registry 侧）；本 skill 不定义第二套别名表。
