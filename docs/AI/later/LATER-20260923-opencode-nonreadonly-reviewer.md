@@ -51,4 +51,5 @@ trigger: OpenCode 免费档（或改用付费档/其他非 Zen Provider 后）�
   1. 重新采集 L6 只读证据与 resume 形态只读证据；
   2. registry 恢复 `readonly_required: true` + `readonly_mode: agent-read-only-contract`，删除 `readonly_exception`；
   3. profile 恢复机械只读块（validate-bindings.py 会机械校验一致性）；
-  4. 本记录转 `closed`，并在需求设计文档追加恢复记录。
+  4. adapter（`agents/opencode-review`）移除成功态的 `READONLY_WAIVER_MARKER` 输出（恢复为 `evidence: null`）——否则直调路径会继续输出过时的豁免标记（Router 路径会被 `_resolve_readonly_confirmation` 覆盖，但直调路径不会）；
+  5. 本记录转 `closed`，并在需求设计文档追加恢复记录。
