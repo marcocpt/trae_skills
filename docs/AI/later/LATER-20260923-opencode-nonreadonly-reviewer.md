@@ -32,11 +32,18 @@ trigger: OpenCode 免费档（或改用付费档/其他非 Zen Provider 后）�
 - `agents/review-backends.yaml`：opencode-cli 声明 `readonly_required: false` + `readonly_mode: none` + `readonly_exception` 指向本记录；`continuation_readonly_evidence` 移除（历史证据保留为注释指针）。
 - `agents/dispatch-review.py`：新增 `none` 词汇与"成对校验 + 决策记录"规则；豁免后端免 L6 证据，但其结果携带显式非只读标记 `readonly_confirmation = {confirmed: false, evidence: "not-required:<backend>:readonly-waived-by-decision"}`；stateful 候选序对豁免后端不要求续接只读取证。
 - `agents/validate-bindings.py`：profile 权限块与 registry `readonly_required` 声明做跨产物一致性校验（豁免形态下 profile 不得再含权限限制块）。
-- `gpt-grilling-review/references/transport.md`：opencode-cli 分节与 FR-MB-004 通用条款记录例外与"不得 CLOSED"约束。
+- `agents/opencode-review`（adapter）：新增 `_frozen_baseline_failure`，在**准入**与**轮后**（含超时回退前）各复验一次冻结基线——豁免后端不经 Router 直调时也能机械作废被改动的轮次（RV-004 路线裁决，见下）。
+- `gpt-grilling-review/references/transport.md`：opencode-cli 分节与 FR-MB-004 通用条款记录例外与"不得 CLOSED"约束；并新增「直调 adapter」合规边界（准入 + 轮后双重复验、请求字段约束）。
 
 ## 未恢复的路径（也在本项范围内）
 
 - 原生 `opencode-native` / `strong-reviewer` subagent 路径**保持只读合同不变**，因此在免费档下仍会 403、不可实际使用；未做豁免。
+
+## 相关裁决：豁免后端 finding 轮的路线（RV-004，2026-09-23）
+
+- 现状：Router 的 finding 链不含 `opencode-cli`（它只出现在 advisory 的 stateful 候选序列），因此"用 opencode 做 finding/复审"没有规范化路径，实际走的是直接调 adapter。
+- 用户裁决（2026-09-23）：采用**规范化 adapter 直调**——不改 Router finding 链（避免 Gate/CLOSED 语义风险），改为把直调约束写进 `transport.md`，并把轮后基线复验补进 adapter 使其机械化。
+- 直调结果仍是豁免结果，**不得作为 finding CLOSED 依据**；漂移即 `baseline_mismatch` BLOCKED 且不 fallback。
 
 ## 恢复（Restore）条件
 

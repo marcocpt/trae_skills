@@ -398,6 +398,34 @@ def _validate_reviewer_json(obj: Dict[str, Any], scope: List[str], mode: str = "
     return None
 
 
+def _frozen_baseline_failure(request: Dict[str, Any]) -> tuple[str, str] | None:
+    """Return (failure_category, detail) if the frozen candidate is not intact.
+
+    Checked twice: at admission, and again once the round has finished.  This
+    backend is waived from mechanical read-only (``readonly_mode: none``,
+    FR-MB-004 amendment 2026-09-23), so a round that mutates the repository
+    must void itself as ``baseline_mismatch`` (fail-closed) instead of being
+    reported as an accepted review.
+    """
+    repo = Path(request["repo"])
+    try:
+        head = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+        if head != request["head_sha"]:
+            return "baseline_mismatch", "HEAD differs from head_sha"
+        dirty = subprocess.run(
+            ["git", "-C", str(repo), "status", "--porcelain=v1", "--untracked-files=all"],
+            capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+        if dirty:
+            return "baseline_mismatch", "worktree dirty"
+    except Exception as exc:
+        return "evidence_mismatch", f"git check failed: {exc}"
+    return None
+
+
 def main() -> int:
     # CLI contract: opencode-review review  (like mcp-review review)
     if len(sys.argv) != 2 or sys.argv[1] != "review":
@@ -440,22 +468,12 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False))
         return 0
 
-    # Verify frozen baseline minimally (repo exists, HEAD matches, no dirty)
-    # We do lightweight checks; full verification is Router's job, but adapter should fail-closed on dirty worktree
-    repo = Path(request["repo"])
-    try:
-        head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=10).stdout.strip()
-        if head != request["head_sha"]:
-            result = _blocked_result(request, "baseline_mismatch", "HEAD differs from head_sha")
-            print(json.dumps(result, ensure_ascii=False))
-            return 0
-        dirty = subprocess.run(["git", "-C", str(repo), "status", "--porcelain=v1", "--untracked-files=all"], capture_output=True, text=True, timeout=10).stdout.strip()
-        if dirty:
-            result = _blocked_result(request, "baseline_mismatch", "worktree dirty")
-            print(json.dumps(result, ensure_ascii=False))
-            return 0
-    except Exception as exc:
-        result = _blocked_result(request, "evidence_mismatch", f"git check failed: {exc}")
+    # Verify frozen baseline at admission (HEAD matches head_sha, clean
+    # worktree).  Full verification is Router's job, but the adapter fails
+    # closed on its own so a direct invocation is equally guarded.
+    failure = _frozen_baseline_failure(request)
+    if failure is not None:
+        result = _blocked_result(request, failure[0], failure[1])
         print(json.dumps(result, ensure_ascii=False))
         return 0
 
@@ -503,8 +521,25 @@ def main() -> int:
         sys.stderr.write("opencode executable not found\n")
         return 69
     except subprocess.TimeoutExpired:
+        # The process ran before being killed; being non-readonly it may have
+        # written, so re-verify the baseline before Router falls back to
+        # another backend -- a mutated repo must not be handed on.
+        failure = _frozen_baseline_failure(request)
+        if failure is not None:
+            result = _blocked_result(request, failure[0], failure[1])
+            print(json.dumps(result, ensure_ascii=False))
+            return 0
         sys.stderr.write("opencode timed out\n")
         return 75
+
+    # Post-round re-verification (FR-MB-004 amendment / FR-MB-019): a round
+    # that mutated the repository is void (baseline_mismatch, fail-closed, no
+    # fallback) rather than an accepted result.
+    failure = _frozen_baseline_failure(request)
+    if failure is not None:
+        result = _blocked_result(request, failure[0], failure[1])
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
 
     if completed.returncode != 0:
         # Classify via registry's availability/transient codes

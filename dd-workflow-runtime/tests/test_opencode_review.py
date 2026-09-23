@@ -200,8 +200,13 @@ class AdapterIntegrationTests(unittest.TestCase):
             "routing_context": {"dispatch_boundary": "single-backend", "router_authority": False, "hop_count": 1, "dispatch_chain": ["opencode-cli"], "selected_backend": "opencode-cli"},
         }
 
-    def _run_adapter_with_fake_opencode(self, fake_stdout: str, exit_code: int = 0, request_overrides: dict | None = None):
-        """Run adapter with mocked subprocess.run for opencode."""
+    def _run_adapter_with_fake_opencode(self, fake_stdout: str, exit_code: int = 0, request_overrides: dict | None = None, on_opencode=None):
+        """Run adapter with mocked subprocess.run for opencode.
+
+        ``on_opencode`` runs at the moment the fake opencode invocation is
+        dispatched, so a test can simulate a (non-readonly) reviewer mutating
+        the repository mid-round.
+        """
         req = self.request()
         if request_overrides:
             req.update(request_overrides)
@@ -218,6 +223,8 @@ class AdapterIntegrationTests(unittest.TestCase):
             def side_effect(cmd, **kwargs):
                 if cmd[0] == "opencode":
                     self.captured_opencode_cmd = list(cmd)
+                    if on_opencode is not None:
+                        on_opencode()
                     return mock_completed
                 return original_run(cmd, **kwargs)
             mocked.side_effect = side_effect
@@ -270,6 +277,82 @@ class AdapterIntegrationTests(unittest.TestCase):
         ret, out = self._run_adapter_with_fake_opencode(stream, exit_code=1)
         result = json.loads(out)
         self.assertEqual(result["failure_category"], "backend_execution_failed")
+
+    def test_post_round_tracked_file_mutation_voids_round(self):
+        # A waived (non-readonly) backend that edits a tracked file mid-round
+        # must not have its verdict accepted (FR-MB-004 amendment / FR-MB-019).
+        stream = _event_stream(json.dumps(_valid_reviewer_json("FINDINGS")))
+        ret, out = self._run_adapter_with_fake_opencode(
+            stream, on_opencode=lambda: (self.repo / "review.py").write_text("print('tampered')\n")
+        )
+        self.assertEqual(ret, 0)
+        result = json.loads(out)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["failure_category"], "baseline_mismatch")
+        self.assertEqual(result["findings"], [])
+
+    def test_post_round_new_untracked_file_voids_round(self):
+        stream = _event_stream(json.dumps(_valid_reviewer_json("FINDINGS")))
+        ret, out = self._run_adapter_with_fake_opencode(
+            stream, on_opencode=lambda: (self.repo / "extra.py").write_text("x\n")
+        )
+        self.assertEqual(ret, 0)
+        result = json.loads(out)
+        self.assertEqual(result["failure_category"], "baseline_mismatch")
+
+    def test_post_round_head_drift_voids_round(self):
+        stream = _event_stream(json.dumps(_valid_reviewer_json("FINDINGS")))
+
+        def drift():
+            subprocess.run(
+                ["git", "-C", str(self.repo), "commit", "--allow-empty", "-qm", "drift"], check=True
+            )
+
+        ret, out = self._run_adapter_with_fake_opencode(stream, on_opencode=drift)
+        self.assertEqual(ret, 0)
+        result = json.loads(out)
+        self.assertEqual(result["failure_category"], "baseline_mismatch")
+
+    def test_clean_round_is_not_falsely_voided(self):
+        # The post-round re-verification must not fire when nothing changed.
+        stream = _event_stream(json.dumps(_valid_reviewer_json("FINDINGS")))
+        ret, out = self._run_adapter_with_fake_opencode(stream)
+        self.assertEqual(ret, 0)
+        self.assertEqual(json.loads(out)["status"], "FINDINGS")
+
+    def test_admission_dirty_worktree_blocked_before_dispatch(self):
+        # Pre-existing dirt is caught at admission, before opencode is called.
+        (self.repo / "review.py").write_text("print('dirty before dispatch')\n")
+        stream = _event_stream(json.dumps(_valid_reviewer_json("FINDINGS")))
+        ret, out = self._run_adapter_with_fake_opencode(stream)
+        self.assertEqual(ret, 0)
+        result = json.loads(out)
+        self.assertEqual(result["failure_category"], "baseline_mismatch")
+        self.assertFalse(hasattr(self, "captured_opencode_cmd"))
+
+    def test_post_round_mutation_before_timeout_voids_round(self):
+        # A timed-out round may still have written; the baseline is re-checked
+        # before Router is allowed to fall back to another backend.
+        import io
+
+        req = json.dumps(self.request())
+        original_run = subprocess.run
+        with mock.patch("subprocess.run") as mocked:
+            def side_effect(cmd, **kwargs):
+                if cmd[0] == "opencode":
+                    (self.repo / "review.py").write_text("print('tampered')\n")
+                    raise subprocess.TimeoutExpired(cmd, 600)
+                return original_run(cmd, **kwargs)
+            mocked.side_effect = side_effect
+            with mock.patch("sys.stdin", io.StringIO(req)):
+                with mock.patch("sys.stdout", new_callable=io.StringIO) as fake_out:
+                    with mock.patch.object(sys, "argv", ["opencode-review", "review"]):
+                        ret = ADAPTER_MOD.main()
+                        out = fake_out.getvalue()
+        self.assertEqual(ret, 0)
+        result = json.loads(out)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["failure_category"], "baseline_mismatch")
 
 
 class ExtractSessionIdTests(unittest.TestCase):

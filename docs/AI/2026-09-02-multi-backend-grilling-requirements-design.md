@@ -126,7 +126,7 @@ SKILL.md 的 finding 生命周期、三字段、CLOSED 判据、DISPUTED、HARD-
 
 - 新增豁免形态：registry 可以显式声明 `readonly_required: false` + `readonly_mode: none` + `readonly_exception`（决策记录路径）；三者必须成对出现，缺一即 `configuration_invalid`（`dispatch-review.py` 机械校验），静默放开只读仍是配置错误。
 - 豁免后端的轮次仅用于 finding 发现与复审参考，**不得作为 finding CLOSED 依据**（CLOSED 仍须由只读合规后端落地）；结果携带 `readonly_confirmation = {confirmed: false, evidence: "not-required:<backend>:readonly-waived-by-decision"}`。
-- 补偿控制：每轮 baseline 复验（FR-MB-019）保持不变——reviewer 若改动受审内容，该轮按 `baseline_mismatch` 作废。
+- 补偿控制：每轮 baseline 复验（FR-MB-019）保持不变——reviewer 若改动受审内容，该轮按 `baseline_mismatch` 作废。该复验已在两条路径机械落地：Router 派发路径（轮次结束后复验，2026-09-23 RV-001）与 adapter 直调路径（准入 + 轮后双重复验，超时回退前亦复验，2026-09-23 RV-004）；豁免后端不经 Router 直调时同样受该约束，其 PASS/FINDINGS 不得因"结果看起来正常"而免除复验核对。
 - 首个（当前唯一）豁免后端：`opencode-cli`；`opencode-native` 未豁免、维持只读合同（免费档下不可实际使用）。恢复条件与动作见 `docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md`。
 
 对应 finding：MB-GRILL-008。

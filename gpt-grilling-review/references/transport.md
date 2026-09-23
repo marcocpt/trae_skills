@@ -357,6 +357,13 @@ STATUS: HUMAN_DECISION_REQUIRED
 - 结果 `readonly_confirmation` 为 `not-required:opencode-cli:readonly-waived-by-decision`，把它当作只读确认处置是违约；
 - 两个 CLI profile（`strong-reviewer-cli` / `strong-reviewer-advisory-cli`）的只读职责仅剩提示词约定，不得据此宣称只读合规；profile 也不得再携带权限限制块（免费档会 403，`validate-bindings.py` 机械校验一致性）。
 
+**直调 adapter（不经 Router 派发时的合规边界）**：当一轮不经 Router（例如手工复核或 stateful 序列直调）时，调用方以 `dd-review-request/1` 直接调用 adapter（`opencode-review review`，stdin 请求、stdout `dd-review-result/1`）。此时：
+
+- adapter 自身执行冻结基线的**准入 + 轮后**双重复验（HEAD 等于 `head_sha` 且工作树干净，含未跟踪文件）；任一次不通过即 `baseline_mismatch` BLOCKED，且不 fallback——这是非只读后端的机械补偿控制，调用方不得因结果是 PASS/FINDINGS 就跳过核对；
+- 超时（进程已运行过、可能已写入）同样在回退前复验，避免把被改动的仓库交给下一个后端；
+- 直调结果仍是豁免结果（`readonly_confirmation` = `not-required:opencode-cli:...`），**不得作为 finding CLOSED 依据**；
+- 请求不得携带 Router 专属键（`native_guard` / `external_review` / `readonly_evidence`）；finding 轮不得携带 `decision_points` 且必须带 `verification`；advisory 轮必须携带非空 `decision_points`。
+
 **取证边界**：修订前的只读取证——续接形态 `dd-workflow-runtime/tests/evidence/opencode-resume-readonly-evidence.yaml`（opencode 1.18.25）与 L6 `opencode-cli-l6-evidence.yaml`（1.18.29）——是历史事实，在豁免存续期间不构成当前合同证据；恢复只读时须按 FR-MB-012 重新采集，**不得改写旧证据的版本号冒充重新取证**。
 
 **结果**：按请求 mode 返回——finding 轮返回 `dd-review-result/1`，advisory 轮返回 `dd-advisory-result/1`（均由 runtime schema/validator 属主机械保证，FR-MB-017），本文件只引用，F/V/H 分流仍按 [SKILL.md](../SKILL.md) 的语义执行，advisory 的决策点模型按 [advisory-review.md](advisory-review.md) 执行，不得由 provider 定义另一套枚举含义。
@@ -375,3 +382,4 @@ STATUS: HUMAN_DECISION_REQUIRED
 | "退出码 0 说明续接成功了" | 必须做结构化会话标识比对，不等即 `session_resume_mismatch` |
 | "这个后端在 registry 里，所以能用于多轮" | registry 只登记能力，多轮还须满足续接、会话标识、续接只读取证三项条件（声明 `readonly_mode: none` 的豁免后端按「只读」第 4 条降级，不是绕过） |
 | "豁免后端返回 PASS，我可以关闭 finding 了" | 豁免后端（`readonly_confirmation` = `not-required:*`）的结果不得作为 CLOSED 依据；CLOSED 必须由只读合规后端落地，否则按红线纠正 |
+| "直调 adapter 拿到 PASS，说明基线没动" | 非只读后端可能中途改动受审内容；adapter 已做准入 + 轮后双重复验，仍须核对 `failure_category`，且豁免结果不得作为 CLOSED 依据 |
