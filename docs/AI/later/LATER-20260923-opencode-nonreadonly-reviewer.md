@@ -5,7 +5,7 @@ status: active
 created: 2026-09-23
 source: 用户实测要求（"测试下外生 opencode 是否可以工作"）+ 用户裁决（"确认取消只读限制"）
 tags: [grilling, runtime-contract, opencode, readonly]
-related: [gd-2026-09-02-multi-backend-grilling]
+related: [gd-2026-09-02-multi-backend-grilling, LATER-20260923-waiver-record-path-containment]
 target_phase: OpenCode Zen 套餐/Provider 策略变化后，作为独立任务恢复只读合同
 trigger: OpenCode 免费档（或改用付费档/其他非 Zen Provider 后）重新接受带能力限制的 agent；或 opencode-cli 恢复进入需要 CLOSED 权的路径
 ---
