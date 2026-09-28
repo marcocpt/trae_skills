@@ -8,6 +8,10 @@
 
 **新任务首次进入 Intake 时，先用通俗语言向用户复述三件事并取得确认：要解决什么问题、范围边界（IN/OUT）、怎么算成功。** 复述与用户描述不一致时以用户为准修正后再确认；未获确认不得进入 Environment，也不得先动手收集规格或修改项目产物。这是防跑偏的强制闸口。**恢复任务若状态已含有效需求确认（或有效 Bootstrap Handoff 已载明需求事实），则复用确认结果，不重复 ASK。**
 
+### 改动规模档位判定
+
+复述确认通过后判定 `change_tier`：只有 [small-change-track.md](small-change-track.md) §3 的全部准入条件都逐条证成，才判 `small`，并把理由写入 `tier_rationale`；否则判 `full`（默认）。命中 §4 任一升级触发器立即转 `full`。档位与理由写入 Feature state，供 Specification、Planning 和 Final Candidate 在恢复时沿用。本文件只负责"何时判定"，不复制档位语义。
+
 ### 输入复用
 
 先消费有效 Bootstrap Handoff、状态、已批准文档和用户当前请求。只对仍缺失的 Feature blocker 进行 `grill-me`；不要把技术设计混入需求质询。
@@ -34,6 +38,7 @@
 Gate：
 
 - 需求复述已获用户确认（防跑偏闸口）；
+- `change_tier` 已判定并写入状态，`small` 档已写 `tier_rationale`；
 - 10 项信息已解决或明确标记不适用；
 - blocker 为零；
 - 用户确认需求摘要；

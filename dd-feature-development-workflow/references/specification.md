@@ -26,6 +26,12 @@ delivery_policy: <inherited>
 - Test Case Matrix；
 - Review records。
 
+### 小型改动档位
+
+`change_tier=small` 时按 [small-change-track.md](small-change-track.md) §5 执行：只产出 1 份 mini-spec（可验证 AC 清单、IN/OUT、验证命令与预期、影响面），记录路径与内容指纹，**仍需用户确认**；不调用 `dd-writing-specs` 生成 Requirements／Design／Visual／Test Matrix 四件套。批准依据与来源字段按 [artifact-source-and-packet](../../dd-workflow-runtime/references/artifact-source-and-packet.md) 的最小要求，本文件不复制其 schema。
+
+`small` 档按 mini-spec 的对应项执行下方检查与 Gate：AC 可验证、IN/OUT 完整、验证命令可执行、影响面覆盖调用方／文档／测试；涉及四件套的检查项不适用。
+
 检查：
 
 - Requirements 不含实现符号；

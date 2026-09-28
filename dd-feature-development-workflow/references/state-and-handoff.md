@@ -31,6 +31,8 @@ phase_contract_path: null
 除运行时通用字段外记录：
 
 ```yaml
+change_tier: full             # small | full，默认 full；判定与升级见 small-change-track.md
+tier_rationale: null          # change_tier=small 时必填，逐条对应准入条件
 feature_name: ""
 feature_number: F0
 requirements_path: ""
@@ -61,6 +63,8 @@ phase_contract_path: null
 ```
 
 候选字段不变量：`candidate_review.sha == full_spec_gap.sha == full_ci_run.head_sha == candidate_sha`；且 `full_ci_run.conclusion` 终态均落盘，`PASS` 仅当 `conclusion==success && head_sha==candidate_sha`，`null` 表示未有终态；任一缺失或不一致即 `stale`，恢复/Closure 据此判定，不猜测。候选是否就绪只由上述源字段推导判定，不另存派生布尔。
+
+`change_tier=small` 缺 `tier_rationale` 即 `BLOCKED`，补判定后才可推进；档位判定、升级、不可省清单与恢复的唯一属主是 [small-change-track.md](small-change-track.md)，本文件只记录字段，不复制其语义。`candidate_review.level` 取值语义由 [review-gate](../../dd-workflow-runtime/references/review-gate.md) 拥有，本工作流只按档位选择 `low` 或 `standard`。
 
 ### 2.1 in-progress 镜像
 
@@ -93,5 +97,7 @@ merge、push、cleanup 等不可瞬时动作使用运行时的 `in_progress: {op
 状态字段与产物、分支或 CI 证据冲突时，按运行时恢复合同修正后继续。状态缺失时至少检查工作分支提交、规格/计划文件、Phase 证据、候选分支和 CI 结果；禁止默认回到 Intake。
 
 证据优先于状态字段：`current_stage` 与真实 diff／提交／CI 冲突时，以可复核证据为准，并把修正写入状态。
+
+`change_tier` 缺失或为空时，按已产出产物推导档位并写回（见 [small-change-track.md](small-change-track.md) §8），不默认抬回完整流程重跑，也不回退已通过的 Gate。
 
 Tracer 恢复三态判定见 [tracer-contract](../../dd-workflow-runtime/references/tracer-contract.md) §8：`decision=required` 且 `result` 非 `passed` 时从 Phase 0（`current_stage=implementation`, `current_phase=0`）恢复，不得进 Phase 1；`skipped` 缺 `reason` 时 `BLOCKED`。tracer 落在 `4/4.x → implementation` 内，不新增 Stage，`current_step` 映射不变。

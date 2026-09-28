@@ -16,18 +16,20 @@ description: 当实现需要规格套件、分阶段计划、TDD、CI 或用户�
 - 简单文本或纯文档微调：直接使用对应工具或 writer；
 - 只读审查。
 
+小型功能改动**不属于**上述例外：它仍走本工作流，只是在 Intake 判定 `change_tier=small` 后按 [small-change-track.md](references/small-change-track.md) 压缩规格、计划与审查产物；档位只减产物，不减硬 Gate。
+
 ## 工作流怎么运行
 
 一个 Feature 从需求到交付的大致旅程：
 
 1. **新任务首次进入 Intake 时，先用通俗语言向用户复述需求**（要解决什么问题、范围边界、成功标准），取得确认后再收集剩余事实——这是防跑偏的第一道闸口，不得跳过；恢复任务若状态已含有效需求确认则复用，不重复 ASK；随后复用已有 Handoff 和已解决事实，不重复询问；
 2. **首次建立执行环境时默认新建隔离 worktree，且在修改项目产物（代码、测试、规格、项目文档等交付范围内文件）之前完成**；恢复任务、有效 Handoff 或父工作流已提供的 worktree 必须复用并验证，不重新创建；仅用户明确要求时才允许在当前工作区，且须记录原因；
-3. 调用 `dd-writing-specs` 生成并批准 Requirements、Design、Test Matrix，UI 功能按需包含 Visual；
-4. 从已批准规格拆出 Phase 和可执行 Task；Planning 同时判定是否需要 tracer（语义见 [tracer-contract](../dd-workflow-runtime/references/tracer-contract.md)），需要则 Implementation 以 Phase 0 先打通真实链路再进 Phase 1；
+3. Intake 判定改动规模档位 `change_tier`（`small`／`full`，默认 `full`，语义唯一属主见 [small-change-track.md](references/small-change-track.md)）；`full` 调用 `dd-writing-specs` 生成并批准 Requirements、Design、Test Matrix，UI 功能按需包含 Visual，`small` 只产出 1 份 mini-spec 并经用户确认；
+4. 从已批准规格拆出 Phase 和可执行 Task（`small` 档只产出单 Phase 执行清单）；Planning 同时判定是否需要 tracer（语义见 [tracer-contract](../dd-workflow-runtime/references/tracer-contract.md)），需要则 Implementation 以 Phase 0 先打通真实链路再进 Phase 1；
 5. 按 Phase → Task → TDD 实现，每个 Phase 必须通过 Local Gate；
 6. 根据真实实现同步受影响文档；
 7. 冻结最终候选 SHA——实现和文档完成后锁定、等待最终验证和交付的唯一版本；
-8. 对同一个 SHA 做确定性验证、独立审查、完整规格缺口检查（从整套已批准规格反查遗漏、越界或未验证项）和完整 CI；
+8. 对同一个 SHA 做确定性验证、独立审查、完整规格缺口检查（从整套已批准规格反查遗漏、越界或未验证项）和完整 CI；`small` 档把独立审查降为主 Agent A/B/C 自检、缺口检查缩为 AC → 测试/证据逐项核对表，但 SHA 绑定与完整 CI 不变；
 9. 确认阶段决定继续交付还是回退；继续交付时仅按既有动作级授权推进同一个已验证候选 SHA，缺少所需授权时停在对应动作边界并保留证据——授权检查发生在每个 Git／远端动作边界（包括冻结候选阶段的分支 push），不是只在最后一步；
 10. 完成交付、清理、状态收尾和 Host Close。
 
@@ -69,6 +71,7 @@ delivery_policy: project-rules
 6. 最终候选必须冻结，审查 / 完整规格缺口检查 / 完整 CI 绑定同一个 SHA；
 7. 内容批准、测试 PASS、审查者 PASS 只证明 Workflow Gate，不自动产生 Git 或外部动作授权。
 8. Tracer 决策必须闭环：Planning 判定 `required`/`skipped`；`required` 时 Phase 1 前 Phase 0 必须 `passed`，`skipped` 时必须有 `reason`；schema／evidence 唯一属主为 `dd-workflow-runtime/references/tracer-contract.md`，本文件只决定何时调用。
+9. 档位只压缩产物，不减少硬 Gate：`change_tier=small` 仍必须完成需求复述确认、mini-spec 批准、红绿实际运行、Local Gate、UI 真实路径证据、同 SHA 完整 CI、动作授权与 Host Close；命中升级触发器立即转 `full`，不得边走边升。
 
 ## Stage / Gate 图
 
@@ -102,17 +105,18 @@ intake → environment → specification → planning → implementation
 
 | Stage | 实际要做什么 | 完成标志 | 详细规则 |
 |---|---|---|---|
-| Intake | **新任务首次进入时先用通俗语言复述需求并取得用户确认**（恢复任务状态已含有效确认则复用，不重复 ASK），再确认 Feature 的目标、范围、成功标准、失败路径、兼容性及可验证 AC，只补尚未解决的 blocker | 需求复述已获用户确认并持久化 | [intake-and-environment.md](references/intake-and-environment.md) |
+| Intake | **新任务首次进入时先用通俗语言复述需求并取得用户确认**（恢复任务状态已含有效确认则复用，不重复 ASK），再确认 Feature 的目标、范围、成功标准、失败路径、兼容性及可验证 AC，只补尚未解决的 blocker；同时判定 `change_tier`，`small` 档需逐条写下准入理由 | 需求复述已获用户确认，档位与理由已持久化 | [intake-and-environment.md](references/intake-and-environment.md)／[small-change-track.md](references/small-change-track.md) |
 | Environment | **首次建立执行环境时默认新建隔离 worktree，且在修改项目产物之前完成**；恢复任务、有效 Handoff 或父工作流已提供的 worktree 必须复用并验证；仅用户明确要求时才允许在当前工作区并记录原因。验证基线和并发状态 | worktree 已新建或已复用并验证，工作环境与状态一致，可安全进入规格阶段 | [intake-and-environment.md](references/intake-and-environment.md) |
-| Specification | 调用 `dd-writing-specs` 生成并批准 Requirements、Design、Test Matrix；UI 功能按需生成 Visual | canonical spec 已批准，并有当前内容指纹和批准依据 | [specification.md](references/specification.md) |
-| Planning | 从已批准规格生成 Phase 和可执行 Task 包，建立 AC → Task → Test/Evidence 映射，并判定 tracer（required/skipped） | 所有 Phase/Task 输入输出、写入范围、验证方式和停止条件都明确，tracer 决策已记录 | [planning-stage.md](references/planning-stage.md) |
+| Specification | `full` 档调用 `dd-writing-specs` 生成并批准 Requirements、Design、Test Matrix，UI 功能按需生成 Visual；`small` 档只产出 1 份 mini-spec（AC 清单、IN/OUT、验证命令与预期、影响面） | canonical spec 已批准，并有当前内容指纹和批准依据（`small` 档即 mini-spec） | [specification.md](references/specification.md)／[small-change-track.md](references/small-change-track.md) |
+| Planning | 从已批准规格生成 Phase 和可执行 Task 包，建立 AC → Task → Test/Evidence 映射，并判定 tracer（required/skipped）；`small` 档只产出单 Phase 执行清单，不做拆分 | 所有 Phase/Task 输入输出、写入范围、验证方式和停止条件都明确，tracer 决策已记录 | [planning-stage.md](references/planning-stage.md)／[small-change-track.md](references/small-change-track.md) |
 | Implementation | 按当前 Task 的 `anchors`、全局约束、Out of Scope、失败路径及必要集成输入选择性读取规格（不完整重读）；按 Phase 执行 Task 并采用 TDD；每个 Phase 通过 Local Gate 并完成按风险路由的紧凑 Phase 复核（命中风险触发器时升级独立强审）；高风险 UI 按风险触发远程 Smoke CI；Local Gate 未通过不得进入下一 Phase | 全部 Phase 已验证，无未解释的当前 Phase 缺口 | [implementation.md](references/implementation.md) |
 | Documentation | 根据最终已验证行为判断哪些长期文档需要更新、无需更新或已过期 | 文档与即将冻结的实现一致 | [documentation.md](references/documentation.md) |
-| Final Candidate | 冻结候选 SHA；对同一个 SHA 做确定性验证、独立审查、完整规格缺口检查和 Full CI。候选 Gate 只产出并验证可交付候选，不推进目标分支 | review / gap / CI 均绑定同一 `candidate_sha` 并通过 | [candidate.md](references/candidate.md) |
+| Final Candidate | 冻结候选 SHA；对同一个 SHA 做确定性验证、独立审查、完整规格缺口检查和 Full CI。候选 Gate 只产出并验证可交付候选，不推进目标分支。`small` 档审查降为 `review_level=low` 的 A/B/C 自检，缺口检查缩为 AC → 测试/证据逐项核对表，SHA 绑定与 Full CI 不变 | review / gap / CI 均绑定同一 `candidate_sha` 并通过 | [candidate.md](references/candidate.md)／[small-change-track.md](references/small-change-track.md) |
 | Confirmation | 确认继续交付还是回退，不修改候选内容 | 继续或回退的决策已记录并持久化；仅当决定继续时才进入 Delivery | [candidate.md](references/candidate.md) |
 | Delivery | 仅在已有 action-specific authorization 的范围内推进同一个 `candidate_sha` | 要求且获授权的交付动作都有证据 | [delivery-and-closure.md](references/delivery-and-closure.md) |
 | Closure | 验证最终状态、写 Completion Receipt、按规则清理并完成 Host Close | 成功路径的状态或 Completion Receipt 为 `completed`，所需清理已验证并按宿主合同收尾；`paused` 不是完成 | [delivery-and-closure.md](references/delivery-and-closure.md) |
 
+- 改动规模档位（`change_tier` 唯一属主，含准入、升级、不可省清单与恢复）：[small-change-track.md](references/small-change-track.md)；
 - Bootstrap Handoff、Feature state、legacy `current_step` mapping 与恢复：[state-and-handoff.md](references/state-and-handoff.md)；
 - Planning 模板（source_manifest / 任务结构）：[planning.md](references/planning.md)；
 - 来源／执行包／验证证据包／生命周期共享合同：[artifact-contract](../dd-workflow-runtime/references/artifact-contract.md) 是路由器，详细合同在其三个分文件 `artifact-source-and-packet.md`／`artifact-verification.md`／`artifact-lifecycle.md`；
@@ -154,6 +158,8 @@ intake → environment → specification → planning → implementation
 - Phase ≥ 3 时只用一个总计划文件包含所有 Phase，或使用 planning reference 不传 `split_mode` 与 `phase_list`；
 - 完整 CI 没有验证最终候选 SHA 就推进 develop；
 - 候选过期或内容变化后仍推进，或 Documentation 在候选冻结后才做；
+- `change_tier=small` 时省掉需求复述确认、mini-spec 批准、红绿实际运行、Local Gate、UI 真实路径证据、同 SHA 完整 CI 或动作授权中的任一项；
+- 命中升级触发器仍按 `small` 收尾，或先按 `small` 做完后补材料；
 
 ### UI 证据与会话收尾
 

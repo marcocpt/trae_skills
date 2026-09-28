@@ -2,9 +2,11 @@
 
 只在 Final Candidate Stage 读取。候选冻结、独立 review/full gap、Full CI 与 invalidation。Candidate Gate 只产生可交付候选，不推进目标分支（AC-08）。
 
+档位差异：`change_tier=small` 时审查等级与缺口检查按 §4 降级，SHA 绑定与完整 CI 不变；档位语义唯一属主是 [small-change-track.md](small-change-track.md)，本文件只引用。
+
 ## 1. 前置
 
-所有 Phase Gate 通过，且 Documentation 已同步（候选冻结前完成，AC-07）。Tracer 决策已闭环（见 [tracer-contract](../../dd-workflow-runtime/references/tracer-contract.md) §9）：`required` → `tracer.result=passed`；`skipped` → `reason` 存在；未闭环不得冻结候选。
+所有 Phase Gate 通过，且 Documentation 已同步（候选冻结前完成，AC-07）。Tracer 决策已闭环（见 [tracer-contract](../../dd-workflow-runtime/references/tracer-contract.md) §9）：`required` → `tracer.result=passed`；`skipped` → `reason` 存在；未闭环不得冻结候选。档位已判定：`change_tier` 存在，`small` 档需有 `tier_rationale` 且未命中升级触发器（见 [small-change-track.md](small-change-track.md) §3/§4）。
 
 ## 2. 冻结候选 SHA
 
@@ -22,7 +24,18 @@
 
 ## 4. 独立 A/B/C 审查 + full-spec gap
 
+### 4.1 `full` 档
+
 以 `review_level=standard`、`review_execution=auto` 审查同一冻结 SHA（AC-08）。Reviewer 输入为 canonical spec、frozen diff、Phase verification refs；输出 A/B/C findings 和 full-spec gap table——必须覆盖所有适用的 normative stable IDs/anchors（含 FR/NFR/AC、Out of Scope、global/cross-cutting invariants、Constraints、failure/degradation paths、compatibility/migration、explicit negative requirements/Decision Freedom 禁止项），有 stable ID 时以 ID 标识、无则用稳定 section anchor，不复制正文；每项仍需记录 coverage/disposition 及对应 implementation/test/evidence ref。无安全独立路线且未获外部授权时 `BLOCKED`，不得 inline 降级为独立 PASS。
+
+### 4.2 `small` 档
+
+`change_tier=small` 且未命中 [review-gate](../../dd-workflow-runtime/references/review-gate.md) 风险触发器时：
+
+- `review_level=low`、`review_execution=auto`——由主 Agent 按 A/B/C 三方向自检并记录分方向结论，不派独立强审；A/B/C 语义与检查方向不因档位降级（属主 review-gate，本文件不重新定义）；
+- `full_spec_gap` 缩为 **AC → 测试/证据逐项核对表**：逐项记录 AC、coverage、disposition 与对应 implementation/test/evidence ref，不要求覆盖全部 normative anchors 的 gap table；
+- 命中任一风险触发器 → 按 review-gate 升级到 `standard` 或 `high`，并执行 §4.1 的完整 gap table；small 档不覆盖该升级；
+- 冻结 `candidate_sha`、同 SHA 完整 CI 与 §6 invalidation 规则不变。
 
 ## 5. Full CI on exact SHA
 
@@ -38,13 +51,13 @@
 final_candidate_branch: ci/F0-final-candidate
 candidate_sha: <sha>
 candidate_review:
-  level: standard
+  level: standard            # change_tier=small 且未命中风险触发器时为 low
   execution: auto
   sha: <candidate_sha>
   review_ref: <review-ref>
 full_spec_gap:
   sha: <candidate_sha>
-  gap_table_ref: <gap-table-ref>
+  gap_table_ref: <gap-table-ref>   # small 档为 AC → 测试/证据逐项核对表
 full_ci_run:
   run_id: <run-id>
   url: <run-url>

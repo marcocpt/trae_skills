@@ -82,7 +82,7 @@
   "smoke_ci_phases": ["<触发过远程 UI Smoke CI 的 Phase 编号列表>"],
   "final_candidate_branch": "<最终合并候选分支名>",
   "candidate_sha": "<冻结候选 SHA>",
-  "candidate_review": {"level": "standard", "execution": "auto", "sha": "<candidate_sha>", "review_ref": "<review-ref>"},
+  "candidate_review": {"level": "standard|low", "execution": "auto", "sha": "<candidate_sha>", "review_ref": "<review-ref>"},
   "full_spec_gap": {"sha": "<candidate_sha>", "gap_table_ref": "<gap-table-ref>"},
   "full_ci_run": {"run_id": "<run-id>", "url": "<run-url>", "head_sha": "<candidate_sha>", "conclusion": "success"},
   "commits": {
@@ -91,6 +91,8 @@
   }
 }
 ```
+
+> `candidate_review.level` 的取值语义由 [review-gate](review-gate.md) 拥有，本文件只记录字段形状；feature-development 按 `change_tier` 选择 `low`（`small` 档且未命中风险触发器）或 `standard`，判定规则见该工作流的 `small-change-track.md`，不在此复制。
 
 > **三层增量验证约束**：feature-development 工作流采用三层验证。`completed_phases` 记录已通过本地快速验证的 phase 列表，`smoke_ci_phases` 记录触发过远程 UI Smoke CI 的 phase 列表；`final_candidate_branch`、`candidate_sha`、`candidate_review`、`full_spec_gap`、`full_ci_run` 跟踪最终合并候选，且 `candidate_review.sha == full_spec_gap.sha == full_ci_run.head_sha == candidate_sha`（exact-SHA 不变量）；`full_ci_run.conclusion` 终态均落盘，`PASS` 仅当 `conclusion==success` 且 `head_sha==candidate_sha`。
 

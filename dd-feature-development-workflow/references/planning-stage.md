@@ -4,6 +4,10 @@
 
 从磁盘完整读取一次已批准的全部原始规格与 review，建立 `source_manifest` + `normative coverage index`（来源 digest 与可枚举 normative anchors 清单），核对版本、指纹和批准；摘要只定位。然后识别 Phase 数量与依赖，再使用 planning reference。首次读取后生成 `canonical-index.json`（`{normative_anchors:[...], source_manifest_digest:<sha256>, source_digests:{...}}`）并与当前 `source_manifest` 绑定；无 stable ID 的 normative 段无法纳入可靠索引时标记“不可机械证明”走全文复核逃生口。自检默认以 inventory 为基准做覆盖集合检查，仅在 missing/partial/conflicting、source digest drift、anchor 无法定位或来源缺少稳定 normative IDs 时定向回读对应 canonical anchor；不得为自检无条件再次完整读取整套规格，无法证明 index 完整时允许一次全文复核——机械校验为 `validate-workflow-artifact.py planning-index <canonical-index.json> <plan>`，仅该双参 JSON 索引路径允许机械 PASS。
 
+## 小型改动档位
+
+`change_tier=small` 时不做拆分档位判定，也不派生独立执行包：只产出单 Phase 执行清单（Goal、改动文件、验证命令与预期、回滚点、AC → 测试映射），并记 `tracer.decision=skipped` + `reason`。判定与产出细节见 [small-change-track.md](small-change-track.md) §5，本文件不复制其语义。`full` 档继续按本文件执行。
+
 ## 拆分档位（按 Phase 数量强制）
 
 <HARD-GATE>
