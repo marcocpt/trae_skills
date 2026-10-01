@@ -73,6 +73,7 @@ out/
 
 # AI agent host-local config
 .codebuddy/
+.workbuddy-ai/
 
 # Temporary files
 tmp/
