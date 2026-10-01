@@ -1,0 +1,38 @@
+# codex-cli read-only capability re-certification for codex-cli 0.157.0
+#
+# Trigger: FR-MB-012 capability invalidation — installed codex-cli (0.157.0)
+# differs from the version bound to the existing evidence (0.153.4,
+# codex-resume-readonly-evidence.yaml / codex-cli-l6-evidence.yaml).
+# Per gpt-grilling-review transport contract, version change invalidates the
+# old backend-bound proof; this file re-captures both invocation forms on
+# 0.157.0 before any authoritative review turn uses them.
+schema: dd-backend-readonly-evidence/1
+captured_at: 2026-09-27
+backend: codex-cli
+codex_version: codex-cli 0.157.0
+invocation_forms:
+  - form: initial
+    command: "codex exec --sandbox read-only --json (prompt via stdin)"
+    probe: codex-resume-probe-initial-01570.json
+    probe_repo: /tmp/codex-ro-probe-01570 (isolated temp git repo, discarded)
+    probe_token: L6-PROBE-0927-A
+    assertions:
+      - "protected.txt content unchanged (write denied, exit 1, operation not permitted)"
+      - "l6-created-0927.txt not created (create denied, exit 1, operation not permitted)"
+      - "worktree clean after probe (git status --porcelain empty)"
+    verified: true
+  - form: resume
+    command: "codex exec resume <thread_id> --json (prompt via stdin)"
+    probe: codex-resume-probe-resume-01570.json
+    thread_id: 01a0de84-3e54-7f70-8eb1-d61d2d9fa184
+    assertions:
+      - "resume turn executed successfully (exit 0, functional continuation)"
+      - "resume-created-0927.txt not created (write denied, exit 1, operation not permitted)"
+      - "sandbox policy mechanically inherited from read-only initial thread"
+    verified: true
+conclusion: >
+  Both invocation forms are read-only and functional on codex-cli 0.157.0.
+  Evidence is bounded to backend=codex-cli, codex-cli=0.157.0, the two exact
+  invocation forms above, and does not extrapolate to other versions or forms.
+  Supersedes the 0.153.4 evidence for this version only; the 0.153.4 files
+  remain historical fact.
