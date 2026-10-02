@@ -154,9 +154,18 @@ none
 - `Taken over from` 填上游宿主标识与**来源 checkpoint_id**，首轮填 `none`；
 - `<!-- dd-checkpoint:v1 -->` 标记固定，供机械定位。
 
-### 6.1 如何选最新 checkpoint（待取证，尚未冻结）
+### 6.1 如何选最新 checkpoint（2026-10-02 真实 GitHub 探针冻结）
 
-不得只按"全文最后一次 marker"。至少按 **marker + `workflow_id`** 过滤，并保存具体 comment ref。过滤规则（含同一 Issue 上其他 workflow、伪造 marker、重复 checkpoint、分页与排序）尚未冻结：需先在真实 GitHub 仓库完成最小探针取证，取证通过前不得声称可机械选取最新 checkpoint。
+不得只按"全文最后一次 marker"。选取算法（探针证据与完整脚本：
+`docs/AI/task-tracking-projection-evidence/L02-checkpoint-probe.md`）：
+
+1. `GET /repos/{owner}/{repo}/issues/{n}/comments?per_page=100` 全量翻页（跟随 `Link: rel="next"`）。**禁用** `sort`/`direction` 与 `since`：该端点没有 sort/direction 参数（GitHub REST 合同：单 Issue 评论按 comment id 升序返回），`since` 按 `updated_at` 过滤（探针实测：会把早于游标创建但被编辑过的评论重新纳入）。
+2. **完整必填字段校验**：body 以固定 marker `<!-- dd-checkpoint:v1 -->` 开头，且能解析出全部**恢复实际消费**的字段：`workflow_id`、`workflow_type`、`checkpoint_id`、`host`、`state_status`、`remote`、`Branch`、`SHA`。缺任一判 **malformed**（伪造/损坏），整条丢弃——只有 marker + workflow_id + checkpoint_id 的最小伪造不够格。
+3. 按 `workflow_id == 当前工作流` 过滤；同一 Issue 上其他工作流的 checkpoint 不参与。
+4. 同一 `checkpoint_id` 出现多条评论：取 comment id 最小者（首次投递）参与选取，其余按重复计数记录（与 §6.3 crash-safe 防重互补，不改变其先查重再投递的次序）。
+5. 剩余评论取 **comment id 最大**者为最新 checkpoint（GitHub 合同：单 Issue 评论按 id 升序返回、comment id 全局唯一；探针实测 5/5 单调一致，id 序即创建序，`created_at` 秒级并列不作排序键）。保存该评论的 comment ref（comment id、html_url、created_at、updated_at）。
+6. **编辑策略**：编辑不改 comment id 与 created_at（探针实测），故**排序键**稳定；但编辑可改变**评论资格**——改掉 marker 或任一必填字段 → malformed 丢弃，改 `checkpoint_id` → 视为新 checkpoint（交由步骤 4 防重）。checkpoint 评论约定 **append-only**：正文更正只允许追加，不得改写既有字段；恢复方每次抓取按上述规则**重新评估资格**，不缓存资格结论。
+7. **机械可核计数**：每次选取必须输出 `fetched_total / marker_candidates / malformed / after_workflow_filter / duplicates` 五个计数，防止解析失败被静默吞掉（探针当日曾因 jq 正则旗标误用出现 `parsed=0` 假象而无所察觉）。
 
 ### 6.2 写回时机（只有这五个）
 

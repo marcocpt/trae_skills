@@ -159,6 +159,106 @@ def check_stage_projection_covers_canonical_stages(tt: str, feature: list[str], 
         assert n == 1, f"bug stage {stage!r} mapped {n} times (must be exactly 1)"
 
 
+def check_section61_selection_rule(tt: str) -> None:
+    """§6.1: frozen latest-checkpoint selection rule (2026-10-02 real-GitHub probe).
+
+    Behavioral on purpose: pagination driver, banned params, full required-field
+    validation, workflow filter, dedup, latest-by-comment-id, append-only edit
+    policy and machine-checkable counters must all be present and attributed
+    to the probe evidence bundle.
+    """
+    sec = h3_section(tt, "6.1 如何选最新 checkpoint")
+    # Evidence provenance (three artifacts, not "session output" hand-waving).
+    assert (
+        "docs/AI/task-tracking-projection-evidence/L02-checkpoint-probe.md" in sec
+    ), "§6.1 must cite the probe evidence document"
+    # Pagination: full traversal via Link, not search / not "last marker".
+    assert "per_page=100" in sec, "§6.1 must fix the page size"
+    assert 'rel="next"' in sec, "§6.1 must require Link-driven pagination"
+    assert "全文最后一次 marker" in sec and "不得只按" in sec, "§6.1 must ban last-marker selection"
+    # Banned server-side params, with reasons.
+    assert "禁用" in sec, "§6.1 must explicitly ban sort/direction and since"
+    for banned in ("sort", "direction", "since", "updated_at"):
+        assert banned in sec, f"§6.1 must explain the ban covering {banned}"
+    # Full required-field validation (recovery-consumed fields), malformed = drop.
+    for field in (
+        "workflow_id",
+        "workflow_type",
+        "checkpoint_id",
+        "host",
+        "state_status",
+        "remote",
+        "Branch",
+        "SHA",
+    ):
+        assert field in sec, f"§6.1 required-field list must include {field}"
+    assert "malformed" in sec, "§6.1 must classify incomplete records as malformed"
+    # Workflow scoping + dedup + latest selection keys.
+    assert "workflow_id == 当前工作流" in sec, "§6.1 must scope by workflow_id"
+    assert "comment id 最小者" in sec and "首次投递" in sec, "§6.1 must dedup to first delivery"
+    assert "comment id 最大" in sec, "§6.1 must pick the latest by max comment id"
+    # Edit policy: sort key stable ≠ eligibility stable; append-only + re-evaluation.
+    assert "append-only" in sec, "§6.1 must declare checkpoint comments append-only"
+    assert "重新评估资格" in sec, "§6.1 must re-evaluate eligibility per fetch"
+    assert "排序键" in sec, "§6.1 must separate sort-key stability from eligibility"
+    # Machine-checkable counters (anti-silent-drop).
+    for counter in ("fetched_total", "marker_candidates", "malformed", "after_workflow_filter", "duplicates"):
+        assert counter in sec, f"§6.1 must require the {counter} counter"
+
+
+def check_section61_evidence_bundle_exists() -> None:
+    """The evidence cited by §6.1 must be a reproducible bundle in-repo, and the
+    script must implement the frozen rule (not drift from the contract)."""
+    evidence = REPO_ROOT / "docs" / "AI" / "task-tracking-projection-evidence"
+    for name in (
+        "L02-checkpoint-probe.md",
+        "L02-checkpoint-probe.sh",
+        "L02-checkpoint-probe-raw-output.md",
+    ):
+        path = evidence / name
+        assert path.is_file(), f"evidence bundle missing artifact: {path}"
+    script = (evidence / "L02-checkpoint-probe.sh").read_text(encoding="utf-8")
+    assert 'capture("workflow_id' in script, "probe script must contain the selection jq"
+    assert '"; "n")' not in script and '"; "n"))' not in script, (
+        "probe script must not carry the Oniguruma n-flag regression"
+    )
+    # The script's end-to-end section must implement the frozen §6.1 rule,
+    # not an older 3-field draft (B-R-01: drift must be caught by tests).
+    for field in ("workflow_id", "workflow_type", "checkpoint_id", "host", "state_status", "remote", "Branch", "SHA"):
+        assert f'"{field}"' in script, f"probe script validation must cover {field}"
+    for counter in ("fetched_total", "marker_candidates", "malformed", "after_workflow_filter", "duplicates"):
+        assert counter in script, f"probe script must emit the {counter} counter"
+    assert "sort_by(.id)[-1]" in script, "probe script must select the latest by max comment id"
+    assert "startswith(\"<!-- dd-checkpoint:v1 -->\")" in script, (
+        "probe script must filter by the fixed marker prefix"
+    )
+    # Field validation must not swallow the next field line across a newline
+    # (B-R-01: "SHA:" empty followed by "Blocker: none" must be malformed),
+    # and the negative sample must be a hard gate in the script.
+    assert "issechdr" in script and "sectionkeys" in script, (
+        "probe script must parse fields structurally: same-line fields only in the "
+        "header region, Branch/SHA as exact section headers (next-line values that "
+        "are field lines must be rejected)"
+    )
+    for gate in (
+        "negative_sample_1_sha_empty_then_blocker_valid",
+        "negative_sample_2_sha_whitespace_next_line_valid",
+        "negative_sample_3_sha_only_in_prose_midline_valid",
+        "negative_sample_4_sha_prose_standalone_line_valid",
+        "negative_sample_5_sha_in_current_body_canonical_order_violation_valid",
+    ):
+        assert gate in script, f"probe script must embed the {gate} self-check"
+        assert gate + "=false" in (
+            evidence / "L02-checkpoint-probe-raw-output.md"
+        ).read_text(encoding="utf-8"), f"raw output must record {gate} passing"
+    # Raw output must carry both runs, with the refuted v1 conclusion clearly marked.
+    raw = (evidence / "L02-checkpoint-probe-raw-output.md").read_text(encoding="utf-8")
+    assert "v2 最终版" in raw, "raw output must contain the final v2 run"
+    assert "历史初稿" in raw and "已被复审 B-M-02 推翻" in raw, (
+        "raw output must mark the v1 'edit stability' conclusion as refuted"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Canonical stage extraction (drift detection: new stages must be mapped)
 # ---------------------------------------------------------------------------
@@ -367,6 +467,21 @@ class TestProjectionAndRouting(unittest.TestCase):
             self.assertIn(token, text)
 
 
+class TestSection61Selection(unittest.TestCase):
+    """§6.1 frozen latest-checkpoint selection rule (L-02 probe, 2026-10-02)."""
+
+    def test_selection_rule_is_frozen_and_complete(self):
+        check_section61_selection_rule(read(TASK_TRACKING))
+
+    def test_section61_is_no_longer_pending(self):
+        sec = h3_section(read(TASK_TRACKING), "6.1 如何选最新 checkpoint")
+        self.assertNotIn("待取证", sec, "§6.1 heading/status must not regress to pending")
+        self.assertNotIn("尚未冻结", sec)
+
+    def test_evidence_bundle_is_reproducible(self):
+        check_section61_evidence_bundle_exists()
+
+
 class TestMutations(unittest.TestCase):
     """§6.6: minimal semantic tampering must turn the checks red."""
 
@@ -396,6 +511,30 @@ class TestMutations(unittest.TestCase):
         self.assertNotEqual(mutated, tt, "mutation target string must exist")
         with self.assertRaises(AssertionError):
             check_writeback_order(mutated)
+
+    def test_section61_required_field_drop_is_caught(self):
+        tt = read(TASK_TRACKING)
+        mutated = tt.replace("、`Branch`、`SHA`。缺任一判", "。缺任一判")
+        self.assertNotEqual(mutated, tt, "mutation target string must exist")
+        with self.assertRaises(AssertionError):
+            check_section61_selection_rule(mutated)
+
+    def test_section61_since_unban_is_caught(self):
+        tt = read(TASK_TRACKING)
+        mutated = tt.replace("**禁用** `sort`/`direction` 与 `since`", "可选 `sort`/`direction` 与 `since`")
+        self.assertNotEqual(mutated, tt, "mutation target string must exist")
+        with self.assertRaises(AssertionError):
+            check_section61_selection_rule(mutated)
+
+    def test_section61_counter_drop_is_caught(self):
+        tt = read(TASK_TRACKING)
+        mutated = tt.replace(
+            "`fetched_total / marker_candidates / malformed / after_workflow_filter / duplicates` 五个计数",
+            "`fetched_total / marker_candidates / malformed / after_workflow_filter` 四个计数",
+        )
+        self.assertNotEqual(mutated, tt, "mutation target string must exist")
+        with self.assertRaises(AssertionError):
+            check_section61_selection_rule(mutated)
 
 
 if __name__ == "__main__":
