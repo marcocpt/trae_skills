@@ -93,7 +93,7 @@ User Verification
 
 除运行时通用字段外，Bug 工作流记录领域增量状态：症状与期望行为、复现步骤、日志来源、调试日志路径、失败测试、根因、修复提交、CI 运行、用户验证结论、文档路径、merge commit。Bug 领域增量字段 schema、旧状态 `current_step` 映射与字段冲突/状态缺失的恢复规则见 [state.md](references/state.md)，状态在每个 Stage Gate 通过后原子写入。
 
-Bug 工作流与 Feature 对等：在 Environment（worktree 与分支确定后、Environment Gate 前）按 [task-tracking](../dd-workflow-runtime/references/task-tracking.md) 绑定或确认 `tracking`，绑定或写回失败按其失败矩阵处置，**不阻塞本 Stage**；`bug_id` 不重载为 Issue 号，跨设备任务索引用共享 `tracking` 字段承载。
+Bug 工作流与 Feature 对等：在 Environment（worktree 与分支确定后、Environment Gate 前）执行 [task-tracking](../dd-workflow-runtime/references/task-tracking.md) §3 定义的 tracking 绑定尝试并按该合同持久化结果，**不阻塞本 Stage**；`bug_id` 不重载为 Issue 号，跨设备任务索引用共享 `tracking` 字段承载。
 
 ## Stage 路由
 

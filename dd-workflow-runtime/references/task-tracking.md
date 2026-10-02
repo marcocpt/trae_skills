@@ -42,29 +42,57 @@ tracking:
 
 约束：
 
-- `tracking` 缺失或 `null` 表示未绑定，**不得阻塞任何 Workflow Gate**，也不得因此 ASK；存在该对象时 `provider` 必须是受支持值；
+- 对 `feature-development` 与 `bug-fix`：`tracking` 缺失或 `null` 表示**从未尝试**；对象存在但 `issue_number` 为 `null` 表示**已完成绑定尝试但未形成绑定**（授权条件不满足、创建失败或对账失败，见 §3.1 与 §4）。**本合同生效前**持久化的 state 里的缺失/`null` 属第三种含义——历史未分类，按 §3.2 迁移，**不得直接当作从未尝试**。三者都**不得阻塞任何 Workflow Gate**，也不得因此 ASK；
+- **上述两类工作流的新旧 null 机械判别式**：以 state 的 `schema_version` 判定——`>= 2` 的 `null` 是"从未尝试"（本合同语义）；`< 2`（含缺失、按 schema 0 兼容读取）的 `null` 是历史未分类，走 §3.2。恢复器不得靠推断工作流阶段来猜版本；
+- `dd-project-bootstrap-workflow` **不使用上述三态判别**，其 `tracking` 语义按 §12 与 [state.md](state.md) 保持不变（缺失或 `null` 仍按未绑定读取，不走 §3.2 迁移）；上面的"已尝试未绑定"变体同样只适用于上述两类工作流；
+- 已尝试未绑定时必须写出该对象：填 `sync` 与 `sync_reason`（必要时 `provider` / `repository`，无法推导时允许为 `null`），`issue_number` / `last_checkpoint_ref` 保持 `null`；对象存在时 `provider` 若非 `null` 必须是受支持值。这样"尝试并记录"在状态层可表示，不依赖把失败塞进 `tracking: null`；
+- 对 `feature-development` 与 `bug-fix` 工作流，Environment Gate **必须已完成一次 tracking 绑定尝试并把结果落盘**：已绑定一张 Issue，或已按 §4 记 `sync` 与 `sync_reason`；**未尝试且未记录就通过 Gate 属违规**（§13）。这里的硬约束是"必须尝试并记录"，不是"绑定必须成功"。默认动作是新建 Issue（§3、§3.1）。`dd-project-bootstrap-workflow` **第一阶段**不在此约束内（见 §12）；
 - `sync` 四种语义互不混用：
 
 | 取值 | 含义 | 后续 |
 |---|---|---|
 | `synced` | 最近一次写回成功 | 正常 |
-| `not-synced` | 绑定存在，最近一次写回失败或校验失败（含远端不可达、Issue 不存在、remote 无法解析） | 继续推进，下一写回时机重试 |
-| `not-authorized` | 项目未授权该远端动作 | 跳过该远端动作并继续，不重试到用户授权 |
+| `not-synced` | 最近一次**尝试或写回**失败（**可能尚未绑定**：含远端不可达、创建结果不确定、多匹配歧义、Issue 不存在、remote 无法解析、provider 不可用） | 继续推进；**是否重试及允许重试的动作以 §4 对应 `sync_reason` 为准** |
+| `not-authorized` | 当前动作没有有效授权（项目未授权该远端动作，或用户明确拒绝该动作） | 跳过该远端动作并继续，授权条件发生变化前不重试 |
 | `disabled` | 用户明确关闭投影 | 不再尝试写回 |
 
-- `sync_reason` 只记最小原因（如 `remote-unreachable` / `issue-missing` / `no-policy`），不是 Gate 证据；
+- `sync_reason` 只记最小原因（如 `remote-unresolvable` / `issue-missing` / `no-policy` / `no-issue-capable-remote` / `provider-unavailable` / `user-declined` / `binding-ambiguous` / `create-outcome-unknown` / `legacy-tracking-unknown`），不是 Gate 证据；
 - `pending_checkpoint` 用于 crash-safe 防重（见 §6.3），`last_checkpoint_ref` 只记已确认投递的评论，两者都不是 Gate 证据；
 - 派生视图（看板列名、当前执行者、Issue 里的"当前阶段"）**一律不写入 state**。
 
 ## 3. 绑定规则
 
 - 绑定时机：Environment Stage，worktree 与分支确定之后、Environment Gate 之前；
-- 已存在 `tracking` 时复用并校验 `repository` / `issue_number`，不重建；
+- **默认动作是新建**：`feature-development` 与 `bug-fix` 工作流在没有既有绑定 Issue 时，必须在 Environment Gate 前创建一张并绑定；创建前先按 §3.1 对账，新建属窄范围常设授权（范围与禁止项见 §8.1）；
+- 新建时按 §5 骨架填写标题与稳定信息正文（含 `Workflow ID` 行），**禁止写入 worktree 绝对路径**；创建后必须在本轮摘要或 checkpoint 中报告 Issue 号；
+- **只有已绑定**（`issue_number` 非 `null`）的 `tracking` 才复用并校验 `repository` / `issue_number`，不重建；对象存在但 `issue_number` 为 `null` 属已尝试未绑定（§2），按 §3.1 与 §4 的对应原因恢复，**不得当成既有绑定而跳过对账**；
 - `repository` 由当前仓库 remote 推导，不由模型猜测；推不出来时记 `sync=not-synced` + `sync_reason=remote-unresolvable`，继续推进；
 - 一张 Issue 对应一个可独立调度的工作单元：一个分支、一个 worktree、一个 workflow；
 - 同一 branch/worktree 上连续开发的多个 Phase **不拆成多张 Issue**；
 - 需要独立 worktree、独立 Agent、独立 branch、独立完成或阻塞时，才用 Sub-Issue；
 - 绑定后在 Issue 正文 Workflow 节写入 `Workflow ID`——它是关闭防线（§6.5）与远端选取（§6.1 第 3 条）识别绑定的唯一远端来源；合同前旧卡缺失该行时，防线 fail-safe 跳过。
+
+### 3.1 创建的幂等与崩溃恢复
+
+创建 Issue 是自动尝试的远端副作用，崩溃或响应丢失会让本地 state 可能尚未记录有效绑定。为避免同一 workflow 出现第二张 Issue，恢复时按固定顺序处理：
+
+1. **先对账再创建**：创建前按 `Workflow ID`（§3 末条）检索本仓库已有 Issue；命中**唯一且可信**的匹配即直接绑定，不新建。可信判定沿用 §6.1 的来源信任原则——`Workflow ID` 与本 workflow 完全一致、该 Issue 未被其他 workflow 绑定，且作者关联在 §6.1 的 association 信任边界内（公开仓库里第三方预先创建的同号 Issue 因此不被自动绑定）。
+2. **结果不确定时先查找、不盲目重试**：创建调用超时、响应丢失或进程崩溃后，恢复必须先按 `Workflow ID` 查证；**禁止跳过查证直接重试创建**。
+3. **不确定后的零命中不等于未创建**：查证为零命中时，只有 provider 的**权威对账机制**或 provider 原生幂等键能证明首次创建未发生，才允许再次创建；否则记 `not-synced` + `sync_reason=create-outcome-unknown` 并继续工作流，**不得把普通搜索的零结果当作"远端没有创建"**。
+4. **多匹配 fail-safe**：同一 `Workflow ID` 命中多张 Issue 时不自动选择、不删除任何一张，记 `not-synced` + `sync_reason=binding-ambiguous`（§4），继续工作流；不把裁决当作 Environment Gate 的前置条件。
+5. **先持久化再后续写**：取得 Issue 号后先原子写入 `tracking`，再进行 §6 checkpoint、§6.5 关闭与 §10 投影。
+
+### 3.2 旧 state 中 `tracking` 缺失或 `null` 的迁移
+
+本合同把 `tracking: null` 的含义从"未绑定"收窄为"从未尝试"。收窄只对**本合同生效后**写入的 state 成立；历史 state 的 `null` 可能是"当年未强制、未授权、被用户拒绝、或创建失败但旧 schema 无法表达"，**不得反向解释成更强的事实**。
+
+迁移规则：
+
+1. **适用范围（机械判别）**：`schema_version` 缺失或 `< 2`、且恢复时 `tracking` 缺失或为 `null` 的 Feature / Bug 工作流（含已越过 Environment Gate 的）。判别只依据 `schema_version`，不依据 `current_stage` 或其他字段推断。
+2. **不解释为从未尝试**：把该情形分类为历史未分类，并按 §4 记 `not-synced` + `sync_reason=legacy-tracking-unknown`（`legacy-tracking-unknown` 只是 `sync_reason` 取值，不是新增状态字段或枚举）。
+3. **只读对账优先**：恢复时**仅执行 §3.1 规则 1 中的只读检索与可信匹配部分**（按 `Workflow ID` 检索），**不得进入 §3.1 的创建动作**，也**不得仅凭旧 `tracking=null` 自动创建 Issue**。
+4. **零命中后仍不得创建**：对账零命中时保持 `legacy-tracking-unknown` 并继续 Workflow（零命中不证明未创建，见 §3.1 规则 3）。**§8.1 的常设授权与 §3 的"默认动作是新建"都不足以从该状态触发创建**——历史 `null` 可能正是"用户当年拒绝创建"，常设授权无法消除这份不确定性。解除条件只能是新的显式事实：当前用户明确要求创建，或项目政策明确解除该状态；满足其一后才按 §8.1 进入创建流程。
+5. **迁移后按当前模型持久化并升版**：对账完成后把结果按当前 §2 / §4 重新落盘（绑定成功记 Issue 号，否则记对应 `sync` / `sync_reason`），并把 `schema_version` 升为 `2`——否则实现可能只写新的 `tracking` 对象却保留旧版本号，让下一次恢复继续按 legacy 分支判断。使后续恢复不再依赖本节。
 
 ## 4. 绑定失败矩阵
 
@@ -73,7 +101,13 @@ tracking:
 | 绑定有效 | `synced` | — | — | 否 | 是 |
 | 远端不可达 / remote 无法解析 | `not-synced` | `remote-unresolvable` | 下一写回时机重试 | 否 | 是 |
 | Issue 不存在或已转移 | `not-synced` | `issue-missing` | 否（需重新绑定） | 否 | 是 |
-| 项目未授权 | `not-authorized` | `no-policy` | 否 | 否 | 是 |
+| 项目未授权 | `not-authorized` | `no-policy` | 否（授权条件变化后重新评估） | 否 | 是 |
+| 用户明确要求不创建 Issue | `not-authorized` | `user-declined` | 否（授权条件变化后重新评估） | 否 | 是 |
+| 同一 `Workflow ID` 命中多张 Issue | `not-synced` | `binding-ambiguous` | 否（需人工裁决绑定哪一张） | 否 | 是 |
+| 创建结果不确定且无权威对账结论 | `not-synced` | `create-outcome-unknown` | 仅重试权威对账/确认；在权威证明首次创建未发生前**不得重试 create** | 否 | 是 |
+| 旧 state 的 `tracking` 缺失或 `null`（历史未分类，见 §3.2） | `not-synced` | `legacy-tracking-unknown` | 否（仅只读对账；不得据旧 `null` 自动创建） | 否 | 是 |
+| 无 Issue 能力的远端（remote 指向未登记的 provider） | `not-synced` | `no-issue-capable-remote` | 否（需改用既有绑定或换 provider） | 否 | 是 |
+| 认证/权限不足或 provider 不可用 | `not-synced` | `provider-unavailable` | 下一写回时机重试 | 否 | 是 |
 | 用户明确禁用 | `disabled` | — | 否 | 否 | 是 |
 
 **任何一行都不得阻塞 Workflow Gate。**
@@ -237,9 +271,23 @@ Issue 评论里写 `CI PASS` 不等于 `full_ci_run=PASS`。接管方必须按�
 额外约束：
 
 - 项目 `AGENTS.md` 未写上述授权时，**只停止该远端 tracking 动作**，记 `sync=not-authorized`，**后续 Workflow Stage 继续**，不得静默执行，也不得停止工作流；
-- 只有用户正在请求"完成跨机 handoff"这类本身依赖 checkpoint 的动作时，才可阻断"handoff 完成声明"；
-- **创建 Issue 属于新建远端对象**：仅在当前用户授权或项目 tracking policy 已明确覆盖创建 Issue 时才允许；允许执行时必须在 checkpoint 或本轮摘要中报告 Issue 号；
-- 不存在 `tracking` 绑定时，不主动创建 Issue。
+- 只有用户正在请求"完成跨机 handoff"这类本身依赖 checkpoint 的动作时，才可阻断"handoff 完成声明"。
+
+### 8.1 创建 tracking Issue 的常设授权（窄范围）
+
+`feature-development` 与 `bug-fix` 工作流**首次创建本工作流自己的那一张** tracking Issue，属本合同授予的窄范围常设授权；其授权来源与上限见 [runtime-contract.md](runtime-contract.md) §7，无需逐次 ASK。
+
+授权范围**仅限**：
+
+- 创建 1 张 Issue：标题 + §5 的稳定信息正文（含 `Workflow ID` 行）。
+
+**不包含**，继续按上文项目政策或用户当前要求单独授权：
+
+- checkpoint 评论、§6.5 关闭、§10 看板投影——这三类写操作沿用 §8 既有的项目 `AGENTS.md` 授权路径，本节不为它们授权；
+- labels、milestone、assignees、创建后的标题或正文二次修改、open/reopen、关闭他人 Issue、对多 Issue 的批量变更；
+- commit、push、PR、merge、force-push、发布等 Git 动作。
+
+本节只授权"首次创建"这一个动作：重试创建（须先走 §3.1 对账）、复用既有绑定、评论、关闭与投影各自回到 §8 的既有授权路径。用户明确要求不创建 Issue 时按 §4 记 `not-authorized` + `user-declined`（授权条件变化后可重新评估）；只有用户明确关闭**全部** tracking 投影时才是 `disabled`。
 
 ## 9. 跨机器恢复与接管
 
@@ -332,7 +380,7 @@ bug-fix
 |---|---|---|
 | `dd-workflow-runtime` | state schema、Stage Gate、Recovery、Host Close、`host` 与 `status` 的 canonical 取值 | 不改其语义，只加可选字段；不重列其枚举 |
 | `dd-git-workflow` | 分支模型、worktree 布局、私有/共享可见性与清理 | 不复制路径推导，不在 Issue 里存绝对路径，不推定分支可见性 |
-| `dd-project-bootstrap-workflow` | 项目治理与基础环境 | **第一阶段不自动创建、不自动绑定、不自动投影**；runtime schema 容忍 `tracking` 不等于默认覆盖 |
+| `dd-project-bootstrap-workflow` | 项目治理与基础环境 | **第一阶段不自动创建、不自动绑定、不自动投影**；runtime schema 容忍 `tracking` 不等于默认覆盖；§2 的强制尝试约束与 §8.1 常设授权均不适用于 project-bootstrap 整个工作流；其第一阶段另明确不自动创建/绑定/投影 |
 | `multi-agent-branch-integration` | 多 Agent 分支可见性、同步与集成门禁 | 不管分支集成，只管任务索引与恢复定位 |
 | `dd-later-tracking` | LATER 项的文件即 ID 体系 | **不改 LATER**。LATER 提升为开发任务时，Issue 正文引用 LATER 文件路径，不搬运内容 |
 
@@ -343,6 +391,7 @@ bug-fix
 - 用 Issue 承载 Stage / Gate / candidate SHA 的完整状态，制造第二事实源；
 - 在 Issue 里写 worktree 绝对路径；
 - 因 `tracking` 缺失、绑定失败、写回失败或未授权而阻塞 Workflow Gate；
+- 对 `feature-development` / `bug-fix` 工作流，既未尝试创建或绑定 tracking Issue、也未按 §4 记录 `sync` 与 `sync_reason`，就通过 Environment Gate（硬约束是"必须尝试并记录"，不是"绑定必须成功"）；
 - 未写 checkpoint 就释放写入租约并宣称已移交；写回失败却宣称 handoff 完成；
 - 从 `state_status=active` 的 checkpoint 静默接管；
 - 把接管冲突检测描述成"互斥锁"或"弱锁"；
@@ -351,4 +400,4 @@ bug-fix
 - 把 `paused` 当成阻塞；
 - 因 Issue 上存在某分支就推定其可见性或同步方式；
 - 重列 runtime 已有的 `host` 或 `status` 枚举；
-- 把看板投影授权解释成 commit、push、PR、merge、CI 或发布授权。
+- 把看板投影授权或 §8.1 的 Issue 首次创建常设授权解释成 checkpoint、关闭、labels、commit、push、PR、merge、CI 或发布授权。

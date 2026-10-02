@@ -545,3 +545,29 @@ bug-fix
 首轮外审 19 条 FINDING（H-01..H-08、M-01..M-10、L-01）已全部本地核对属实并修订。第二轮针对性复审判 18 条 RESOLVED、H-02 残留（本轮已按条件式可恢复收口）；L-02 是独立的取证项，不属于该 19 条，已于 2026-10-02 完成真实 GitHub 探针取证并冻结进合同 §6.1（见 §8；提交前复审的 B-M-01/B-M-02 已整改，B-H-01 工作树归位即本分支）。第二轮另引入 NEW-M-01 / NEW-M-02 / NEW-L-01 / NEW-L-02，均已修订：DP-4 / DP-5 已经用户逐条裁决（2026-10-02），越权固化已消除；闭环状态与 Git 事实已对齐；章节引用与"既有先例"措辞已修正。
 
 候选身份**不在本文档内嵌"当前 commit 的 SHA"**——文档无法在提交前写出自身所在提交的哈希（自引用悖论），任何内嵌值在下一次提交后都会过期；当前候选以 Git 提交历史与本工作流状态文件为准。历史候选：首轮 `165738a`（文件 sha256 `03e1dacb…bbf`，429 行）、第二轮 `2e1d540`（`eced204d…b22e`，548 行）、第三轮 `23b2ea9`（`4d59080b…aa60c`）。后续每轮针对性复查（同一会话 `6abeea9c-dc38-83ea-9708-14e4a4174e23`）归一为 `PASS` 且 CLOSED 判据四项满足后逐条落地；**最新候选身份以状态文件记录为准**。
+
+---
+
+## 10. 后续变更：tracking 绑定尝试改为强制（2026-10-02）
+
+用户在 F3.3 增量交付后要求把 Issue 从"逐次授权才建"改为**硬要求**。现行合同语义以 `dd-workflow-runtime/references/task-tracking.md` 为唯一属主，本节只记录变更理由与验证证据，不复制规则。
+
+**语义边界（重要）**：硬约束是"**必须尝试并记录结果**"，不是"绑定必须成功"。provider 故障、用户拒绝创建、绑定歧义等情形下工作流照常推进，不得把本规则实现成阻塞 Gate。
+
+十轮外审（ChatGPT）逐轮收口的关键修订：
+
+1. **授权来源收口**：`runtime-contract.md` §7 增列第三种合法授权来源——合同属主为**该具体动作**授予的窄范围常设授权，并声明不得据此扩大；`task-tracking.md` §8.1 只授权"首次创建那一张 Issue"，checkpoint／§6.5 关闭／§10 投影回归项目 `AGENTS.md` 政策。
+2. **创建幂等（新增 §3.1）**：五条有序规则——先按 `Workflow ID` 对账再创建（可信判定沿用 §6.1 的 association 信任边界）、不确定时禁止跳过查证直接重试、**不确定后的零命中不等于未创建**（仅权威对账或原生幂等键可证明未发生，否则记 `create-outcome-unknown`）、多匹配 fail-safe 记 `binding-ambiguous` 且不把裁决设为 Gate 前置、先持久化绑定再写后续。§4 重试列写到**动作级**（`create-outcome-unknown` 只允许重试权威对账，禁止重试 create）。
+3. **sync 语义归一**：`not-authorized` 定义扩为"当前动作没有有效授权（项目未授权，或用户明确拒绝）"，后续改为"授权条件发生变化前不重试"；`not-synced` 定义扩为"最近一次尝试或写回失败（可能尚未绑定）"，其**重试政策让位 §4**（`以 §4 对应 sync_reason 为准`）；新增 `user-declined`／`binding-ambiguous`／`create-outcome-unknown`／`no-issue-capable-remote`／`provider-unavailable` 五个原因；§2 与 §4 的 `remote-*` 统一为 `remote-unresolvable`。
+4. **状态可表示性与传播**：`tracking` 增加**已尝试未绑定变体**（对象存在但 `issue_number` 为 `null`，必须写出 `sync`／`sync_reason`；`provider`／`repository` 无法推导时可为 `null`）。该变体**完整传播**到既有规则——§3 的复用规则收窄为"只有已绑定（`issue_number` 非 `null`）才复用"，并显式禁止把未绑定对象当成既有绑定而跳过对账；§2 的括注涵盖授权拒绝。
+5. **消费方零复述**：三个消费方只保留调用点——执行 owner §3 的尝试、按该合同持久化结果、影响完全由该合同定义、不阻塞本 Stage。
+6. **测试结构化（第三～五轮逐步加固）**：
+   - 属主：§8.1 授权清单恰好 1 项且禁止项不得出现以"允许"开头的授权式条目；§4 行级 `(sync, sync_reason, ASK)` 与重试列元组；§3.1 五条规则的内容与顺序；§2 枚举定义 + **可表示性 fixture**（按 §4 七个 pre-bind 原因构造未绑定状态，并反向校验 §4 每个原因都在 §2 词表内）。
+   - 消费方：主防线为**逐字 canonical 锁定**——Environment hook（两文件同文）、Feature Gate bullet、bug Gate 行、bug SKILL router 句各自逐字匹配集中定义的模板；bug SKILL 另加"router 句必须独占其段落且 Bug State 其他段落不得出现建卡动词"，以捕获无 tracking 关键词的独立段落绕过。此前声明为"辅助防线"但实际未被引用的词表常量已删除，避免测试说明与实现不符。
+7. **旧 state 迁移（第五～六轮发现）**：本合同把 `tracking: null` 从"未绑定"收窄为"从未尝试"，这是对已持久化值的语义收窄，因此补两层：
+   - **机械判别式（第六轮）**：用 state 既有的 `schema_version` 承载——`>= 2` 的 `null` 是"从未尝试"，`< 2`（含缺失、按 schema 0 兼容读取）是历史未分类走 §3.2；判别**只依据 `schema_version`**，禁止按 `current_stage` 推断。`state.md` 与 `runtime-contract.md` 的 State Schema 示例随之 bump 到 2 并写明该版本只变更这一件事。**未新增字段**（复用既有 schema 版本机制）。
+   - **作用域收窄（第七、八轮）**：不仅上位说明，`task-tracking.md` §2 自身的 null 三态与机械判别式也显式限定为 `feature-development` / `bug-fix`，并声明 `project-bootstrap` 不使用该三态判别（其 `null` 仍按未绑定读取）；`state.md` 另写明 bootstrap **可以继续写 `schema_version: 1`**，避免版本号差异被误读为漏同步。**上位 schema 的 v2 null 语义首句本身也限定到 feature/bug**（不再是无条件全局语义），`project-bootstrap` 明确「不使用该语义、`null` 仍按未绑定读取、不适用 §3.2」；§12 精确化为「强制尝试约束与 §8.1 常设授权均不适用于 project-bootstrap 整个工作流；其第一阶段另明确不自动创建/绑定/投影」。
+   - **原第七轮项**：`state.md` 与 `runtime-contract.md` 的迁移说明限定为 `workflow_type` 为 `feature-development` / `bug-fix` 的 state，并显式声明 `project-bootstrap` 不适用（与 §3.2 作用域一致，避免上位合同与 §3.2 冲突）；§3.2 第 5 条补「把 `schema_version` 升为 2」，否则实现可能只写新对象却保留旧版本号。
+   - **迁移规则（§3.2 五条）**：适用范围按 schema 判别；分类为历史未分类并记 `not-synced` + `legacy-tracking-unknown`（该值只是 `sync_reason`，不是新状态字段）；恢复**仅执行 §3.1 规则 1 的只读检索与可信匹配**，不得进入创建动作；零命中后**保持 legacy 状态并继续**——§8.1 常设授权与 §3 的"默认动作是新建"**都不足以从该状态触发创建**（历史 `null` 可能正是当年用户拒绝），解除条件只能是新的显式事实（当前用户明确要求创建，或项目政策明确解除）；迁移后按当前 §2/§4 重新落盘。
+- 全仓 11 个套件通过（属主 61 / feature 35 / bug-fix 6）。既有断言调整一处：`test_environment_gate_survives_binding_failure` 的字面量探针"绑定失败"改为结构化断言，保护目的在注释中说明。
+- 变异证据（§6.6 TestMutations 纪律）：累计 68 项，含语义反转、同义改写、独立段落绕过与**合法表述反向验证**——全部按预期转红（恢复后全绿）。含审阅者历轮给出的具体绕过样例：hook 行内塞复述、Gate 行尾追加「若尚未绑定则新建一张远端工单。」、bug SKILL 追加「没有现成任务卡时先新建一张远端工单。」、同段落内追加「缺卡时先建卡」、§3 复用规则退回旧版、§2 总括重试语义回归、§4 新增未登记原因、§4 重试列放开为"立即重新创建"、§2 退回"只能 null"、§3.1 去掉 §6.1 信任引用、删掉 §3.2 整节、§3.2 允许据旧 `null` 自动创建、§3.2 把旧 `null` 视为从未尝试、§4 legacy 行放开为可自动创建、§2 删掉 legacy 第三种含义、§2 词表漏登记 `legacy-tracking-unknown`、删掉 §2 机械判别式、schema bump 回退为 1（runtime 与 state.md 各一）、§3.2 第 4 条重新允许凭 §8.1 创建、去掉显式解除条件、第 1 条改为按 `current_stage` 推断、state.md 删掉 schema 2 迁移说明、删掉上位说明的 bootstrap 豁免句、删掉迁移段的 workflow type 限定、§3.2 第 5 条去掉 schema 升版、oracle 把 unbound 对象改判为 never-attempted / legacy（语义反转自身）、§2 去掉 feature/bug 作用域、§2 去掉 bootstrap 不适用声明、§2 判别式去掉作用域前缀、state.md 去掉「bootstrap 可继续写 schema 1」、state.md 与 runtime-contract 的 v2 首句去掉 feature/bug 限定、runtime 首句删掉 bootstrap 排除等；反向验证：禁止项写成「不允许修改 labels」这类合法改写**不会**误伤，而 router 句任何措辞变化都会转红（作为合同变更信号）。
