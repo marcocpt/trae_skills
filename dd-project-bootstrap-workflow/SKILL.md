@@ -68,6 +68,8 @@ PROGRESS_FIELD=current_node
 
 恢复时先验证路径、产物和项目规则。状态不存在时从仓库事实重建，禁止默认从头 grill。
 
+runtime 通用 state schema 容忍 `tracking` 字段（语义见 [task-tracking](../dd-workflow-runtime/references/task-tracking.md)），但本工作流**第一阶段不自动创建、不自动绑定、不自动投影**外部任务；Bootstrap 出口 Handoff 之后的 Feature / Bug 工作流才按该合同绑定。
+
 ## 依赖图
 
 ```text

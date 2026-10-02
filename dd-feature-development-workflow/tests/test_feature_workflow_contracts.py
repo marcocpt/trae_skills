@@ -388,5 +388,26 @@ class TestTracerBulletContract(unittest.TestCase):
                       "tracer must not add a new Stage to legacy mapping (tracer)")
 
 
+class TestTrackingMissingDoesNotBlock(unittest.TestCase):
+    """task-tracking design: tracking binding failure must never block a Stage."""
+
+    def test_environment_gate_survives_binding_failure(self):
+        text = read(WORKFLOW_ROOT / "references" / "intake-and-environment.md")
+        self.assertIn("绑定失败", text,
+                      "Environment must state how binding failure is handled (task-tracking)")
+        self.assertIn("不阻塞本 Stage", text,
+                      "tracking binding failure must not block the Environment Stage (task-tracking)")
+
+
+class TestNoTrackingFieldDuplicationInFeatureState(unittest.TestCase):
+    """task-tracking design: `tracking` nested schema is runtime/task-tracking owned."""
+
+    def test_feature_state_has_no_tracking_nested_fields(self):
+        text = read(STATE_AND_HANDOFF)
+        for nested in ("issue_number", "sync_reason", "pending_checkpoint"):
+            self.assertNotIn(nested, text,
+                             f"feature state must not duplicate tracking field {nested} (task-tracking)")
+
+
 if __name__ == "__main__":
     unittest.main()

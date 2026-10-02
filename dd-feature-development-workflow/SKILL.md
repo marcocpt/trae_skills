@@ -122,7 +122,8 @@ intake → environment → specification → planning → implementation
 - 来源／执行包／验证证据包／生命周期共享合同：[artifact-contract](../dd-workflow-runtime/references/artifact-contract.md) 是路由器，详细合同在其三个分文件 `artifact-source-and-packet.md`／`artifact-verification.md`／`artifact-lifecycle.md`；
 - A/B/C 审查与风险升级：[review-gate](../dd-workflow-runtime/references/review-gate.md)；
 - 测试位置与 CI：[test-location](../dd-workflow-runtime/references/test-location.md) 和 [ci](../dd-workflow-runtime/references/ci.md)；
-- Tracer 贯穿式最小闭环（Phase 0 触发/证据/恢复三态）：[tracer-contract](../dd-workflow-runtime/references/tracer-contract.md)。
+- Tracer 贯穿式最小闭环（Phase 0 触发/证据/恢复三态）：[tracer-contract](../dd-workflow-runtime/references/tracer-contract.md)；
+- 外部任务绑定与投影（GitHub Issue 索引、checkpoint、跨机器定位与看板规则）：[task-tracking](../dd-workflow-runtime/references/task-tracking.md)。
 
 ## 通用质量 Gate
 
