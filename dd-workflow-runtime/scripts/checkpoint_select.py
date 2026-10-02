@@ -98,11 +98,12 @@ def header_value(body: str, field: str) -> str:
     return ""
 
 
-def select(comments: list, workflow_id: str | None) -> dict:
+def select(comments: list, workflow_id: str | None, trusted_associations: tuple = ()) -> dict:
     counts = {
         "fetched_total": len(comments),
         "marker_candidates": 0,
         "malformed": 0,
+        "untrusted": 0,
         "after_workflow_filter": 0,
         "duplicates": 0,
     }
@@ -114,6 +115,16 @@ def select(comments: list, workflow_id: str | None) -> dict:
     counts["marker_candidates"] = len(markers)
     valids = [c for c in markers if all(has_field(c["body"], f) for f in REQUIRED_FIELDS)]
     counts["malformed"] = counts["marker_candidates"] - len(valids)
+    if trusted_associations:
+        # 来源真实性门：checkpoint 须来自有仓库写权限的作者（伪造 terminal 不新增特权）；
+        # 不可信来源（如 NONE/CONTRIBUTOR）整条丢弃，防绕过防线
+        trusted = [
+            c
+            for c in valids
+            if c.get("author_association") in trusted_associations
+        ]
+        counts["untrusted"] = len(valids) - len(trusted)
+        valids = trusted
     parsed = [
         {
             "id": c["id"],
@@ -136,11 +147,18 @@ def select(comments: list, workflow_id: str | None) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description="task-tracking §6.1 checkpoint 选取")
     parser.add_argument("--workflow-id", default=None)
+    parser.add_argument(
+        "--author-associations",
+        default="",
+        help="逗号分隔的可信 author_association 集合（如 OWNER,COLLABORATOR,MEMBER）；"
+        "非空时丢弃不可信来源的 checkpoint（来源真实性门）",
+    )
     parser.add_argument("--json", action="store_true", help="输出 JSON（测试用）")
     args = parser.parse_args()
+    trusted = tuple(a.strip() for a in args.author_associations.split(",") if a.strip())
 
     comments = flatten(load_documents(sys.stdin.read()))
-    result = select(comments, args.workflow_id)
+    result = select(comments, args.workflow_id, trusted)
     selected, counts = result["selected"], result["counts"]
 
     if args.json:
@@ -151,7 +169,8 @@ def main() -> int:
     print(f"selected_checkpoint_id={selected['cp'] if selected else ''}")
     print(
         "fetched_total={fetched_total} marker_candidates={marker_candidates} "
-        "malformed={malformed} after_workflow_filter={after_workflow_filter} "
+        "malformed={malformed} untrusted={untrusted} "
+        "after_workflow_filter={after_workflow_filter} "
         "duplicates={duplicates}".format(**counts)
     )
     return 0
