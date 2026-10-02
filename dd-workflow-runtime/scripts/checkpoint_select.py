@@ -116,7 +116,8 @@ def select(comments: list, workflow_id: str | None, trusted_associations: tuple 
     valids = [c for c in markers if all(has_field(c["body"], f) for f in REQUIRED_FIELDS)]
     counts["malformed"] = counts["marker_candidates"] - len(valids)
     if trusted_associations:
-        # 来源真实性门：checkpoint 须来自有仓库写权限的作者（伪造 terminal 不新增特权）；
+        # 来源真实性门：按 §6.1 第 8 条的 author association allowlist 过滤；
+        # 该 allowlist 是关联身份信任边界，不等价于仓库实际权限判定；
         # 不可信来源（如 NONE/CONTRIBUTOR）整条丢弃，防绕过防线
         trusted = [
             c
