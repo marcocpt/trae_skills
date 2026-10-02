@@ -1,0 +1,108 @@
+name: dd-checkpoint close guard
+
+# task-tracking.md §6.5 机械防线（可选安装）：
+# 工作流未 completed/abandoned 时关闭已绑定 tracking 的 Issue → 自动评论提醒并 reopen。
+# 安装（两个文件）：
+#   1. 本文件 → 目标仓库 .github/workflows/dd-checkpoint-close-guard.yml
+#   2. dd-workflow-runtime/scripts/checkpoint_select.py → 目标仓库 scripts/dd/checkpoint_select.py
+# 删除即卸载。语义属主：dd-workflow-runtime/references/task-tracking.md §6.5 / §6.1（选取算法的
+# canonical 机械实现是 scripts/checkpoint_select.py，本文件不复制其逻辑）。
+
+on:
+  issues:
+    types: [closed]
+
+permissions:
+  issues: write
+
+concurrency:
+  group: dd-close-guard-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    # PR 的关闭不归本防线管
+    if: ${{ github.event.issue.pull_request == null }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard close of tracked issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          SELECT="scripts/dd/checkpoint_select.py"
+          if [ ! -f "$SELECT" ]; then
+            echo "guard not installed correctly: $SELECT missing — skip"
+            exit 0
+          fi
+
+          # --paginate --slurp：全量评论；选取（§6.1 资格判定 + 首投去重 + id 最大）
+          # 由 canonical 脚本完成，本文件不复制其逻辑
+          comments_json=$(gh api --paginate --slurp "repos/$REPO/issues/$ISSUE/comments?per_page=100")
+
+          # 绑定标识：§3 绑定时写入 Issue 正文 Workflow 节（唯一远端来源）。
+          # 缺失（合同前旧卡）→ fail-safe 跳过，不做跨 workflow 判定
+          issue_json=$(gh api "repos/$REPO/issues/$ISSUE")
+          wf_id=$(printf '%s' "$issue_json" | python3 -c "
+import json, sys
+body = (json.load(sys.stdin).get('body') or '')
+hits = [l.split(':', 1)[1].strip() for l in body.splitlines() if l.startswith('Workflow ID:')]
+print(hits[0] if hits else '')
+")
+          if [ -z "$wf_id" ]; then
+            echo "issue body lacks Workflow ID (pre-contract card); cannot determine binding — fail-safe skip"
+            exit 0
+          fi
+
+          out=$(printf '%s' "$comments_json" | python3 "$SELECT" --workflow-id "$wf_id")
+          selected_id=$(printf '%s' "$out" | grep '^selected_id=' | cut -d= -f2-)
+          selected_state=$(printf '%s' "$out" | grep '^selected_state=' | cut -d= -f2-)
+          printf '%s\n' "$out" | grep '^fetched_total=' || true
+
+          if [ -z "$selected_id" ]; then
+            echo "no valid dd-checkpoint on this issue; not tracked by task-tracking — skip"
+            exit 0
+          fi
+
+          case "$selected_state" in
+            completed|abandoned)
+              echo "last checkpoint state_status=$selected_state → 合法关闭（§6.5 两个合法入口之一），不干预"
+              exit 0
+              ;;
+          esac
+
+          # 未经合法入口关闭 → reopen；评论去重：dd-close-guard 已新于所选 checkpoint 时不重复
+          gh issue reopen "$ISSUE" --repo "$REPO"
+          last_guard_id=$(printf '%s' "$comments_json" | python3 -c "
+import json, sys
+decoder = json.JSONDecoder()
+text, idx, n, last = sys.stdin.read(), 0, 0, 0
+while idx < len(text):
+    while idx < len(text) and text[idx] in ' \t\r\n':
+        idx += 1
+    if idx >= len(text):
+        break
+    obj, idx = decoder.raw_decode(text, idx)
+    for c in (obj if isinstance(obj, list) else [obj]):
+        if isinstance(c, dict) and isinstance(c.get('body'), str) and c['body'].startswith('<!-- dd-close-guard:v1 -->'):
+            last = max(last, c['id'])
+print(last)
+")
+          if [ -z "$last_guard_id" ] || [ "$last_guard_id" -lt "$selected_id" ]; then
+            gh issue comment "$ISSUE" --repo "$REPO" --body "$(cat <<MSG
+<!-- dd-close-guard:v1 -->
+
+本 Issue 已由 dd-checkpoint 关闭防线（task-tracking §6.5）重新打开：最后一条 checkpoint 的 \`state_status\` 为 **${selected_state:-缺失}**，不是 completed / abandoned——关闭未经合法入口。
+
+处理方式二选一：
+
+1. 继续推进工作流，收口时按 §6.5 写最终 checkpoint → 同步看板「完成」→ close；
+2. 确认放弃任务：写 \`state_status=abandoned\` checkpoint → 把卡片从看板移出（archive）→ close。
+MSG
+)"
+          else
+            echo "guard comment already newer than selected checkpoint; reopen only, no duplicate comment"
+          fi
