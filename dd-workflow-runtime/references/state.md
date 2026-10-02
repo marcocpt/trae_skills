@@ -58,7 +58,7 @@
 
 `<BRANCH_FIELD>` 对 bug-fix / feature-development 分别为 `fix_branch` / `feature_branch`；project-bootstrap 不要求分支专用字段，使用 `worktree_path` 和 `base_branch` 即可。
 
-`status` 使用 `active`、`handoff-ready`、`completed` 或 `paused`。已有调用方未写入 `schema_version` 或 `status` 时，恢复逻辑按 schema 0 / active 兼容读取，不得直接判为损坏。
+`status` 原样消费 [runtime-contract.md](runtime-contract.md) §3 的 canonical 状态值（含 abandoned），不得自行缩减词表。已有调用方未写入 `schema_version` 或 `status` 时，恢复逻辑按 schema 0 / active 兼容读取，不得直接判为损坏。
 
 `owner` 记录**人类负责人（裁决者）身份**：状态里大量出现「owner 裁决」这类角色标签，但角色不等于人；不记名字时每个新会话都要从 handoff 文本、git 作者或 remote 属主反推，而同一台机器上的并行会话常共用同一 git 身份——容易把「并行提交者」误判成另一个人。
 `name` / `email` 缺省取 `git config user.name` / `git config user.email`；`delegated_to` 记录**本轮执行权**归属：owner 明确把决策与实施交给本地 agent 时填 `local-agent`，并在 `evidence` 留一句授权原话或来源（例如「用户：你就是 owner，你直接做」）。字段缺失时按「owner 自执」兼容读取，不得判为损坏。

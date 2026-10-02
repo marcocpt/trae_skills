@@ -201,9 +201,9 @@ none
 关闭已绑定 Issue 只有**两个合法入口**：
 
 1. Closure：`status=completed` 后，顺序固定——写最终 checkpoint（写回时机 5）→ 同步看板「完成」→ close；
-2. `abandoned` 处置：写 `state_status=abandoned` 的 checkpoint（写回时机 6）→ 按看板规则同步或移出 → close。
+2. `abandoned` 处置：写 `state_status=abandoned` 的 checkpoint（写回时机 6）→ 把对应卡片从看板移出（archive item）→ close。
 
-工作流处于 `active` / `paused` / `handoff-ready` 期间**禁止关闭已绑定 Issue**；确需中途放弃，先走 `abandoned` 处置。外部（非本工作流会话）直接关闭已绑定 Issue 不产生任何投影语义——看板与恢复结论仍以最新 checkpoint 和 runtime state 为准（见 §1.1、§10）。
+除以上两个入口外不存在第三种合法关闭路径。工作流处于 `active` / `paused` / `handoff-ready` 期间**禁止关闭已绑定 Issue**；确需中途放弃，先走 `abandoned` 处置。外部（非本工作流会话）直接关闭已绑定 Issue 不产生任何投影语义——看板与恢复结论仍以最新 checkpoint 和 runtime state 为准（见 §1.1、§10）。恢复时若 runtime 已为 terminal 状态（completed / abandoned）而 Issue 仍 open，按最新 checkpoint 幂等补 close。
 
 ## 7. checkpoint 不是证据
 
@@ -223,7 +223,7 @@ Issue 评论里写 `CI PASS` 不等于 `full_ci_run=PASS`。接管方必须按�
 ## GitHub task tracking policy
 
 对于已绑定 tracking 的 Feature / Bug 工作流，允许 Agent 更新对应 GitHub Issue、
-追加工作流 checkpoint 评论、同步看板状态列。
+追加工作流 checkpoint 评论、同步看板状态列；关闭对应 Issue 仅限 §6.5 两个合法入口。
 
 这些操作仅用于工作流状态投影，不构成 commit、push、PR、merge、CI 或发布授权。
 ```
@@ -304,6 +304,8 @@ bug-fix
 ```
 
 **覆盖完备性要求**：Feature 与 Bug 的 canonical Stage 列表中，每个适用 Stage 必须恰好映射一次；新增 Stage 而映射未更新即视为合同违约（由合同测试机械校验）。
+
+`status=abandoned` 的唯一看板处置：把对应卡片**从看板移出**（archive item），不得进入「完成」列，也不得留在原列。
 
 阻塞表达：用 GitHub label `blocked`，因为阻塞与工作阶段正交，占用状态列会丢失被阻塞前所在 Stage；看板配置一个 `label:blocked` 过滤视图补足视觉显著性。`status=paused` **不等于阻塞**。
 
