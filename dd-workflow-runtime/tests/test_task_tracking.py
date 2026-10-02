@@ -204,9 +204,16 @@ def check_section61_selection_rule(tt: str) -> None:
     assert "append-only" in sec, "§6.1 must declare checkpoint comments append-only"
     assert "重新评估资格" in sec, "§6.1 must re-evaluate eligibility per fetch"
     assert "排序键" in sec, "§6.1 must separate sort-key stability from eligibility"
-    # Machine-checkable counters (anti-silent-drop).
-    for counter in ("fetched_total", "marker_candidates", "malformed", "after_workflow_filter", "duplicates"):
+    # Machine-checkable counters (anti-silent-drop): the six counters must be
+    # enumerated as a whole — dropping one (e.g. untrusted) must turn red.
+    assert (
+        "fetched_total / marker_candidates / malformed / untrusted / after_workflow_filter / duplicates" in sec
+    ), "§6.1 must enumerate the six counters in full"
+    for counter in ("fetched_total", "marker_candidates", "malformed", "untrusted", "after_workflow_filter", "duplicates"):
         assert counter in sec, f"§6.1 must require the {counter} counter"
+    # Source authenticity gate: checkpoint authors must hold repository write access.
+    assert "author_association" in sec and "OWNER" in sec, \
+        "§6.1 must gate checkpoint authors by write access"
 
 
 def check_section61_evidence_bundle_exists() -> None:
@@ -552,7 +559,8 @@ MARKER_GUARD = "<!-- dd-close-guard:v1 -->"
 
 
 def make_checkpoint(cid: int, *, state: str, cp_id: str, wf: str = "wf-a",
-                    complete: bool = True) -> dict:
+                    complete: bool = True,
+                    author_association: str = "OWNER") -> dict:
     """按 §6 模板形状构造探针评论（complete=False 时省略全部必填字段）。"""
     lines = [MARKER_CHECKPOINT, ""]
     if complete:
@@ -568,14 +576,17 @@ def make_checkpoint(cid: int, *, state: str, cp_id: str, wf: str = "wf-a",
     lines += ["", "Current:", "probe body.", "", "Next:", "n/a.", "",
               "Branch:", "feature/x", "", "SHA:", "abc123", "",
               "Blocker:", "none", "", "Taken over from:", "none"]
-    return {"id": cid, "body": "\n".join(lines)}
+    return {"id": cid, "body": "\n".join(lines), "author_association": author_association}
 
 
-def run_select(comments_text: str, workflow_id: str | None = None) -> dict:
+def run_select(comments_text: str, workflow_id: str | None = None,
+               author_associations: str | None = None) -> dict:
     """执行 canonical 选取脚本（checkpoint_select.py）并解析 KEY=VALUE 输出。"""
     cmd = [sys.executable, str(SELECT_SCRIPT)]
     if workflow_id is not None:
         cmd += ["--workflow-id", workflow_id]
+    if author_associations is not None:
+        cmd += ["--author-associations", author_associations]
     proc = subprocess.run(cmd, input=comments_text, capture_output=True, text=True)
     assert proc.returncode == 0, f"select script failed: {proc.stderr}"
     out: dict = {}
@@ -596,6 +607,9 @@ def check_guard_template(yml: str) -> None:
     assert "pull_request == null" in yml, "PR closes must be ignored"
     assert "checkpoint_select.py" in yml, "guard must delegate selection to the canonical script"
     assert "--workflow-id" in yml, "guard must pass the binding workflow-id (§6.1 step 3)"
+    assert "--author-associations" in yml, "guard must enable the author authenticity gate (§6.1 step 8)"
+    assert '--author-associations "OWNER,COLLABORATOR,MEMBER"' in yml, \
+        "guard allowlist must be pinned exactly to OWNER,COLLABORATOR,MEMBER"
     assert "Workflow ID:" in yml, "binding source must be the issue body Workflow ID line"
     assert "gh issue reopen" in yml, "guard must reopen with the legal gh subcommand"
     assert "gh issue edit --reopen" not in yml, "--reopen is not a valid gh issue edit flag (CG-M-01)"
@@ -609,8 +623,9 @@ def check_guard_template(yml: str) -> None:
 class TestCheckpointSelect(unittest.TestCase):
     """§6.1 选取的执行级测试（canonical 脚本 + fixture 驱动，非关键词检查）。"""
 
-    def run_select(self, text: str, workflow_id: str | None = None) -> dict:
-        return run_select(text, workflow_id)
+    def run_select(self, text: str, workflow_id: str | None = None,
+                   author_associations: str | None = None) -> dict:
+        return run_select(text, workflow_id, author_associations)
 
     def test_valid_completed_selected_with_counts(self):
         out = self.run_select(json.dumps([make_checkpoint(1, state="completed", cp_id="cp-1")]))
@@ -677,6 +692,24 @@ class TestCheckpointSelect(unittest.TestCase):
         out = self.run_select(comments, workflow_id="wf-a")
         self.assertEqual(out["after_workflow_filter"], 1)
         self.assertEqual(out["selected_id"], "2")
+
+    def test_untrusted_author_dropped(self):
+        comments = json.dumps([
+            make_checkpoint(1, state="active", cp_id="cp-1", author_association="OWNER"),
+            make_checkpoint(2, state="completed", cp_id="cp-2",
+                            author_association="NONE"),
+        ])
+        out = self.run_select(comments, author_associations="OWNER,COLLABORATOR,MEMBER")
+        self.assertEqual((out["selected_id"], out["selected_state"]), ("1", "active"))
+        self.assertEqual(out["untrusted"], 1)
+
+    def test_untrusted_gate_off_keeps_everything(self):
+        comments = json.dumps([
+            make_checkpoint(1, state="active", cp_id="cp-1", author_association="NONE"),
+        ])
+        out = self.run_select(comments)
+        self.assertEqual(out["selected_state"], "active")
+        self.assertEqual(out["untrusted"], 0)
 
 
 class TestCloseGuardTemplate(unittest.TestCase):
@@ -891,8 +924,8 @@ class TestMutations(unittest.TestCase):
     def test_section61_counter_drop_is_caught(self):
         tt = read(TASK_TRACKING)
         mutated = tt.replace(
+            "`fetched_total / marker_candidates / malformed / untrusted / after_workflow_filter / duplicates` 六个计数",
             "`fetched_total / marker_candidates / malformed / after_workflow_filter / duplicates` 五个计数",
-            "`fetched_total / marker_candidates / malformed / after_workflow_filter` 四个计数",
         )
         self.assertNotEqual(mutated, tt, "mutation target string must exist")
         with self.assertRaises(AssertionError):

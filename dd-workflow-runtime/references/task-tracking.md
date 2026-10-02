@@ -169,7 +169,8 @@ none
 4. 同一 `checkpoint_id` 出现多条评论：取 comment id 最小者（首次投递）参与选取，其余按重复计数记录（与 §6.3 crash-safe 防重互补，不改变其先查重再投递的次序）。
 5. 剩余评论取 **comment id 最大**者为最新 checkpoint（GitHub 合同：单 Issue 评论按 id 升序返回、comment id 全局唯一；探针实测 5/5 单调一致，id 序即创建序，`created_at` 秒级并列不作排序键）。保存该评论的 comment ref（comment id、html_url、created_at、updated_at）。
 6. **编辑策略**：编辑不改 comment id 与 created_at（探针实测），故**排序键**稳定；但编辑可改变**评论资格**——改掉 marker 或任一必填字段 → malformed 丢弃，改 `checkpoint_id` → 视为新 checkpoint（交由步骤 4 防重）。checkpoint 评论约定 **append-only**：正文更正只允许追加，不得改写既有字段；恢复方每次抓取按上述规则**重新评估资格**，不缓存资格结论。
-7. **机械可核计数**：每次选取必须输出 `fetched_total / marker_candidates / malformed / after_workflow_filter / duplicates` 五个计数，防止解析失败被静默吞掉（探针当日曾因 jq 正则旗标误用出现 `parsed=0` 假象而无所察觉）。
+7. **机械可核计数**：每次选取必须输出 `fetched_total / marker_candidates / malformed / untrusted / after_workflow_filter / duplicates` 六个计数，防止解析失败被静默吞掉（探针当日曾因 jq 正则旗标误用出现 `parsed=0` 假象而无所察觉）。
+8. **来源真实性（防线场景必选）**：checkpoint 评论作者采用 GitHub author association 白名单（`author_association` ∈ OWNER / COLLABORATOR / MEMBER）作为信任边界——该边界是**关联身份 allowlist，不等价于仓库写权限判定**；不可信来源（NONE / CONTRIBUTOR 等）整条丢弃并计 `untrusted`。guard 场景必选启用；工作流正常 checkpoint 由 owner 令牌发布，天然满足。迁入组织仓库或需真实权限判定时，须另行升级选取实现并重新取证。
 
 ### 6.2 写回时机（只有这六个）
 
