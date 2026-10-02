@@ -12,6 +12,7 @@ not keyword-existence checks: minimal semantic tampering must turn them red.
 """
 from __future__ import annotations
 
+import ast
 import json
 import re
 import subprocess
@@ -1010,6 +1011,83 @@ def check_guard_template(yml: str) -> None:
         "both terminal states must skip intervention"
 
 
+# --- 模板可安装性（结构层）-----------------------------------------------------
+# 2026-10-02 事故：模板把 `run: |` 块内的两段内嵌 python 与 heredoc 写在第 0 列，
+# 提前终止块标量 → GitHub 无法解析 → 每次 push 都产生 0 job 的失败 run，防线从未生效。
+# 原有 check_guard_template 全是字符串存在检查，看不出这类结构损坏，故补下列机械门。
+
+
+def _block_scalar_of_run(yml: str) -> tuple[int, list[str]]:
+    """返回 (`run: |` 块基准缩进, 块内容行)。
+
+    基准取 `run: |` 之后**首个非空内容行**的缩进（YAML 语义），并要求严格大于
+    `run: |` 自身的缩进；块内容到首个缩进 ≤ `run: |` 缩进的非空行为止——不假设
+    `run: |` 是文件最后一个节点。
+    """
+    lines = yml.splitlines(keepends=True)
+    idx = next(i for i, l in enumerate(lines) if l.strip() == "run: |")
+    run_indent = len(lines[idx]) - len(lines[idx].lstrip(" "))
+    rest = lines[idx + 1:]
+    first = next(i for i, l in enumerate(rest) if l.strip())
+    base = len(rest[first]) - len(rest[first].lstrip(" "))
+    assert base > run_indent, (
+        f"块标量首个内容行缩进 {base} 必须大于 `run: |` 缩进 {run_indent}；"
+        "否则块标量立即终止，YAML 解析失败（防线静默失效）"
+    )
+    end = next(
+        (i for i, l in enumerate(rest[first:], start=first)
+         if l.strip() and (len(l) - len(l.lstrip(" "))) <= run_indent),
+        len(rest),
+    )
+    return base, rest[:end]
+
+
+def _strip_block(block: list[str], base: int) -> str:
+    return "".join(l[base:] if l.startswith(" " * base) else l for l in block)
+
+
+def check_guard_template_is_installable(yml: str) -> None:
+    """模板必须**结构上可安装**：块标量内每行缩进不低于基准，剥离后是合法 shell，
+    且 heredoc 终止符恰好落在 shell 第 0 列。"""
+    base, block = _block_scalar_of_run(yml)
+    for offset, line in enumerate(block, 1):
+        if not line.strip():
+            continue
+        lead = len(line) - len(line.lstrip(" "))
+        assert lead >= base, (
+            f"run 块内第 {offset} 行缩进 {lead} < 块基准 {base}：会提前终止块标量，"
+            f"GitHub 解析失败（防线静默失效）→ {line.strip()[:60]}"
+        )
+    script = _strip_block(block, base)
+    proc = subprocess.run(["bash", "-n"], input=script, capture_output=True, text=True)
+    assert proc.returncode == 0, f"run 块剥离后不是合法 shell：{proc.stderr[:200]}"
+    # `bash -n` 对未闭合 heredoc 只 warning 并返回 0，故显式禁止该 warning。
+    assert "here-document" not in proc.stderr, (
+        f"bash 报告 heredoc 未闭合：{proc.stderr.strip()[:200]}"
+    )
+    # 本模板的评论体用 `<<MSG` heredoc：终止符必须在剥离后恰好位于列 0，否则 shell
+    # 不再把它当终止符（防「YAML 合法但 heredoc 悬空」这一类绕过）。
+    assert script.count("<<MSG") == 1, "guard 评论应恰好使用一个 <<MSG heredoc"
+    assert [l for l in script.splitlines() if l.strip() == "MSG"] == ["MSG"], (
+        "heredoc 终止符 MSG 必须在剥离后恰好位于 shell 第 0 列"
+    )
+
+
+def check_guard_embedded_python_parses(yml: str) -> None:
+    """内嵌 `python3 -c "…"` 片段必须**恰好两段**且都能被解析
+    （重排缩进时最容易悄悄改坏嵌套；只断言「至少一段」会被单段丢失绕过）。"""
+    base, block = _block_scalar_of_run(yml)
+    script = _strip_block(block, base)
+    snippets = re.findall(r'python3 -c "\n(.*?)\n"', script, re.S)
+    assert len(snippets) == 2, f"guard 应恰好含两段内嵌 python，实际 {len(snippets)} 段"
+    for i, snippet in enumerate(snippets, 1):
+        try:
+            ast.parse(snippet)
+        except SyntaxError as exc:  # pragma: no cover - 失败路径即本测试的目的
+            raise AssertionError(f"内嵌 python 第 {i} 段语法错误：{exc}") from exc
+
+
+
 class TestCheckpointSelect(unittest.TestCase):
     """§6.1 选取的执行级测试（canonical 脚本 + fixture 驱动，非关键词检查）。"""
 
@@ -1105,6 +1183,8 @@ class TestCheckpointSelect(unittest.TestCase):
 class TestCloseGuardTemplate(unittest.TestCase):
     def test_guard_template_is_wired_to_contract(self):
         check_guard_template(read(GUARD_TEMPLATE))
+        check_guard_template_is_installable(read(GUARD_TEMPLATE))
+        check_guard_embedded_python_parses(read(GUARD_TEMPLATE))
 
     def test_guard_referenced_from_contract_65(self):
         sec = h3_section(read(TASK_TRACKING), "6.5 Issue 关闭规则")
