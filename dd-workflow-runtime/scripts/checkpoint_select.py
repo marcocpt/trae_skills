@@ -13,10 +13,10 @@
   selected_id=<comment id 或空>
   selected_state=<state_status 或空>
   selected_checkpoint_id=<checkpoint_id 或空>
-  fetched_total=N marker_candidates=N malformed=N after_workflow_filter=N duplicates=N
+  fetched_total=N marker_candidates=N malformed=N untrusted=N after_workflow_filter=N duplicates=N
 
-选项：--workflow-id <id> 按 §6.1 第 3 条过滤；缺省不过滤（如 guard 场景：
-一张 Issue 只绑定一个 workflow，见 task-tracking.md §3）。
+选项：--workflow-id 按 §6.1 第 3 条过滤；--author-associations 按 §6.1 第 8 条
+启用来源真实性白名单（guard 必启用）。
 """
 
 from __future__ import annotations

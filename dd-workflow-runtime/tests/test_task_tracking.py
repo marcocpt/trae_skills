@@ -608,6 +608,8 @@ def check_guard_template(yml: str) -> None:
     assert "checkpoint_select.py" in yml, "guard must delegate selection to the canonical script"
     assert "--workflow-id" in yml, "guard must pass the binding workflow-id (§6.1 step 3)"
     assert "--author-associations" in yml, "guard must enable the author authenticity gate (§6.1 step 8)"
+    assert '--author-associations "OWNER,COLLABORATOR,MEMBER"' in yml, \
+        "guard allowlist must be pinned exactly to OWNER,COLLABORATOR,MEMBER"
     assert "Workflow ID:" in yml, "binding source must be the issue body Workflow ID line"
     assert "gh issue reopen" in yml, "guard must reopen with the legal gh subcommand"
     assert "gh issue edit --reopen" not in yml, "--reopen is not a valid gh issue edit flag (CG-M-01)"
