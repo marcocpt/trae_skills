@@ -259,6 +259,35 @@ def check_section61_evidence_bundle_exists() -> None:
     )
 
 
+def check_close_rule(tt: str) -> None:
+    """§6.5: exactly two legal close entries, each with a fixed order."""
+    sec = h3_section(tt, "6.5 Issue 关闭规则")
+    entries = re.findall(r"^(\d+)\. (.+)$", sec, re.M)
+    assert len(entries) == 2, f"close rule must have exactly 2 entries, got {len(entries)}"
+    (_, e1), (_, e2) = entries
+    assert "status=completed" in e1, f"entry 1 must be the completed path: {e1}"
+    pos1 = [e1.find(m) for m in ("写最终 checkpoint", "同步看板「完成」", "close")]
+    assert all(p >= 0 for p in pos1), f"completed close steps missing: {e1}"
+    assert pos1 == sorted(pos1), f"completed close order violated: {e1}"
+    assert "abandoned" in e2, f"entry 2 must be the abandoned path: {e2}"
+    pos2 = [e2.find(m) for m in ("checkpoint", "从看板移出", "close")]
+    assert all(p >= 0 for p in pos2), f"abandoned close steps missing: {e2}"
+    assert pos2 == sorted(pos2), f"abandoned close order violated: {e2}"
+    assert "禁止关闭已绑定 Issue" in sec, "close rule must forbid closing active workflows"
+    for token in ("active", "paused", "handoff-ready"):
+        assert token in sec, f"close rule must cover {token}"
+    assert "不产生任何投影语义" in sec, "external close must not carry projection semantics"
+
+
+def check_red_lines_close(tt: str) -> None:
+    """§13: external close must not be promoted to completion; no direct-close authorization."""
+    sec = h2_section(tt, "13. 红线")
+    assert "把外部关闭 Issue 当作工作流完成" in sec
+    assert "期间关闭已绑定 Issue" in sec
+    assert not re.search(r"允许(直接)?关闭已绑定 Issue", sec), \
+        "red lines must not authorize closing a bound Issue outside §6.5"
+
+
 # ---------------------------------------------------------------------------
 # Canonical stage extraction (drift detection: new stages must be mapped)
 # ---------------------------------------------------------------------------
@@ -482,6 +511,36 @@ class TestSection61Selection(unittest.TestCase):
         check_section61_evidence_bundle_exists()
 
 
+class TestCloseRule(unittest.TestCase):
+    """LATER-20261002: closing a bound Issue is only legal at completion or abandonment."""
+
+    def test_close_has_exactly_two_legal_entries_with_fixed_order(self):
+        check_close_rule(read(TASK_TRACKING))
+
+    def test_abandoned_board_disposition_is_unique(self):
+        sec = h2_section(read(TASK_TRACKING), "10. 看板投影")
+        self.assertIn("从看板移出", sec)
+        self.assertIn("不得进入「完成」", sec)
+
+    def test_policy_template_binds_close_to_65(self):
+        sec = h2_section(read(TASK_TRACKING), "8. 授权")
+        self.assertIn("§6.5 两个合法入口", sec)
+
+    def test_board_does_not_follow_issue_state(self):
+        sec = h2_section(read(TASK_TRACKING), "10. 看板投影")
+        self.assertIn("不跟随 Issue 的 open/closed 状态", sec)
+        self.assertIn("投影脱节", sec)
+        self.assertIn("§6.5", sec)
+
+    def test_red_lines_cover_external_close(self):
+        check_red_lines_close(read(TASK_TRACKING))
+
+    def test_state_md_status_vocab_follows_canonical(self):
+        sec = h3_section(read(RUNTIME_STATE), "通用字段（所有工作流必需）")
+        self.assertIn("runtime-contract.md", sec)
+        self.assertIn("abandoned", sec)
+
+
 class TestMutations(unittest.TestCase):
     """§6.6: minimal semantic tampering must turn the checks red."""
 
@@ -511,6 +570,43 @@ class TestMutations(unittest.TestCase):
         self.assertNotEqual(mutated, tt, "mutation target string must exist")
         with self.assertRaises(AssertionError):
             check_writeback_order(mutated)
+
+    def test_close_rule_relaxation_is_caught(self):
+        tt = read(TASK_TRACKING)
+        mutated = tt.replace("禁止关闭已绑定 Issue", "允许直接关闭已绑定 Issue")
+        self.assertNotEqual(mutated, tt, "mutation target string must exist")
+        with self.assertRaises(AssertionError):
+            check_close_rule(mutated)
+
+    def test_third_close_entry_insertion_is_caught(self):
+        tt = read(TASK_TRACKING)
+        mutated = tt.replace(
+            "→ 把对应卡片从看板移出（archive item）→ close。",
+            "→ 把对应卡片从看板移出（archive item）→ close。\n3. 用户明确要求时直接 close。",
+        )
+        self.assertNotEqual(mutated, tt, "mutation target string must exist")
+        with self.assertRaises(AssertionError):
+            check_close_rule(mutated)
+
+    def test_abandoned_branch_order_swap_is_caught(self):
+        tt = read(TASK_TRACKING)
+        mutated = tt.replace(
+            "→ 把对应卡片从看板移出（archive item）→ close。",
+            "→ close → 把对应卡片从看板移出（archive item）。",
+        )
+        self.assertNotEqual(mutated, tt, "mutation target string must exist")
+        with self.assertRaises(AssertionError):
+            check_close_rule(mutated)
+
+    def test_red_line_conflict_insertion_is_caught(self):
+        tt = read(TASK_TRACKING)
+        mutated = tt.replace(
+            "- 把 `paused` 当成阻塞；",
+            "- 把 `paused` 当成阻塞；\n- 在工作流 active 期间允许直接关闭已绑定 Issue；",
+        )
+        self.assertNotEqual(mutated, tt, "mutation target string must exist")
+        with self.assertRaises(AssertionError):
+            check_red_lines_close(mutated)
 
     def test_section61_required_field_drop_is_caught(self):
         tt = read(TASK_TRACKING)

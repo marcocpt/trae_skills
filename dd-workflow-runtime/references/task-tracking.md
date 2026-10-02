@@ -167,13 +167,14 @@ none
 6. **编辑策略**：编辑不改 comment id 与 created_at（探针实测），故**排序键**稳定；但编辑可改变**评论资格**——改掉 marker 或任一必填字段 → malformed 丢弃，改 `checkpoint_id` → 视为新 checkpoint（交由步骤 4 防重）。checkpoint 评论约定 **append-only**：正文更正只允许追加，不得改写既有字段；恢复方每次抓取按上述规则**重新评估资格**，不缓存资格结论。
 7. **机械可核计数**：每次选取必须输出 `fetched_total / marker_candidates / malformed / after_workflow_filter / duplicates` 五个计数，防止解析失败被静默吞掉（探针当日曾因 jq 正则旗标误用出现 `parsed=0` 假象而无所察觉）。
 
-### 6.2 写回时机（只有这五个）
+### 6.2 写回时机（只有这六个）
 
 1. 创建或接管任务；
 2. Stage 跨越（每个 Stage Gate 通过后）；
 3. `blocking_gaps` 非空，即 BLOCKED；
 4. `paused` / `handoff-ready` / 换 Agent / 换机器——**在释放写入租约之前**；
-5. `status=completed`。
+5. `status=completed`；
+6. `status=abandoned` 处置（放弃任务）——写 `state_status=abandoned` 的 checkpoint，并按 §6.5 同步看板与关闭 Issue。
 
 ### 6.3 写回顺序（crash-safe）
 
@@ -195,6 +196,15 @@ none
 - 跨 Agent / 跨机器 handoff 的 checkpoint 失败：**handoff 动作保持 pending**，不得宣称已移交；
 - 二者不互相替代：写回失败绝不回滚 Gate，也绝不伪造成功移交。
 
+### 6.5 Issue 关闭规则
+
+关闭已绑定 Issue 只有**两个合法入口**：
+
+1. Closure：`status=completed` 后，顺序固定——写最终 checkpoint（写回时机 5）→ 同步看板「完成」→ close；
+2. `abandoned` 处置：写 `state_status=abandoned` 的 checkpoint（写回时机 6）→ 把对应卡片从看板移出（archive item）→ close。
+
+除以上两个入口外不存在第三种合法关闭路径。工作流处于 `active` / `paused` / `handoff-ready` 期间**禁止关闭已绑定 Issue**；确需中途放弃，先走 `abandoned` 处置。外部（非本工作流会话）直接关闭已绑定 Issue 不产生任何投影语义——看板与恢复结论仍以最新 checkpoint 和 runtime state 为准（见 §1.1、§10）。恢复时若 runtime 已为 terminal 状态（completed / abandoned）而 Issue 仍 open，按最新 checkpoint 幂等补 close。
+
 ## 7. checkpoint 不是证据
 
 Issue 评论里写 `CI PASS` 不等于 `full_ci_run=PASS`。接管方必须按调用方合同重新核对 Run ID、Head SHA、Conclusion 与 `candidate_sha`。
@@ -213,7 +223,7 @@ Issue 评论里写 `CI PASS` 不等于 `full_ci_run=PASS`。接管方必须按�
 ## GitHub task tracking policy
 
 对于已绑定 tracking 的 Feature / Bug 工作流，允许 Agent 更新对应 GitHub Issue、
-追加工作流 checkpoint 评论、同步看板状态列。
+追加工作流 checkpoint 评论、同步看板状态列；关闭对应 Issue 仅限 §6.5 两个合法入口。
 
 这些操作仅用于工作流状态投影，不构成 commit、push、PR、merge、CI 或发布授权。
 ```
@@ -264,6 +274,8 @@ Issue 评论里写 `CI PASS` 不等于 `full_ci_run=PASS`。接管方必须按�
 
 投影方向：runtime state → 看板（工作流事实）。禁止反向回写。
 
+看板与 checkpoint 跟随 runtime state，**不跟随 Issue 的 open/closed 状态**：外部直接关闭已绑定 Issue 属于投影脱节，恢复时仍按 §6.1 选取最新 checkpoint 并以仓库证据为准；close 的合法时机见 §6.5。
+
 列：
 
 | 列 | 含义 |
@@ -292,6 +304,8 @@ bug-fix
 ```
 
 **覆盖完备性要求**：Feature 与 Bug 的 canonical Stage 列表中，每个适用 Stage 必须恰好映射一次；新增 Stage 而映射未更新即视为合同违约（由合同测试机械校验）。
+
+`status=abandoned` 的唯一看板处置：把对应卡片**从看板移出**（archive item），不得进入「完成」列，也不得留在原列。
 
 阻塞表达：用 GitHub label `blocked`，因为阻塞与工作阶段正交，占用状态列会丢失被阻塞前所在 Stage；看板配置一个 `label:blocked` 过滤视图补足视觉显著性。`status=paused` **不等于阻塞**。
 
@@ -326,6 +340,8 @@ bug-fix
 - 未写 checkpoint 就释放写入租约并宣称已移交；写回失败却宣称 handoff 完成；
 - 从 `state_status=active` 的 checkpoint 静默接管；
 - 把接管冲突检测描述成"互斥锁"或"弱锁"；
+- 在工作流 `active` / `paused` / `handoff-ready` 期间关闭已绑定 Issue，而不写 completed 或 abandoned checkpoint；
+- 把外部关闭 Issue 当作工作流完成或完成依据；
 - 把 `paused` 当成阻塞；
 - 因 Issue 上存在某分支就推定其可见性或同步方式；
 - 重列 runtime 已有的 `host` 或 `status` 枚举；
