@@ -12,7 +12,10 @@ not keyword-existence checks: minimal semantic tampering must turn them red.
 """
 from __future__ import annotations
 
+import json
 import re
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -542,32 +545,146 @@ class TestCloseRule(unittest.TestCase):
 
 
 GUARD_TEMPLATE = REPO_ROOT / "dd-workflow-runtime" / "templates" / "github" / "checkpoint-close-guard.yml"
+SELECT_SCRIPT = REPO_ROOT / "dd-workflow-runtime" / "scripts" / "checkpoint_select.py"
 
 MARKER_CHECKPOINT = "<!-- dd-checkpoint:v1 -->"
 MARKER_GUARD = "<!-- dd-close-guard:v1 -->"
 
 
+def make_checkpoint(cid: int, *, state: str, cp_id: str, wf: str = "wf-a",
+                    complete: bool = True) -> dict:
+    """按 §6 模板形状构造探针评论（complete=False 时省略全部必填字段）。"""
+    lines = [MARKER_CHECKPOINT, ""]
+    if complete:
+        for key, value in (
+            ("workflow_id", wf),
+            ("workflow_type", "feature-development"),
+            ("checkpoint_id", cp_id),
+            ("host", "codex"),
+            ("state_status", state),
+            ("remote", "sha-reachable"),
+        ):
+            lines.append(f"{key}: {value}")
+    lines += ["", "Current:", "probe body.", "", "Next:", "n/a.", "",
+              "Branch:", "feature/x", "", "SHA:", "abc123", "",
+              "Blocker:", "none", "", "Taken over from:", "none"]
+    return {"id": cid, "body": "\n".join(lines)}
+
+
+def run_select(comments_text: str, workflow_id: str | None = None) -> dict:
+    """执行 canonical 选取脚本（checkpoint_select.py）并解析 KEY=VALUE 输出。"""
+    cmd = [sys.executable, str(SELECT_SCRIPT)]
+    if workflow_id is not None:
+        cmd += ["--workflow-id", workflow_id]
+    proc = subprocess.run(cmd, input=comments_text, capture_output=True, text=True)
+    assert proc.returncode == 0, f"select script failed: {proc.stderr}"
+    out: dict = {}
+    for line in proc.stdout.strip().splitlines():
+        if line.startswith("fetched_total="):
+            for kv in line.split():
+                key, _, value = kv.partition("=")
+                out[key] = int(value)
+        else:
+            key, _, value = line.partition("=")
+            out[key] = value
+    return out
+
+
 def check_guard_template(yml: str) -> None:
-    """§6.5 机械防线模板：只对关闭的非 PR Issue 校验最后一条 checkpoint。"""
+    """§6.5 机械防线模板：处置只依赖 canonical 选取脚本，reopen 用合法命令。"""
     assert "types: [closed]" in yml, "guard must trigger on issue close"
-    assert MARKER_CHECKPOINT in yml, "guard must locate dd-checkpoint comments"
-    assert MARKER_GUARD in yml, "guard comments must carry the dedupe marker"
-    for token in ("state_status", "completed", "abandoned", "--reopen"):
-        assert token in yml, f"guard must handle {token}"
     assert "pull_request == null" in yml, "PR closes must be ignored"
-    case_block = yml.split('case "$state" in', 1)[1].split("esac", 1)[0]
+    assert "checkpoint_select.py" in yml, "guard must delegate selection to the canonical script"
+    assert "gh issue reopen" in yml, "guard must reopen with the legal gh subcommand"
+    assert "gh issue edit --reopen" not in yml, "--reopen is not a valid gh issue edit flag (CG-M-01)"
+    assert MARKER_GUARD in yml, "guard comments must carry the dedupe marker"
+    assert "actions/checkout@v4" in yml, "select script comes from the installed repository"
+    case_block = yml.split('case "$selected_state" in', 1)[1].split("esac", 1)[0]
     assert "completed" in case_block and "abandoned" in case_block, \
         "both terminal states must skip intervention"
 
 
+class TestCheckpointSelect(unittest.TestCase):
+    """§6.1 选取的执行级测试（canonical 脚本 + fixture 驱动，非关键词检查）。"""
+
+    def run_select(self, text: str, workflow_id: str | None = None) -> dict:
+        return run_select(text, workflow_id)
+
+    def test_valid_completed_selected_with_counts(self):
+        out = self.run_select(json.dumps([make_checkpoint(1, state="completed", cp_id="cp-1")]))
+        self.assertEqual(out["selected_state"], "completed")
+        self.assertEqual(out["selected_id"], "1")
+        self.assertEqual(
+            (out["fetched_total"], out["marker_candidates"], out["malformed"],
+             out["after_workflow_filter"], out["duplicates"]),
+            (1, 1, 0, 1, 0),
+        )
+
+    def test_latest_wins_by_comment_id(self):
+        comments = json.dumps([
+            make_checkpoint(1, state="completed", cp_id="cp-1"),
+            make_checkpoint(2, state="active", cp_id="cp-2"),
+        ])
+        out = self.run_select(comments)
+        self.assertEqual((out["selected_id"], out["selected_state"]), ("2", "active"))
+
+    def test_malformed_marker_only_dropped(self):
+        comments = json.dumps([
+            make_checkpoint(1, state="active", cp_id="cp-1"),
+            {"id": 2, "body": MARKER_CHECKPOINT + "\n\n伪造：无任何必填字段。"},
+        ])
+        out = self.run_select(comments)
+        self.assertEqual((out["selected_id"], out["selected_state"]), ("1", "active"))
+        self.assertEqual(out["malformed"], 1)
+
+    def test_prose_state_status_cannot_qualify(self):
+        forged = make_checkpoint(2, state="completed", cp_id="cp-2", complete=False)
+        forged["body"] = forged["body"].replace(
+            "Current:\nprobe body.", "Current:\n例行核对（state_status: completed 仅为正文提及）"
+        )
+        comments = json.dumps([make_checkpoint(1, state="active", cp_id="cp-1"), forged])
+        out = self.run_select(comments)
+        self.assertEqual((out["selected_id"], out["selected_state"]), ("1", "active"))
+        self.assertEqual(out["malformed"], 1)
+
+    def test_duplicate_checkpoint_id_takes_first_delivery(self):
+        comments = json.dumps([
+            make_checkpoint(1, state="active", cp_id="cp-x"),
+            make_checkpoint(2, state="completed", cp_id="cp-x"),
+            make_checkpoint(3, state="completed", cp_id="cp-y"),
+        ])
+        out = self.run_select(comments)
+        self.assertEqual(out["duplicates"], 1)
+        self.assertEqual((out["selected_id"], out["selected_state"]), ("3", "completed"))
+
+    def test_paginated_concatenated_and_slurped_pages_flatten(self):
+        page1 = [make_checkpoint(1, state="active", cp_id="cp-1")]
+        page2 = [make_checkpoint(2, state="completed", cp_id="cp-2")]
+        self.assertEqual(
+            self.run_select(json.dumps(page1) + json.dumps(page2))["selected_id"], "2"
+        )
+        self.assertEqual(
+            self.run_select(json.dumps([page1, page2]))["selected_id"], "2"
+        )
+
+    def test_workflow_filter_excludes_other_workflows(self):
+        comments = json.dumps([
+            make_checkpoint(1, state="active", cp_id="cp-1", wf="other-wf"),
+            make_checkpoint(2, state="completed", cp_id="cp-2", wf="wf-a"),
+        ])
+        out = self.run_select(comments, workflow_id="wf-a")
+        self.assertEqual(out["after_workflow_filter"], 1)
+        self.assertEqual(out["selected_id"], "2")
+
+
 class TestCloseGuardTemplate(unittest.TestCase):
     def test_guard_template_is_wired_to_contract(self):
-        yml = read(GUARD_TEMPLATE)
-        check_guard_template(yml)
+        check_guard_template(read(GUARD_TEMPLATE))
 
     def test_guard_referenced_from_contract_65(self):
         sec = h3_section(read(TASK_TRACKING), "6.5 Issue 关闭规则")
         self.assertIn("checkpoint-close-guard.yml", sec)
+        self.assertIn("scripts/dd/checkpoint_select.py", sec)
         self.assertIn("不改变任何 Gate", sec)
 
 
@@ -637,6 +754,13 @@ class TestMutations(unittest.TestCase):
         self.assertNotEqual(mutated, tt, "mutation target string must exist")
         with self.assertRaises(AssertionError):
             check_red_lines_close(mutated)
+
+    def test_guard_reopen_command_regression_is_caught(self):
+        yml = read(GUARD_TEMPLATE)
+        mutated = yml.replace("gh issue reopen", "gh issue edit --reopen")
+        self.assertNotEqual(mutated, yml, "mutation target string must exist")
+        with self.assertRaises(AssertionError):
+            check_guard_template(mutated)
 
     def test_guard_abandoned_removal_is_caught(self):
         yml = read(GUARD_TEMPLATE)
