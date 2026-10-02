@@ -3,8 +3,8 @@ id: LATER-20261002-issue-close-projection
 title: task-tracking 合同缺 Issue close 时机规则——外部关 Issue 造成投影漂移
 status: closed
 closed_at: 2026-10-02
-closed_by_commits: [2388d1a, c5ae810]
-evidence: dd-workflow-runtime/references/task-tracking.md §6.2/§6.5/§10/§13/§8；dd-workflow-runtime/tests/test_task_tracking.py TestCloseRule + TestMutations（§6.5 三条变异门）；dd-workflow-runtime/references/state.md 状态词表修正；runtime 346 + feature 32 合同测试全绿；ChatGPT 针对性复查（会话 6abeea9c-dc38-83ea-9708-14e4a4174e23，CLOSE-M-01～04 整改）
+closed_by_commits: [2388d1a, f42ca27]
+evidence: dd-workflow-runtime/references/task-tracking.md §6.2/§6.5/§10/§13/§8；dd-workflow-runtime/tests/test_task_tracking.py TestCloseRule + TestMutations（§6.5 三条变异门）；dd-workflow-runtime/references/state.md 状态词表修正；runtime 346 + feature 32 合同测试全绿；git diff --check 通过
 created: 2026-10-02
 source: Macim #111 实测（用户在其他会话直接关闭已绑定 Issue，看板未同步；工作流实为 in-progress）
 tags: [task-tracking, projection, macim]
