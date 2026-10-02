@@ -37,6 +37,7 @@ required_exit_stages: []
 artifact_hints: {}
 resolved_decisions: []
 delivery_policy: project-rules
+tracking: null
 ```
 
 `host=auto` 时按运行环境识别 Trae、Codex 或 other。只有宿主差异会阻塞执行且无法识别时才询问。
@@ -59,7 +60,7 @@ Stage 创建或消费规范文档、人审视图、弱模型执行包或验证�
 
 1. 读取当前用户请求、适用的 `AGENTS.md` 和项目规则；
 2. 检测 Git/worktree、宿主和可用能力；
-3. 恢复状态；状态缺失或可疑时从仓库事实重建；
+3. 恢复状态；状态缺失或可疑时从仓库事实重建；存在 `tracking` 绑定时按 [task-tracking.md](references/task-tracking.md) 取定位元数据，工作流事实仍以仓库证据为准；
 4. 记录 `requested_entry`，但不把它当成无条件跳步的起点；
 5. 只扫描调用方声明的最小产物集合；
 6. 标记产物为 `missing`、`partial`、`valid`、`stale` 或 `conflicting`；

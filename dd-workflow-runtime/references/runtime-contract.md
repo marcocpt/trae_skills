@@ -119,9 +119,12 @@ deferred_gaps: []
 in_progress: {}
 last_verified_at: 2026-07-28T09:00:00Z
 next_safe_action: run phase-2 local gate
+tracking: null
 ```
 
 调用方可保留 `current_step`、`current_node`、`current_phase` 等兼容字段，但必须与 `current_stage` 一致。字段冲突时先根据产物和仓库证据修正，再继续。
+
+`tracking` 子对象的字段形状、枚举与语义由 [task-tracking.md](task-tracking.md) 唯一拥有，本节只记录字段存在与可选性；缺失或 `null` 表示未绑定，不得作为任何 Gate 依据。
 
 `routing` / `review` / `external_review` 子对象语义由 [model-routing.md](model-routing.md) 拥有。持久化纪律（FR-009、FR-012、NFR-005）：
 
@@ -188,6 +191,8 @@ next_safe_action: verify whether merge commit exists
 - 可查询的 CI 结果。
 
 只有证据也无法判断时才从入口 Stage 开始。不得把简短的“继续”解释为重新开始。
+
+存在 `tracking` 绑定时，对应 Issue 的最新 checkpoint 只可用作跨宿主定位提示：仅取 repository、branch、workflow_id、checkpoint ref 等定位元数据；Stage、Gate、CI 与完成结论等工作流事实必须按本节从仓库证据重新验证，不得取自 Issue（两类数据的边界由 task-tracking.md 拥有）。
 
 ## 6. Gap Scan
 

@@ -62,6 +62,7 @@ Gate：
 - 检查其他 active/paused/handoff-ready 工作流；
 - 记录 `main_root`、`worktree_dir`、`base_branch` 和工作分支；
 - 验证工作区状态与基线；
+- Environment Gate 前按 [task-tracking](../../dd-workflow-runtime/references/task-tracking.md) 绑定或确认 `tracking`；绑定失败按其失败矩阵处置（记 `sync` 结果），**不阻塞本 Stage**。
 - 基线失败时说明现有失败与本 Feature 风险，再 ASK 排查或停止。
 
 创建 worktree、分支命名和初始化遵循 `dd-git-workflow/worktree`、`dd-git-workflow/branch` 和项目脚本，不在本文件复制语言特定安装命令。

@@ -1,6 +1,6 @@
 # Task Tracking 投影改造设计
 
-状态：v3（第二轮针对性复查 NEW-M-01/02、NEW-L-01/02 与 H-02 残留已修订；DP-1/DP-2/DP-4/DP-5/M-05 均已用户裁决；待第三轮复查闭环）。
+状态：v4（三轮外审闭环：19 条原始 + 4 条新增 finding 全部 RESOLVED；L-02 登记 VERIFICATION_PENDING 待真实 GitHub 探针）。合同（`task-tracking.md`）、全部接线与合同测试已随本候选交付并通过全量合同测试。
 工作流：`feature-development-20261002T000000Z-task-tracking-projection`
 分支：`docs/task-tracking-projection`
 修订依据：ChatGPT 首轮外审（会话句柄 `6abeea9c-dc38-83ea-9708-14e4a4174e23`），19 条 FINDING 已逐条本地核对属实后写入本节。
