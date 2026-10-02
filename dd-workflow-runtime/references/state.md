@@ -160,7 +160,7 @@ Bootstrap 没有状态文件时，先从仓库中的 `docs.md`、Roadmap、Archi
 - **更新候选 exact-SHA 字段**（仅 feature-development）：冻结候选时写 `candidate_sha`、`candidate_review`、`full_spec_gap`；完整远程 CI 终态（`success|failure|cancelled|timed_out|…`）后即写 `full_ci_run={run_id,url,head_sha,conclusion}`（无论成功失败），`PASS` 仅当 `conclusion==success && head_sha==candidate_sha`，`null` 表示未有终态
 - **更新 `owner.delegated_to`**：owner 明确把决策/实施权委托给本地 agent 时写 `local-agent`（授权原话记入 `owner.evidence`），收回时写回 `owner`；状态缺失时按「owner 自执」读取
 - **更新 `in_progress`**：merge/push/cleanup 等不可瞬时动作执行前写 `in_progress: {operation, target, source, started_at}`（见 runtime-contract §4），动作成功后写完成证据再清除；**不另设布尔兼容字段**
-- **写 checkpoint**：绑定 `tracking` 后按 [task-tracking.md](task-tracking.md) 的五个写回时机追加 Issue checkpoint；字段形状、写回顺序与 crash-safe 防重规则以该文件为准，本文件不复制
+- **写 checkpoint**：绑定 `tracking` 后按 [task-tracking.md](task-tracking.md) 的六个写回时机追加 Issue checkpoint；字段形状、写回顺序、crash-safe 防重与 Issue 关闭规则以该文件为准，本文件不复制
 - **删除**（按 `WORKFLOW_TYPE` 分支）：**bug-fix** 在 `git merge --no-ff` 成功后、清理前可删除（**禁止 merge 前删除**）；**feature-development** 在 merge 后仍须保留状态直到 Closure 完成——写 Completion Receipt、cleanup 执行并验证后才删除/归档活动状态，**禁止在 Closure 校验与 Receipt 写入前删除**（delivery-and-closure 的 Closure 流程为准）
 - **Bootstrap 写入**：Preflight 结束后写入；每个节点 Gate 通过后更新 `current_node`、`completed_nodes`、`artifacts` 和 gaps
 - **Bootstrap 完成**：Handoff 准备后设为 `handoff-ready`；下游确认接收且 Exit Gate 通过后、Host Close ASK 前设为 `completed`，不立即删除

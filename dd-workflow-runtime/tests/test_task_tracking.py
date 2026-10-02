@@ -259,6 +259,17 @@ def check_section61_evidence_bundle_exists() -> None:
     )
 
 
+def check_close_rule(tt: str) -> None:
+    """§6.5: close is only legal at completion or abandonment, in a fixed order."""
+    sec = h3_section(tt, "6.5 Issue 关闭规则")
+    assert "两个合法入口" in sec, "close rule must define exactly two legal entries"
+    for token in ("status=completed", "abandoned", "禁止关闭已绑定 Issue"):
+        assert token in sec, f"close rule missing {token}"
+    pos = [sec.find(m) for m in ("写最终 checkpoint", "同步看板", "close")]
+    assert all(p >= 0 for p in pos), f"close order steps missing: {pos}"
+    assert pos == sorted(pos), f"close steps out of order: {pos}"
+
+
 # ---------------------------------------------------------------------------
 # Canonical stage extraction (drift detection: new stages must be mapped)
 # ---------------------------------------------------------------------------
@@ -482,6 +493,31 @@ class TestSection61Selection(unittest.TestCase):
         check_section61_evidence_bundle_exists()
 
 
+class TestCloseRule(unittest.TestCase):
+    """LATER-20261002: closing a bound Issue is only legal at completion or abandonment."""
+
+    def test_close_has_exactly_two_legal_entries(self):
+        check_close_rule(read(TASK_TRACKING))
+
+    def test_close_forbidden_while_workflow_active(self):
+        sec = h3_section(read(TASK_TRACKING), "6.5 Issue 关闭规则")
+        self.assertIn("禁止关闭已绑定 Issue", sec)
+        for state in ("active", "paused", "handoff-ready"):
+            self.assertIn(state, sec)
+        self.assertIn("不产生任何投影语义", sec)
+
+    def test_board_does_not_follow_issue_state(self):
+        sec = h2_section(read(TASK_TRACKING), "10. 看板投影")
+        self.assertIn("不跟随 Issue 的 open/closed 状态", sec)
+        self.assertIn("投影脱节", sec)
+        self.assertIn("§6.5", sec)
+
+    def test_red_lines_cover_external_close(self):
+        sec = h2_section(read(TASK_TRACKING), "13. 红线")
+        self.assertIn("把外部关闭 Issue 当作工作流完成", sec)
+        self.assertIn("期间关闭已绑定 Issue", sec)
+
+
 class TestMutations(unittest.TestCase):
     """§6.6: minimal semantic tampering must turn the checks red."""
 
@@ -511,6 +547,13 @@ class TestMutations(unittest.TestCase):
         self.assertNotEqual(mutated, tt, "mutation target string must exist")
         with self.assertRaises(AssertionError):
             check_writeback_order(mutated)
+
+    def test_close_rule_relaxation_is_caught(self):
+        tt = read(TASK_TRACKING)
+        mutated = tt.replace("禁止关闭已绑定 Issue", "允许直接关闭已绑定 Issue")
+        self.assertNotEqual(mutated, tt, "mutation target string must exist")
+        with self.assertRaises(AssertionError):
+            check_close_rule(mutated)
 
     def test_section61_required_field_drop_is_caught(self):
         tt = read(TASK_TRACKING)

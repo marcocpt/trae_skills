@@ -1,7 +1,8 @@
 ---
 id: LATER-20261002-issue-close-projection
 title: task-tracking 合同缺 Issue close 时机规则——外部关 Issue 造成投影漂移
-status: open
+status: closed
+closed: 2026-10-02（合同修订随本分支交付：§6.2 增第 6 时机、新增 §6.5、§10 澄清、§13 两条红线、TestCloseRule + mutation 测试）
 created: 2026-10-02
 source: Macim #111 实测（用户在其他会话直接关闭已绑定 Issue，看板未同步；工作流实为 in-progress）
 tags: [task-tracking, projection, macim]
