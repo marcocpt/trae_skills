@@ -595,6 +595,8 @@ def check_guard_template(yml: str) -> None:
     assert "types: [closed]" in yml, "guard must trigger on issue close"
     assert "pull_request == null" in yml, "PR closes must be ignored"
     assert "checkpoint_select.py" in yml, "guard must delegate selection to the canonical script"
+    assert "--workflow-id" in yml, "guard must pass the binding workflow-id (§6.1 step 3)"
+    assert "Workflow ID:" in yml, "binding source must be the issue body Workflow ID line"
     assert "gh issue reopen" in yml, "guard must reopen with the legal gh subcommand"
     assert "gh issue edit --reopen" not in yml, "--reopen is not a valid gh issue edit flag (CG-M-01)"
     assert MARKER_GUARD in yml, "guard comments must carry the dedupe marker"
@@ -686,6 +688,109 @@ class TestCloseGuardTemplate(unittest.TestCase):
         self.assertIn("checkpoint-close-guard.yml", sec)
         self.assertIn("scripts/dd/checkpoint_select.py", sec)
         self.assertIn("不改变任何 Gate", sec)
+
+    def test_guard_fails_safe_on_legacy_cards(self):
+        sec = h3_section(read(TASK_TRACKING), "6.5 Issue 关闭规则")
+        self.assertIn("fail-safe 跳过", sec)
+        self.assertIn("不做跨 workflow 判定", sec)
+
+
+class TestCloseGuardIntegration(unittest.TestCase):
+    """执行级集成门：抽取 guard 模板的 run 块，用假 gh + fixture 实际运行。
+
+    证明（CG-M-04）：guard 真的把 Issue 正文 Workflow ID 传给 §6.1 选取
+    （--workflow-id），并且处置与绑定工作流的 checkpoint 状态一致。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = Path(__import__("tempfile").mkdtemp(prefix="dd-guard-test-"))
+        cls.bin_dir = cls.tmp / "bin"
+        cls.bin_dir.mkdir()
+        script_dir = cls.tmp / "scripts" / "dd"
+        script_dir.mkdir(parents=True)
+        script_dir.joinpath("checkpoint_select.py").write_text(
+            SELECT_SCRIPT.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+        fake_gh = cls.bin_dir / "gh"
+        fake_gh.write_text(
+            "#!/usr/bin/env bash\n"
+            'case "$*" in\n'
+            '  *--paginate*) cat "$GUARD_COMMENTS_FIXTURE" ;;\n'
+            '  *"issues/$GUARD_ISSUE"*) cat "$GUARD_ISSUE_FIXTURE" ;;\n'
+            '  *reopen*) echo REOPEN >> "$GUARD_CALLS" ;;\n'
+            '  *comment*) echo COMMENT >> "$GUARD_CALLS" ;;\n'
+            '  *) echo "OTHER: $*" >> "$GUARD_CALLS" ;;\n'
+            "esac\n",
+            encoding="utf-8",
+        )
+        fake_gh.chmod(0o755)
+
+    @classmethod
+    def tearDownClass(cls):
+        import shutil
+
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def run_guard(self, issue_body: str, comments: list) -> tuple[int, str]:
+        import os
+        import subprocess
+
+        calls = self.tmp / f"calls-{len(list(self.tmp.glob('calls-*')))}.log"
+        comments_fixture = self.tmp / f"comments-{calls.stem}.json"
+        issue_fixture = self.tmp / f"issue-{calls.stem}.json"
+        comments_fixture.write_text(json.dumps(comments), encoding="utf-8")
+        issue_fixture.write_text(json.dumps({"number": 111, "body": issue_body}), encoding="utf-8")
+        run_block = read(GUARD_TEMPLATE).split("run: |", 1)[1]
+        import textwrap
+
+        run_script = textwrap.dedent(run_block)
+        script_path = self.tmp / "run-guard.sh"
+        script_path.write_text(run_script, encoding="utf-8")
+        script_path.chmod(0o755)
+        env = dict(
+            os.environ,
+            PATH=f"{self.bin_dir}:{os.environ['PATH']}",
+            GUARD_COMMENTS_FIXTURE=str(comments_fixture),
+            GUARD_ISSUE_FIXTURE=str(issue_fixture),
+            GUARD_CALLS=str(calls),
+            GUARD_ISSUE="111",
+            ISSUE="111",
+            REPO="marcocpt/Macim",
+            GH_TOKEN="test-token",
+        )
+        proc = subprocess.run(
+            ["bash", str(script_path)], capture_output=True, text=True, env=env, cwd=self.tmp
+        )
+        return proc.returncode, calls.read_text(encoding="utf-8") if calls.exists() else ""
+
+    def issue_fixture_body(self, workflow_id: str | None) -> str:
+        body = "## Workflow\n\nType: feature-development\n"
+        if workflow_id is not None:
+            body += f"Workflow ID: {workflow_id}\n"
+        return body + "\nBranch: feature/x\n"
+
+    def test_foreign_completed_cannot_allow_close_of_active_workflow(self):
+        comments = [
+            make_checkpoint(100, state="active", cp_id="cp-1", wf="wf-a"),
+            make_checkpoint(101, state="completed", cp_id="cp-2", wf="other-wf"),
+        ]
+        code, calls = self.run_guard(self.issue_fixture_body("wf-a"), comments)
+        self.assertEqual(code, 0)
+        self.assertIn("REOPEN", calls, "cross-workflow completed must not allow close")
+        self.assertNotIn("OTHER", calls)
+
+    def test_bound_completed_close_is_legal(self):
+        comments = [make_checkpoint(101, state="completed", cp_id="cp-2", wf="wf-a")]
+        code, calls = self.run_guard(self.issue_fixture_body("wf-a"), comments)
+        self.assertEqual(code, 0)
+        self.assertNotIn("REOPEN", calls)
+
+    def test_legacy_card_without_workflow_id_fails_safe(self):
+        comments = [make_checkpoint(100, state="active", cp_id="cp-1", wf="wf-a")]
+        code, calls = self.run_guard(self.issue_fixture_body(None), comments)
+        self.assertEqual(code, 0)
+        self.assertNotIn("REOPEN", calls)
 
 
 class TestMutations(unittest.TestCase):

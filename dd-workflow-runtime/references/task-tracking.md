@@ -63,7 +63,8 @@ tracking:
 - `repository` 由当前仓库 remote 推导，不由模型猜测；推不出来时记 `sync=not-synced` + `sync_reason=remote-unresolvable`，继续推进；
 - 一张 Issue 对应一个可独立调度的工作单元：一个分支、一个 worktree、一个 workflow；
 - 同一 branch/worktree 上连续开发的多个 Phase **不拆成多张 Issue**；
-- 需要独立 worktree、独立 Agent、独立 branch、独立完成或阻塞时，才用 Sub-Issue。
+- 需要独立 worktree、独立 Agent、独立 branch、独立完成或阻塞时，才用 Sub-Issue；
+- 绑定后在 Issue 正文 Workflow 节写入 `Workflow ID`——它是关闭防线（§6.5）与远端选取（§6.1 第 3 条）识别绑定的唯一远端来源；合同前旧卡缺失该行时，防线 fail-safe 跳过。
 
 ## 4. 绑定失败矩阵
 
@@ -90,6 +91,7 @@ tracking:
 
 Type: feature-development
 Feature: F3.3
+Workflow ID: feature-development-20261002T000000Z-f31
 
 ## Workspace
 
@@ -207,7 +209,7 @@ none
 
 除以上两个入口外不存在第三种合法关闭路径。工作流处于 `active` / `paused` / `handoff-ready` 期间**禁止关闭已绑定 Issue**；确需中途放弃，先走 `abandoned` 处置。外部（非本工作流会话）直接关闭已绑定 Issue 不产生任何投影语义——看板与恢复结论仍以最新 checkpoint 和 runtime state 为准（见 §1.1、§10）。恢复时若 runtime 已为 terminal 状态（completed / abandoned）而 Issue 仍 open，按最新 checkpoint 幂等补 close。
 
-可选机械防线：目标项目安装**两个文件**——本模板复制到 `.github/workflows/dd-checkpoint-close-guard.yml`，canonical 选取脚本 [checkpoint_select.py](../scripts/checkpoint_select.py) 复制到目标仓库 `scripts/dd/checkpoint_select.py`（模板不含选取逻辑，避免第二套实现）。防线只做一件事：Issue 被关闭时按 §6.1 选取最新合法 checkpoint，其 `state_status` 非 completed / abandoned 则自动评论提醒并 reopen。安装与否不改变任何 Gate。
+可选机械防线：目标项目安装**两个文件**——本模板复制到 `.github/workflows/dd-checkpoint-close-guard.yml`，canonical 选取脚本 [checkpoint_select.py](../scripts/checkpoint_select.py) 复制到目标仓库 `scripts/dd/checkpoint_select.py`（模板不含选取逻辑，避免第二套实现）。防线只做一件事：Issue 被关闭时，按 Issue 正文 `Workflow ID` 调用 §6.1 选取最新合法 checkpoint，其 `state_status` 非 completed / abandoned 则自动评论提醒并 reopen；正文缺失 `Workflow ID`（合同前旧卡）时 fail-safe 跳过，不做跨 workflow 判定。安装与否不改变任何 Gate。
 
 ## 7. checkpoint 不是证据
 
