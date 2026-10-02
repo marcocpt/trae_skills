@@ -13,6 +13,7 @@ on:
     types: [closed]
 
 permissions:
+  contents: read
   issues: write
 
 concurrency:
@@ -57,7 +58,8 @@ print(hits[0] if hits else '')
             exit 0
           fi
 
-          out=$(printf '%s' "$comments_json" | python3 "$SELECT" --workflow-id "$wf_id")
+          out=$(printf '%s' "$comments_json" | python3 "$SELECT" \
+            --author-associations "OWNER,COLLABORATOR,MEMBER" --workflow-id "$wf_id")
           selected_id=$(printf '%s' "$out" | grep '^selected_id=' | cut -d= -f2-)
           selected_state=$(printf '%s' "$out" | grep '^selected_state=' | cut -d= -f2-)
           printf '%s\n' "$out" | grep '^fetched_total=' || true

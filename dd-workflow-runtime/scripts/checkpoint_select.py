@@ -13,10 +13,10 @@
   selected_id=<comment id 或空>
   selected_state=<state_status 或空>
   selected_checkpoint_id=<checkpoint_id 或空>
-  fetched_total=N marker_candidates=N malformed=N after_workflow_filter=N duplicates=N
+  fetched_total=N marker_candidates=N malformed=N untrusted=N after_workflow_filter=N duplicates=N
 
-选项：--workflow-id <id> 按 §6.1 第 3 条过滤；缺省不过滤（如 guard 场景：
-一张 Issue 只绑定一个 workflow，见 task-tracking.md §3）。
+选项：--workflow-id 按 §6.1 第 3 条过滤；--author-associations 按 §6.1 第 8 条
+启用来源真实性白名单（guard 必启用）。
 """
 
 from __future__ import annotations
@@ -98,11 +98,12 @@ def header_value(body: str, field: str) -> str:
     return ""
 
 
-def select(comments: list, workflow_id: str | None) -> dict:
+def select(comments: list, workflow_id: str | None, trusted_associations: tuple = ()) -> dict:
     counts = {
         "fetched_total": len(comments),
         "marker_candidates": 0,
         "malformed": 0,
+        "untrusted": 0,
         "after_workflow_filter": 0,
         "duplicates": 0,
     }
@@ -114,6 +115,17 @@ def select(comments: list, workflow_id: str | None) -> dict:
     counts["marker_candidates"] = len(markers)
     valids = [c for c in markers if all(has_field(c["body"], f) for f in REQUIRED_FIELDS)]
     counts["malformed"] = counts["marker_candidates"] - len(valids)
+    if trusted_associations:
+        # 来源真实性门：按 §6.1 第 8 条的 author association allowlist 过滤；
+        # 该 allowlist 是关联身份信任边界，不等价于仓库实际权限判定；
+        # 不可信来源（如 NONE/CONTRIBUTOR）整条丢弃，防绕过防线
+        trusted = [
+            c
+            for c in valids
+            if c.get("author_association") in trusted_associations
+        ]
+        counts["untrusted"] = len(valids) - len(trusted)
+        valids = trusted
     parsed = [
         {
             "id": c["id"],
@@ -136,11 +148,18 @@ def select(comments: list, workflow_id: str | None) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description="task-tracking §6.1 checkpoint 选取")
     parser.add_argument("--workflow-id", default=None)
+    parser.add_argument(
+        "--author-associations",
+        default="",
+        help="逗号分隔的可信 author_association 集合（如 OWNER,COLLABORATOR,MEMBER）；"
+        "非空时丢弃不可信来源的 checkpoint（来源真实性门）",
+    )
     parser.add_argument("--json", action="store_true", help="输出 JSON（测试用）")
     args = parser.parse_args()
+    trusted = tuple(a.strip() for a in args.author_associations.split(",") if a.strip())
 
     comments = flatten(load_documents(sys.stdin.read()))
-    result = select(comments, args.workflow_id)
+    result = select(comments, args.workflow_id, trusted)
     selected, counts = result["selected"], result["counts"]
 
     if args.json:
@@ -151,7 +170,8 @@ def main() -> int:
     print(f"selected_checkpoint_id={selected['cp'] if selected else ''}")
     print(
         "fetched_total={fetched_total} marker_candidates={marker_candidates} "
-        "malformed={malformed} after_workflow_filter={after_workflow_filter} "
+        "malformed={malformed} untrusted={untrusted} "
+        "after_workflow_filter={after_workflow_filter} "
         "duplicates={duplicates}".format(**counts)
     )
     return 0
