@@ -541,6 +541,36 @@ class TestCloseRule(unittest.TestCase):
         self.assertIn("abandoned", sec)
 
 
+GUARD_TEMPLATE = REPO_ROOT / "dd-workflow-runtime" / "templates" / "github" / "checkpoint-close-guard.yml"
+
+MARKER_CHECKPOINT = "<!-- dd-checkpoint:v1 -->"
+MARKER_GUARD = "<!-- dd-close-guard:v1 -->"
+
+
+def check_guard_template(yml: str) -> None:
+    """§6.5 机械防线模板：只对关闭的非 PR Issue 校验最后一条 checkpoint。"""
+    assert "types: [closed]" in yml, "guard must trigger on issue close"
+    assert MARKER_CHECKPOINT in yml, "guard must locate dd-checkpoint comments"
+    assert MARKER_GUARD in yml, "guard comments must carry the dedupe marker"
+    for token in ("state_status", "completed", "abandoned", "--reopen"):
+        assert token in yml, f"guard must handle {token}"
+    assert "pull_request == null" in yml, "PR closes must be ignored"
+    case_block = yml.split('case "$state" in', 1)[1].split("esac", 1)[0]
+    assert "completed" in case_block and "abandoned" in case_block, \
+        "both terminal states must skip intervention"
+
+
+class TestCloseGuardTemplate(unittest.TestCase):
+    def test_guard_template_is_wired_to_contract(self):
+        yml = read(GUARD_TEMPLATE)
+        check_guard_template(yml)
+
+    def test_guard_referenced_from_contract_65(self):
+        sec = h3_section(read(TASK_TRACKING), "6.5 Issue 关闭规则")
+        self.assertIn("checkpoint-close-guard.yml", sec)
+        self.assertIn("不改变任何 Gate", sec)
+
+
 class TestMutations(unittest.TestCase):
     """§6.6: minimal semantic tampering must turn the checks red."""
 
@@ -607,6 +637,13 @@ class TestMutations(unittest.TestCase):
         self.assertNotEqual(mutated, tt, "mutation target string must exist")
         with self.assertRaises(AssertionError):
             check_red_lines_close(mutated)
+
+    def test_guard_abandoned_removal_is_caught(self):
+        yml = read(GUARD_TEMPLATE)
+        mutated = yml.replace("completed|abandoned)", "completed)")
+        self.assertNotEqual(mutated, yml, "mutation target string must exist")
+        with self.assertRaises(AssertionError):
+            check_guard_template(mutated)
 
     def test_section61_required_field_drop_is_caught(self):
         tt = read(TASK_TRACKING)

@@ -1,0 +1,76 @@
+name: dd-checkpoint close guard
+
+# task-tracking.md §6.5 机械防线（可选安装）：
+# 工作流未 completed/abandoned 时关闭已绑定 tracking 的 Issue → 自动评论提醒并 reopen。
+# 安装：把本文件复制到目标仓库 .github/workflows/dd-checkpoint-close-guard.yml 即可（逻辑内联，无其他依赖）；删除即卸载。
+# 语义属主：dd-workflow-runtime/references/task-tracking.md §6.5 / §6.1。
+
+on:
+  issues:
+    types: [closed]
+
+permissions:
+  issues: write
+
+concurrency:
+  group: dd-close-guard-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    # PR 的关闭不归本防线管
+    if: ${{ github.event.issue.pull_request == null }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Guard close of tracked issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          MARKER='<!-- dd-checkpoint:v1 -->'
+          GUARD='<!-- dd-close-guard:v1 -->'
+
+          comments_json=$(gh api --paginate "repos/$REPO/issues/$ISSUE/comments?per_page=100")
+
+          # §6.1：comment id 最大者为最新 checkpoint
+          last_cp=$(printf '%s' "$comments_json" | jq -s --arg m "$MARKER" \
+            '[.[][] | select((.body // "") | startswith($m))] | sort_by(.id) | last // empty')
+
+          if [ -z "$last_cp" ] || [ "$last_cp" = "null" ]; then
+            echo "no dd-checkpoint on this issue; not tracked by task-tracking — skip"
+            exit 0
+          fi
+
+          state=$(printf '%s' "$last_cp" | jq -r \
+            '[.body | split("\n")[] | select(startswith("state_status:"))][0] // "" \
+             | sub("^state_status:[ \\t]*";"") | trim' 2>/dev/null || echo "")
+
+          case "$state" in
+            completed|abandoned)
+              echo "last checkpoint state_status=$state → 合法关闭（§6.5 两个合法入口之一），不干预"
+              exit 0
+              ;;
+          esac
+
+          # 未经合法入口关闭 → reopen；评论去重：dd-close-guard 已是最后一条评论时不再重复
+          gh issue edit "$ISSUE" --repo "$REPO" --reopen
+          last_guard_id=$(printf '%s' "$comments_json" | jq -s --arg m "$GUARD" \
+            '[.[][] | select((.body // "") | startswith($m))] | sort_by(.id) | (last.id? // empty)')
+          last_cp_id=$(printf '%s' "$last_cp" | jq -r '.id')
+          if [ -z "$last_guard_id" ] || [ "$last_guard_id" -lt "$last_cp_id" ]; then
+            gh issue comment "$ISSUE" --repo "$REPO" --body "$(cat <<MSG
+$GUARD
+
+本 Issue 已由 dd-checkpoint 关闭防线（task-tracking §6.5）重新打开：最后一条 checkpoint 的 \`state_status\` 为 **${state:-缺失}**，不是 completed / abandoned——关闭未经合法入口。
+
+处理方式二选一：
+
+1. 继续推进工作流，收口时按 §6.5 写最终 checkpoint → 同步看板「完成」→ close；
+2. 确认放弃任务：写 \`state_status=abandoned\` checkpoint → 把卡片从看板移出（archive）→ close。
+MSG
+)"
+          else
+            echo "guard comment already newest; reopen only, no duplicate comment"
+          fi

@@ -205,6 +205,8 @@ none
 
 除以上两个入口外不存在第三种合法关闭路径。工作流处于 `active` / `paused` / `handoff-ready` 期间**禁止关闭已绑定 Issue**；确需中途放弃，先走 `abandoned` 处置。外部（非本工作流会话）直接关闭已绑定 Issue 不产生任何投影语义——看板与恢复结论仍以最新 checkpoint 和 runtime state 为准（见 §1.1、§10）。恢复时若 runtime 已为 terminal 状态（completed / abandoned）而 Issue 仍 open，按最新 checkpoint 幂等补 close。
 
+可选机械防线：目标项目可在 `.github/workflows/` 安装 [checkpoint-close-guard.yml](../templates/github/checkpoint-close-guard.yml)（模板唯一属主为本仓 `dd-workflow-runtime/templates/`）：Issue 被关闭时校验最后一条 checkpoint 的 `state_status`，非 completed / abandoned 则自动评论提醒并 reopen。安装与否不改变任何 Gate。
+
 ## 7. checkpoint 不是证据
 
 Issue 评论里写 `CI PASS` 不等于 `full_ci_run=PASS`。接管方必须按调用方合同重新核对 Run ID、Head SHA、Conclusion 与 `candidate_sha`。
