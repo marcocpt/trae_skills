@@ -1,6 +1,6 @@
 # Task Tracking 投影改造设计
 
-状态：v2（已按首轮外审 FINDING 修订，待决策点裁决后批准）。
+状态：v3（第二轮针对性复查 NEW-M-01/02、NEW-L-01/02 与 H-02 残留已修订；DP-1/DP-2/DP-4/DP-5/M-05 均已用户裁决；待第三轮复查闭环）。
 工作流：`feature-development-20261002T000000Z-task-tracking-projection`
 分支：`docs/task-tracking-projection`
 修订依据：ChatGPT 首轮外审（会话句柄 `6abeea9c-dc38-83ea-9708-14e4a4174e23`），19 条 FINDING 已逐条本地核对属实后写入本节。
@@ -12,8 +12,8 @@
 ### 目标
 
 1. 同一任务在 Codex / Trae / Trae CN / WorkBuddy / OpenCode 之间可接续，不依赖任何单个 App 的聊天记录；
-2. 同一任务在 Mac A / Mac B 之间**可发现、可定位**；工作内容是否可跨机取得由 §5.9 的可达性判定单独声明，不由本设计默认保证；
-3. 人能看到：有几个坑、在哪个仓库、哪个分支、做到哪、下一步、是否被阻塞。**（DP-2 已裁决：方案 A——本条降为第二阶段验收条件；第一阶段验收改为"跨设备可发现、可定位、可恢复"）**
+2. 同一任务在 Mac A / Mac B 之间**可发现、可定位**；工作内容是否可跨机取得由合同正文 §9.2 的可达性判定单独声明，不由本设计默认保证；
+3. 人能看到：有几个坑、在哪个仓库、哪个分支、做到哪、下一步、是否被阻塞。**（DP-2 已裁决：方案 A——本条降为第二阶段验收条件；第一阶段验收改为"跨设备可发现、可定位、条件式可恢复"——可恢复仅当 `remote=sha-reachable` 且必要修改已持久化，见合同正文 §9.2）**
 
 ### 非目标
 
@@ -84,7 +84,7 @@ GitHub Issue
 - `review-gate` 把"持久化数据"列为升级触发器，"安全或权限"升到 high；
 - 本改动同时修改 runtime 持久化 schema，并引入远端动作授权语义。
 
-执行方式不硬编码为某个具体 skill，按 `model-routing` 选择独立 reviewer / backend。本轮已走 ChatGPT 外审，修复后须送同一会话针对性复查（见 §8）。
+执行方式不硬编码为某个具体 skill，按 `model-routing` 选择独立 reviewer / backend。本轮已走 ChatGPT 外审，修复后须送同一会话针对性复查（见 §9）。
 
 ### 3.2 full 档在本仓库的等价物（明确写出，不静默降级）
 
@@ -92,7 +92,7 @@ GitHub Issue
 
 | full 档要求 | 本仓库等价物 |
 |---|---|
-| 规格套件（Requirements / Design / Test Matrix） | 本文档（目标/非目标 + 合同全文 + 改动清单 + 测试矩阵），其中 §5 为合同，§7 为测试矩阵 |
+| 规格套件（Requirements / Design / Test Matrix） | 本文档（目标/非目标 + 合同全文 + 改动清单 + 测试矩阵），其中 §5 为合同，§6 为测试矩阵 |
 | Phase 拆分 | 单 Phase：新增 reference → 路由接线 → 合同测试 |
 | 冻结 `candidate_sha` + 同 SHA 完整 CI | 冻结本次改动提交 SHA，跑 `dd-workflow-runtime/tests/` 与 `dd-feature-development-workflow/tests/` 全部合同测试 + `git diff --check` |
 | 独立强审 | 按 §3.1，走独立强审，不降级 |
@@ -106,7 +106,7 @@ GitHub Issue
 | # | 文件 | 位置 | 改动 |
 |---|---|---|---|
 | 1 | `dd-workflow-runtime/references/task-tracking.md` | 新增 | §5 合同全文 |
-| 2 | `dd-workflow-runtime/references/runtime-contract.md` | §3 State Schema，`next_safe_action`（第 121 行）之后 | 只追加 `tracking: null` 一行 + 一句"子对象语义由 task-tracking.md 拥有"（照第 126 行 `routing`/`review`/`external_review` 的既有先例）。**不在此定义嵌套字段** |
+| 2 | `dd-workflow-runtime/references/runtime-contract.md` | §3 State Schema，`next_safe_action`（第 121 行）之后 | 只追加 `tracking: null` 一行 + 一句"子对象语义由 task-tracking.md 拥有"（借鉴第 126 行 `routing`/`review`/`external_review` 的语义属主分离原则；tracking 进一步把嵌套字段形状与枚举也统一下沉至 task-tracking.md）。**不在此定义嵌套字段** |
 | 3 | 同上 | §5 Recovery（第 181-190 段之后） | 追加一条：tracking 指向的 Issue checkpoint 仅作定位与恢复提示，工作流事实必须重新验证仓库证据 |
 | 4 | `dd-workflow-runtime/SKILL.md` | 调用合同代码块（第 28-40 行） | 追加可选入参 `tracking: null` |
 | 5 | 同上 | Preflight 第 3 步（第 62 行） | 追加一句：存在 `tracking` 时按 task-tracking 取定位元数据，工作流事实仍以仓库证据为准 |
@@ -288,9 +288,9 @@ none
 - `Taken over from` 填上游宿主标识与**来源 checkpoint_id**，首轮填 `none`；
 - `<!-- dd-checkpoint:v1 -->` 标记固定，供机械定位。
 
-### 6.1 如何选最新 checkpoint（待取证，见 §10 L-02）
+### 6.1 如何选最新 checkpoint（待取证，尚未冻结）
 
-不得只按"全文最后一次 marker"。至少按 **marker + `workflow_id`** 过滤，并保存具体 comment ref。过滤规则（含同一 Issue 上其他 workflow、伪造 marker、重复 checkpoint、分页与排序）在 §10 的真实 GitHub 探针冻结后补齐。
+不得只按"全文最后一次 marker"。至少按 **marker + `workflow_id`** 过滤，并保存具体 comment ref。过滤规则（含同一 Issue 上其他 workflow、伪造 marker、重复 checkpoint、分页与排序）尚未冻结：需先在真实 GitHub 仓库完成最小探针取证，取证通过前不得声称可机械选取最新 checkpoint。
 
 ### 6.2 写回时机（只有这五个）
 
@@ -480,8 +480,8 @@ bug-fix
 |---|---|---|
 | 4 | `test_locator_vs_fact_boundary` | 解析 §1.1 表格：定位元数据集合与工作流事实集合互斥且完整；且事实行的 Issue → runtime 列必须为"禁止" |
 | 5 | `test_tracking_never_blocks_gate` | 遍历 §4 失败矩阵每一行："是否允许 workflow 继续"必须为是；且全仓不得出现"tracking 缺失即 BLOCKED" |
-| 6 | `test_not_authorized_is_action_scoped` | §8 授权节必须写明"只停止该远端动作，不停止 Workflow Stage"，且不得出现"未授权即停止工作流" |
-| 7 | `test_checkpoint_is_not_evidence` | §7 必须声明 checkpoint 不是 Gate/CI/Git/artifact 证据；反向断言：不得出现把评论当 PASS 的写法 |
+| 6 | `test_not_authorized_is_action_scoped` | 合同 §8 授权节必须写明"只停止该远端动作，不停止 Workflow Stage"，且不得出现"未授权即停止工作流" |
+| 7 | `test_checkpoint_is_not_evidence` | 合同 §7 必须声明 checkpoint 不是 Gate/CI/Git/artifact 证据；反向断言：不得出现把评论当 PASS 的写法 |
 | 8 | `test_writeback_order_is_crash_safe` | 解析 §6.3 顺序块：持久化 pending → 远端写回 → 保存 ref → 释放租约；`pending_checkpoint` 必须排在远端动作之前 |
 | 9 | `test_checkpoint_template_fields` | 模板含 `workflow_id` / `checkpoint_id` / `host` / `executor` / `stage` / `state_status` / `remote` / `Branch` / `SHA` / `Next` / `Blocker` / `Taken over from`；且 `executor` 必须标注仅显示、不参与判定、不写入 state |
 | 10 | `test_no_absolute_paths_in_issue_fields` | Issue 字段与模板不得出现 `/Users/` 形式的示例路径 |
@@ -502,7 +502,7 @@ bug-fix
 
 | # | 用例 | 断言方式 |
 |---|---|---|
-| 18 | `test_stage_projection_covers_all_stages` | 机械提取 Feature / Bug 的 canonical Stage 列表，与 §10 映射表做集合比对：每个适用 Stage 恰好映射一次，无遗漏、无未知项 |
+| 18 | `test_stage_projection_covers_all_stages` | 机械提取 Feature / Bug 的 canonical Stage 列表，与合同 §10 映射表做集合比对：每个适用 Stage 恰好映射一次，无遗漏、无未知项 |
 | 19 | `test_projection_table_single_owner` | 阶段 → 看板列映射表在本仓库只出现一份 |
 | 20 | `test_feature_and_bug_both_have_binding_hook` | **分别**解析 `intake-and-environment.md` 与 `diagnosis-and-verification.md` 的 Environment 节：绑定规则必须位于 worktree/branch 记录之后、Environment Gate 之前。只检查"文件含链接"视为假绿，必须按节区间断言 |
 | 21 | `test_bootstrap_opt_out_declared` | `dd-project-bootstrap-workflow` 必须声明第一阶段不自动绑定/投影 |
@@ -530,11 +530,11 @@ bug-fix
 
 | ID | 决策点 | 强审建议 | 状态 |
 |---|---|---|---|
-| DP-2 | "打开一页看到做到哪"是否为第一阶段硬验收条件 | 若不建 GitHub Project，则本条目标必须延后；二者选一 | **已裁决：方案 A**——不建 Project，目标 3 延后，第一阶段验收为"跨设备可发现、可定位、可恢复" |
+| DP-2 | "打开一页看到做到哪"是否为第一阶段硬验收条件 | 若不建 GitHub Project，则本条目标必须延后；二者选一 | **已裁决：方案 A**——不建 Project，目标 3 延后，第一阶段验收为"跨设备可发现、可定位、条件式可恢复"（条件见合同正文 §9.2） |
 | DP-1 | 阻塞用 label `blocked` 还是占用状态列 | label，理由是与阶段正交 | **已裁决：方案 A**——label `blocked`，不占状态列，配 Blocked 过滤视图 |
 | M-05 | 是否引入非 canonical 执行者显示标签（区分 Trae CN / WorkBuddy / OpenCode） | 不扩 runtime `host` 枚举；如需区分，只在 Issue 派生视图加仅用于显示的标签，明确不参与 Gate 与恢复判定 | **已裁决：方案 A**——checkpoint 引入非 canonical `executor` 显示标签，仅显示用，不参与判定、不写入 state |
 
-已由合同或强审结论确定、不再作为决策点：DP-3（必须独立强审，见 §3.1）、DP-4（Bootstrap 第一阶段不自动绑定，已写入改动清单第 13 条与合同 §12）、DP-5（不做弱锁，已并入合同 §9.3 冲突检测规则）。
+已由用户逐条裁决（2026-10-02）：DP-4=方案 A（Bootstrap 第一阶段不自动创建/绑定/投影，已写入改动清单第 13 条与合同 §12）、DP-5=方案 A（v1 只做接管碰撞检测、不做弱锁，已并入合同 §9.3，文档明确不得称互斥）。DP-3 保持合同推导结论（见 §3.1）：必须独立强审，不降级。
 
 ## 8. 待取证（VERIFICATION_REQUIRED）
 
@@ -542,6 +542,6 @@ bug-fix
 
 ## 9. 闭环状态
 
-首轮外审 19 条 FINDING 已全部本地核对属实，本次修订覆盖其中 18 条；L-02 因需真实环境取证保留 VERIFICATION_PENDING。
+首轮外审 19 条 FINDING（H-01..H-08、M-01..M-10、L-01）已全部本地核对属实并修订。第二轮针对性复审判 18 条 RESOLVED、H-02 残留（本轮已按条件式可恢复收口）；L-02 是独立的取证项，不属于该 19 条，保持 VERIFICATION_PENDING。第二轮另引入 NEW-M-01 / NEW-M-02 / NEW-L-01 / NEW-L-02，均已修订：DP-4 / DP-5 已经用户逐条裁决（2026-10-02），越权固化已消除；闭环状态与 Git 事实已对齐；章节引用与"既有先例"措辞已修正。
 
-按 `transport.md` FR-MB-019，本次候选尚未提交，候选身份只能由 `HEAD + 文件 sha256` 近似标识，**本轮修订结果不得据此 CLOSED**。闭环路径：授权一次 WIP commit 冻结候选 → 送同一会话（`6abeea9c-dc38-83ea-9708-14e4a4174e23`）针对性复查 → 由关闭层按 CLOSED 判据四项落地。
+候选身份：第二轮候选 HEAD=`2e1d540b69bfea566912529af99be074749b6b4a`（受审文件 sha256 `eced204d…b22e`）；本轮修订后将 commit 形成第三轮候选，sha256 见下一轮送审记录。第三轮针对性复查（同一会话 `6abeea9c-dc38-83ea-9708-14e4a4174e23`）归一为 `PASS` 后，按 CLOSED 判据四项逐条落地。
