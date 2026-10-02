@@ -63,8 +63,10 @@ Codex 的 `native-agent` 还必须在派生前通过从 Skill 实际根目录调
 
 ## 3. State Schema
 
+**对 `workflow_type` 为 `feature-development` 或 `bug-fix` 的 state**：`schema_version: 2` 起 `tracking` 为 `null` 的含义收窄为"从未尝试"（合同见 [task-tracking.md](task-tracking.md) §2/§3.2），`schema_version` 缺失或 `< 2` 时按 §3.2 迁移、不得当作从未尝试。`project-bootstrap` 不使用该语义：其 `null` 仍按未绑定读取，也不适用 §3.2 迁移。
+
 ```yaml
-schema_version: 1
+schema_version: 2
 workflow_id: feature-development-20260728T090000Z-f31
 workflow_type: feature-development
 status: active
@@ -226,7 +228,7 @@ Stage Gate 与 Delivery Gate 分离：
 - Stage Gate：领域产物和质量证据；
 - Delivery Gate：commit、push、merge、PR、cleanup；
 - 调用方可要求 commit 作为 Stage 产物，但必须明确声明，不能默认等同。
-- 内容批准不构成 Git／外部动作授权；授权来自用户当前明确要求或工作流开始时已明确采用的项目交付策略。禁止时记 `not-authorized`，未要求时记 `not-required`，不得重复询问已明确的决定。
+- 内容批准不构成 Git／外部动作授权；授权来自用户当前明确要求、工作流开始时已明确采用的项目交付策略，或**该动作的合同属主已为该具体动作授予的窄范围常设授权**（如 [task-tracking.md](task-tracking.md) §8.1 对 tracking Issue 首次创建的授权）。常设授权只能覆盖其明文列举的动作，不得据此扩大到其他远端写操作或 Git 动作。禁止时记 `not-authorized`，未要求时记 `not-required`，不得重复询问已明确的决定。
 - Delivery 未授权不撤销已通过的 Stage Gate；只有下游确实依赖该动作时才在该 Delivery 边界停止。
 
 ## 8. 审查规则

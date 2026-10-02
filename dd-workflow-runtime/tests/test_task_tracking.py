@@ -298,6 +298,357 @@ def check_red_lines_close(tt: str) -> None:
         "red lines must not authorize closing a bound Issue outside §6.5"
 
 
+def _bullets(section: str) -> list[str]:
+    """List items (`- ` bullets and `1. ` numbered steps) in document order."""
+    items: list[str] = []
+    for line in section.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- "):
+            items.append(stripped[2:].strip())
+            continue
+        m = re.match(r"^(\d+)\. (.+)$", stripped)
+        if m:
+            items.append(m.group(2).strip())
+    return items
+
+
+def _matrix_cells(tt: str) -> list[list[str]]:
+    rows = _table_rows(h2_section(tt, "4. 绑定失败矩阵"))
+    return [[c.strip() for c in r.strip().strip("|").split("|")] for r in rows]
+
+
+def check_mandatory_attempt_and_record(tt: str) -> None:
+    """§2/§3/§3.1/§4/§8.1/§12/§13: feature & bug workflows must complete one
+    binding *attempt* and persist its outcome before the Environment Gate.
+
+    Structural, not keyword-existence: reversing the obligation, widening the
+    standing authorization, adding an allow-listed action, or flipping a matrix
+    row's `sync` value must each turn this red.
+    """
+    # §2 — obligation, its limit, the bootstrap exemption, and the enum definition.
+    sec2 = h2_section(tt, "2. 状态字段")
+    assert "必须已完成一次 tracking 绑定尝试" in sec2, "§2 must require a completed attempt"
+    assert "未尝试且未记录就通过 Gate 属违规" in sec2, "§2 must forbid passing untried and unrecorded"
+    assert "不是\"绑定必须成功\"" in sec2, "§2 must state the rule is attempt-and-record, not a blocking bind"
+    for wf in ("feature-development", "bug-fix"):
+        assert wf in sec2, f"§2 obligation must cover {wf}"
+    assert "第一阶段" in sec2, "§2 exemption must be scoped to bootstrap phase 1"
+    assert "remote-unresolvable" in sec2, "§2 must use the same reason token as the §4 matrix"
+    for reason in ("user-declined", "binding-ambiguous", "create-outcome-unknown"):
+        assert reason in sec2, f"§2 reason vocabulary must include {reason}"
+    row_na = next(r for r in _table_rows(sec2) if "not-authorized" in r)
+    assert "用户明确拒绝" in row_na, f"§2 not-authorized must cover an explicit user refusal: {row_na}"
+    assert "授权条件发生变化前不重试" in row_na, f"§2 not-authorized follow-up must be condition-based: {row_na}"
+    row_ns = next(r for r in _table_rows(sec2) if "not-synced" in r)
+    assert "可能尚未绑定" in row_ns, f"§2 not-synced must cover pre-bind failures: {row_ns}"
+    assert "以 §4 对应 `sync_reason` 为准" in row_ns, \
+        f"§2 not-synced must defer retry policy to §4: {row_ns}"
+
+    # §2 — representability: "attempted but unbound" must be expressible in state,
+    # otherwise the mandatory attempt-and-record rule cannot be persisted.
+    assert "已完成绑定尝试但未形成绑定" in sec2, "§2 must define the attempted-but-unbound variant"
+    assert "历史未分类" in sec2 and "§3.2" in sec2, \
+        "§2 must keep legacy-null as a third meaning and route it to the migration rule"
+    assert "机械判别式" in sec2 and "`schema_version`" in sec2 and ">= 2" in sec2 and "< 2" in sec2, \
+        "§2 must give recovery a mechanical discriminator for old vs new null"
+    # §2 itself must scope the three-state discrimination to feature/bug: an unscoped
+    # rule would give project-bootstrap a different answer than §3.2 / state.md.
+    assert "对 `feature-development` 与 `bug-fix`：`tracking` 缺失或 `null`" in sec2, \
+        "§2 must scope the null semantics to feature/bug workflows"
+    assert "上述两类工作流的新旧 null 机械判别式" in sec2, \
+        "§2 must scope the discriminator to the same two workflows"
+    assert "不使用上述三态判别" in sec2 and "project-bootstrap" in sec2, \
+        "§2 must state that bootstrap does not use the three-state discrimination"
+    assert "不得直接当作从未尝试" in sec2, \
+        "§2 must forbid reading a legacy null as never-attempted"
+    assert "`issue_number` 为 `null`" in sec2, "§2 must express unbound attempts via a null issue_number"
+    assert "已尝试未绑定时必须写出该对象" in sec2, "§2 must require writing the attempt outcome"
+    for nullable in ("`provider` / `repository`，无法推导时允许为 `null`",
+                     "`issue_number` / `last_checkpoint_ref` 保持 `null`"):
+        assert nullable in sec2, f"§2 must document nullability: {nullable}"
+
+    # The documented shape must actually be representable: build one canonical
+    # pre-bind failure state per §4 reason and validate it against §2's rules.
+    pre_bind_reasons = (
+        "remote-unresolvable", "no-issue-capable-remote", "provider-unavailable",
+        "create-outcome-unknown", "binding-ambiguous", "user-declined", "no-policy",
+        "legacy-tracking-unknown",
+    )
+    matrix_reasons = {cells[2].strip("`") for cells in _matrix_cells(tt) if len(cells) > 2}
+    for reason in pre_bind_reasons:
+        assert reason in sec2, f"§2 reason vocabulary must include pre-bind reason {reason}"
+        assert reason in matrix_reasons, f"§4 must be able to record pre-bind reason {reason}"
+    for cells in _matrix_cells(tt):  # reverse direction: §4 → §2 vocabulary
+        reason = cells[2].strip("`")
+        if reason not in ("—", ""):
+            assert reason in sec2, f"§4 reason {reason} is missing from §2 vocabulary"
+    for reason in pre_bind_reasons:
+        state = {"provider": None, "repository": None, "issue_number": None,
+                 "sync": "not-authorized" if reason in ("user-declined", "no-policy") else "not-synced",
+                 "sync_reason": reason, "pending_checkpoint": None, "last_checkpoint_ref": None}
+        # §2: unbound attempt => issue_number null, outcome recorded, non-blocking
+        assert state["issue_number"] is None and state["sync_reason"] == reason, reason
+        assert state["sync"] in ("not-synced", "not-authorized"), reason
+        assert state["pending_checkpoint"] is None and state["last_checkpoint_ref"] is None, reason
+
+    # §3 — default action, idempotency pointer, authorization pointer, reporting.
+    sec3 = h2_section(tt, "3. 绑定规则")
+    assert "默认动作是新建" in sec3, "§3 must make Issue creation the default action"
+    assert "§3.1" in sec3, "§3 default-create rule must require the idempotency reconcile first"
+    assert "§8.1" in sec3, "§3 must point at the narrow standing authorization"
+    assert "报告 Issue 号" in sec3, "§3 must require reporting the Issue number"
+    assert "只有已绑定" in sec3 and "不得当成既有绑定而跳过对账" in sec3, \
+        "§3 reuse rule must be scoped to bound trackings (issue_number != null)"
+
+    # §3.1 — five ordered rules covering the crash windows, not just the happy path.
+    sec31 = h3_section(tt, "3.1 创建的幂等与崩溃恢复")
+    items = _bullets(sec31)
+    assert len(items) == 5, f"§3.1 must define exactly 5 reconcile rules, got {len(items)}"
+    assert "先对账再创建" in items[0] and "Workflow ID" in items[0], f"rule 1 must reconcile by Workflow ID: {items[0]}"
+    assert "唯一且可信" in items[0], f"rule 1 must require a trustworthy match: {items[0]}"
+    assert "§6.1" in items[0] and "association" in items[0], \
+        f"rule 1 must reuse the §6.1 trust model instead of inventing one: {items[0]}"
+    assert "禁止跳过查证直接重试创建" in items[1], f"rule 2 must forbid blind create retries: {items[1]}"
+    assert "零命中不等于未创建" in items[2], f"rule 3 must refuse to treat zero hits as proof: {items[2]}"
+    assert "权威对账机制" in items[2] and "create-outcome-unknown" in items[2], \
+        f"rule 3 must gate re-creation on authoritative reconciliation: {items[2]}"
+    assert "不得把普通搜索的零结果当作" in items[2], \
+        f"rule 3 must forbid treating a plain zero-hit search as proof of non-creation: {items[2]}"
+    assert "不自动选择" in items[3] and "binding-ambiguous" in items[3], \
+        f"rule 4 must fail safe with its own reason: {items[3]}"
+    assert "不把裁决当作 Environment Gate 的前置条件" in items[3], \
+        f"rule 4 must not make arbitration a Gate precondition: {items[3]}"
+    assert "issue-missing" not in items[3], "rule 4 must not reuse the issue-missing reason"
+    assert "先原子写入" in items[4] and "再进行" in items[4], f"rule 5 must persist the binding first: {items[4]}"
+
+    # §3.2 — legacy state migration: a pre-contract `tracking: null` must never be
+    # upgraded into "never attempted" (which would auto-create on recovery).
+    sec32 = h3_section(tt, "3.2 旧 state 中 `tracking` 缺失或 `null` 的迁移")
+    items32 = _bullets(sec32)
+    assert len(items32) == 5, f"§3.2 must define exactly 5 migration rules, got {len(items32)}"
+    assert "机械判别" in items32[0] and "`schema_version`" in items32[0], \
+        f"rule 1 must scope the legacy window mechanically: {items32[0]}"
+    assert "不依据 `current_stage`" in items32[0], \
+        f"rule 1 must forbid inferring the version from the stage: {items32[0]}"
+    assert "不解释为从未尝试" in items32[1] and "legacy-tracking-unknown" in items32[1], \
+        f"rule 2 must classify legacy null without strengthening it: {items32[1]}"
+    assert "只读对账优先" in items32[2] and "仅执行 §3.1 规则 1 中的只读检索" in items32[2], \
+        f"rule 3 must scope reconciliation to §3.1 rule 1 read-only part: {items32[2]}"
+    assert "不得进入 §3.1 的创建动作" in items32[2], \
+        f"rule 3 must forbid entering the create action: {items32[2]}"
+    assert "零命中后仍不得创建" in items32[3], f"rule 4 must not create on a zero-hit reconcile: {items32[3]}"
+    assert "§8.1 的常设授权与 §3 的\"默认动作是新建\"都不足以从该状态触发创建" in items32[3], \
+        f"rule 4 must state that the standing authorization cannot unlock a legacy state: {items32[3]}"
+    assert "当前用户明确要求创建" in items32[3] and "项目政策明确解除" in items32[3], \
+        f"rule 4 must name the explicit unlock facts: {items32[3]}"
+    assert "重新落盘" in items32[4] or "重新持久化" in items32[4], \
+        f"rule 5 must re-persist under the current model: {items32[4]}"
+    assert "`schema_version` 升为 `2`" in items32[4], \
+        f"rule 5 must bump schema_version so the next recovery leaves the legacy branch: {items32[4]}"
+    # The migration note in the upper-level state docs must itself be scoped to
+    # feature/bug: bootstrap inheriting a Feature/Bug-only rule is a contract fork.
+    # Scoped to the SENTENCE that mentions the migration, not the whole document.
+    for name, doc in (("state.md", read(RUNTIME_STATE)), ("runtime-contract.md", read(RUNTIME_CONTRACT))):
+        blocks = [b for b in re.split(r"\n\s*\n", doc) if "§3.2" in b]
+        assert len(blocks) == 1, f"{name} must have exactly one migration paragraph, got {len(blocks)}"
+        migration = blocks[0]
+        assert "feature-development" in migration and "bug-fix" in migration, \
+            f"{name} migration paragraph must name the workflow types it applies to"
+        assert "project-bootstrap" in migration, \
+            f"{name} migration paragraph must state the bootstrap exemption"
+    # The shared schema note must say bootstrap may keep writing schema 1, so a
+    # version difference is not later mistaken for a missed sync.
+    assert "可以继续写 `schema_version: 1`" in read(RUNTIME_STATE), \
+        "state.md must state that bootstrap intentionally stays on schema 1"
+    # The v2 null-semantics SENTENCE itself must be feature/bug-scoped. Checking only
+    # the migration paragraph is not enough: an unscoped first sentence would give
+    # bootstrap a different answer than task-tracking §2.
+    for name, doc, version in (("state.md", read(RUNTIME_STATE), '"schema_version": 2'),
+                               ("runtime-contract.md", read(RUNTIME_CONTRACT), "schema_version: 2")):
+        assert version in doc, f"{name} must declare {version}"
+        head = next(b for b in re.split(r"\n\s*\n", doc) if version in b)
+        assert ("feature-development" in head and "bug-fix" in head), \
+            f"{name} v2 null-semantics statement must be scoped to feature/bug: {head[:80]}"
+        assert "project-bootstrap" in head, \
+            f"{name} v2 null-semantics statement must exclude bootstrap explicitly: {head[:80]}"
+    # Discriminator fixtures: the three (schema_version, tracking) combinations that
+    # recovery must classify differently. Classification reads schema_version only.
+    # Order matters and mirrors §2: an existing tracking object is classified by
+    # `issue_number` FIRST (bound / attempted-but-unbound) in either version; only a
+    # missing-or-null tracking falls back to the schema_version discriminator.
+    def classify_feature_bug_tracking(schema_version, tracking):
+        """Mirrors §2 for feature-development / bug-fix ONLY. project-bootstrap does
+        not use this three-state discrimination (§2 / §3.2), so it is not modelled."""
+        if isinstance(tracking, dict):
+            if tracking.get("issue_number") is not None:
+                return "bound"                     # bound in either version → reuse
+            return "attempted-unbound"             # object exists, not bound → §3.1/§4
+        if schema_version is None or schema_version < 2:
+            return "legacy"                        # historical null → §3.2 read-only
+        return "never-attempted"                   # current contract null → create path
+
+    unbound = {"issue_number": None, "sync": "not-synced", "sync_reason": "provider-unavailable"}
+    assert classify_feature_bug_tracking(1, None) == "legacy", "schema<2 + null must classify as legacy"
+    assert classify_feature_bug_tracking(None, None) == "legacy", "missing schema_version must read as legacy"
+    assert classify_feature_bug_tracking(2, None) == "never-attempted", "schema 2 + null must be a first attempt"
+    assert classify_feature_bug_tracking(1, {"issue_number": 116}) == "bound", "legacy + bound must reuse normally"
+    assert classify_feature_bug_tracking(2, {"issue_number": 116}) == "bound", "current + bound must reuse normally"
+    # An object with issue_number=null is attempted-but-unbound in BOTH versions —
+    # it must never fall into the never-attempted branch (which would auto-create),
+    # nor be demoted to legacy by an old schema number (§3.2 covers null tracking only).
+    assert classify_feature_bug_tracking(2, dict(unbound)) == "attempted-unbound", \
+        "schema 2 + unbound object must not be re-read as never-attempted"
+    assert classify_feature_bug_tracking(1, dict(unbound)) == "attempted-unbound", \
+        "an unbound object is not demoted to legacy by an old schema number"
+    assert "不解释为从未尝试" in sec32, "legacy classification must not strengthen the old state"
+
+    # §4 — exact (sync, sync_reason) tuples for the creation-related rows.
+    rows = _matrix_cells(tt)
+    by_scenario = {cells[0]: cells for cells in rows}
+    expected = {
+        "用户明确要求不创建 Issue": ("not-authorized", "user-declined"),
+        "同一 `Workflow ID` 命中多张 Issue": ("not-synced", "binding-ambiguous"),
+        "创建结果不确定且无权威对账结论": ("not-synced", "create-outcome-unknown"),
+        "无 Issue 能力的远端（remote 指向未登记的 provider）": ("not-synced", "no-issue-capable-remote"),
+        "认证/权限不足或 provider 不可用": ("not-synced", "provider-unavailable"),
+        "旧 state 的 `tracking` 缺失或 `null`（历史未分类，见 §3.2）": ("not-synced", "legacy-tracking-unknown"),
+    }
+    for scenario, (sync, reason) in expected.items():
+        assert scenario in by_scenario, f"§4 must cover scenario: {scenario}"
+        cells = by_scenario[scenario]
+        assert cells[1].strip("`") == sync, f"{scenario}: sync must be {sync}, got {cells[1]}"
+        assert cells[2].strip("`") == reason, f"{scenario}: sync_reason must be {reason}, got {cells[2]}"
+        assert cells[4] == "否", f"{scenario}: recorded failure must not ASK, got {cells[4]}"
+    # Retry column is action-level: an uncertain create may only re-verify, never re-create.
+    retry_unknown = by_scenario["创建结果不确定且无权威对账结论"][3]
+    assert "仅重试权威对账" in retry_unknown, f"retry must stay limited to reconciliation: {retry_unknown}"
+    assert "不得重试 create" in retry_unknown, f"retry must forbid re-creating: {retry_unknown}"
+    legacy_retry = by_scenario["旧 state 的 `tracking` 缺失或 `null`（历史未分类，见 §3.2）"][3]
+    assert "仅只读对账" in legacy_retry and "不得据旧 `null` 自动创建" in legacy_retry, \
+        f"legacy null retry must stay read-only: {legacy_retry}"
+    for scenario in ("项目未授权", "用户明确要求不创建 Issue"):
+        assert "授权条件变化后重新评估" in by_scenario[scenario][3], \
+            f"{scenario}: not-authorized retry must be condition-based: {by_scenario[scenario][3]}"
+    for cells in rows:
+        assert cells[-1] == "是", f"failure-matrix row must not block the workflow: {cells}"
+
+    # §8.1 — standing authorization is narrow: exactly one allow-listed action, explicit denies.
+    sec81 = h3_section(tt, "8.1 创建 tracking Issue 的常设授权（窄范围）")
+    allow_text, deny_text = sec81.split("**不包含**", 1)
+    allow_items = _bullets(allow_text.split("授权范围**仅限**", 1)[1])
+    assert len(allow_items) == 1, f"§8.1 must allow exactly one action, got {allow_items}"
+    assert "创建 1 张 Issue" in allow_items[0], f"§8.1 allow list must be Issue creation: {allow_items[0]}"
+    for guarded in ("checkpoint 评论", "§6.5 关闭", "§10 看板投影", "labels", "assignees",
+                    "open/reopen", "commit", "push", "PR", "merge", "force-push", "发布"):
+        assert guarded in deny_text, f"§8.1 must explicitly exclude {guarded}"
+    for bullet in _bullets(deny_text):
+        assert not bullet.startswith("允许"), \
+            f"§8.1 exclusion list must not contain an granting item: {bullet}"
+    assert "runtime-contract.md) §7" in sec81, "§8.1 must cite the upper-level authorization source"
+    assert "user-declined" in sec81 and "disabled" in sec81, "§8.1 must separate user-declined from disabled"
+    assert "不主动创建 Issue" not in tt, \
+        "the pre-2026-10-02 prohibition must be removed once the attempt is mandatory"
+
+    # §12 / §13 — exemption scope and the red line.
+    sec12 = h2_section(tt, "12. 与相邻 Skill 的边界")
+    assert "均不适用于 project-bootstrap 整个工作流" in sec12, \
+        "§12 must exempt bootstrap from the attempt rule and the standing authorization"
+    assert "其第一阶段另明确不自动创建/绑定/投影" in sec12, \
+        "§12 must keep the bootstrap phase-1 opt-out explicit"
+    sec13 = h2_section(tt, "13. 红线")
+    assert "就通过 Environment Gate" in sec13 and "必须尝试并记录" in sec13, \
+        "§13 must forbid passing the Gate untried and unrecorded"
+    assert "首次创建常设授权" in sec13, "§13 must keep the standing authorization out of wider Git scope"
+
+
+def check_external_action_authorization_source(rc: str) -> None:
+    """runtime-contract §7: the narrow standing authorization must be a listed
+    authorization source, and must stay bounded."""
+    sec7 = h2_section(rc, "7. Stage Contract")
+    assert "窄范围常设授权" in sec7, "runtime §7 must list narrow standing authorizations as a source"
+    assert "不得据此扩大" in sec7, "runtime §7 must forbid widening a standing authorization"
+
+
+# Structural rule (primary protection): inside a consumer's Environment section,
+# exactly two lines may touch tracking — the call-site hook and the Gate
+# persistence clause — and each must have the canonical shape. Any extra
+# tracking-flavoured line (new rule, failure handling, creation policy) is a
+# restatement and turns this red, whatever wording it uses.
+_TRACKING_TOKENS = ("task-tracking", "tracking", "绑定", "Issue", "sync", "同步")
+
+# Canonical shapes: the hook and the Gate clause are locked verbatim, so a rule
+# appended INSIDE an otherwise well-formed hook cannot slip through the line count.
+CANONICAL_HOOK = (
+    "- Environment Gate 前执行 [task-tracking](../../dd-workflow-runtime/references/task-tracking.md) "
+    "§3 定义的 tracking 绑定尝试，并按该合同持久化结果；tracking 对本 Stage 的影响完全由该合同定义，"
+    "**不阻塞本 Stage**。"
+)
+CANONICAL_GATE_CLAUSE = "tracking 绑定尝试的结果已按 owner 合同持久化；"
+# Feature lists the Gate clause as its own bullet; bug-fix inlines it in the Gate
+# line; bug SKILL.md carries one router sentence. All three are locked verbatim so
+# an appended clause of any punctuation style is caught.
+CANONICAL_GATE_BULLET = "- " + CANONICAL_GATE_CLAUSE
+CANONICAL_BUG_GATE_LINE = (
+    "Gate：Bug state 原子写入，" + CANONICAL_GATE_CLAUSE + "`current_stage=diagnosis-and-repair`。"
+)
+CANONICAL_BUG_ROUTER_LINE = (
+    "Bug 工作流与 Feature 对等：在 Environment（worktree 与分支确定后、Environment Gate 前）执行 "
+    "[task-tracking](../dd-workflow-runtime/references/task-tracking.md) §3 定义的 tracking 绑定尝试并按该合同持久化结果，"
+    "**不阻塞本 Stage**；`bug_id` 不重载为 Issue 号，跨设备任务索引用共享 `tracking` 字段承载。"
+)
+
+
+def _gate_block(section: str) -> str:
+    """The `Gate：` block inside an already section-scoped string."""
+    assert "Gate：" in section, "section must carry a Gate block"
+    return section.split("Gate：", 1)[1]
+
+
+def _tracking_lines(section: str) -> list[str]:
+    return [ln.strip() for ln in section.splitlines() if any(t in ln for t in _TRACKING_TOKENS)]
+
+
+def check_consumers_delegate_tracking(envs: dict, gates: dict, skill: str) -> None:
+    """Consumers keep only the call site: one canonical hook plus one canonical Gate
+    clause, delegating every semantic to the owner and staying non-blocking."""
+    for name, env in envs.items():
+        lines = _tracking_lines(env)
+        assert len(lines) == 2, (
+            f"{name}: Environment must contain exactly the tracking hook and the Gate "
+            f"persistence clause, got {len(lines)}: {lines}"
+        )
+        hook, gate_clause = lines
+        assert hook == CANONICAL_HOOK, (
+            f"{name} hook must be exactly the canonical call site (owner semantics belong "
+            f"to task-tracking.md):\n  actual:   {hook}\n  expected: {CANONICAL_HOOK}"
+        )
+        expected_gate = CANONICAL_GATE_BULLET if name == "feature intake" else CANONICAL_BUG_GATE_LINE
+        assert gate_clause == expected_gate, (
+            f"{name} Gate line must be exactly the canonical form (owner result semantics "
+            f"belong to task-tracking.md):\n  actual:   {gate_clause}\n  expected: {expected_gate}"
+        )
+    for name, gate in gates.items():
+        assert "持久化" in gate, f"{name} Gate must require the owner-defined result to be persisted"
+    # Bug State section: the canonical router sentence must be the ONLY sentence in
+    # its paragraph, and no other paragraph may state a task-creation rule. This
+    # catches rules appended in their own paragraph with no tracking keywords.
+    bug_state = skill.split("## Bug State", 1)[1].split("\n## ", 1)[0]
+    paragraphs = [p.strip() for p in bug_state.split("\n\n") if p.strip()]
+    canonical_paragraphs = [p for p in paragraphs if p == CANONICAL_BUG_ROUTER_LINE]
+    assert len(canonical_paragraphs) == 1, (
+        "bug SKILL.md Bug State must contain the canonical router sentence verbatim as its "
+        f"own paragraph; got {paragraphs}"
+    )
+    for para in paragraphs:
+        if para == CANONICAL_BUG_ROUTER_LINE:
+            continue
+        for verb in ("新建", "创建", "远端工单", "任务卡"):
+            assert verb not in para, (
+                f"bug SKILL.md Bug State must not state its own task-creation rule "
+                f"({verb}): {para[:60]}"
+            )
+
+
 # ---------------------------------------------------------------------------
 # Canonical stage extraction (drift detection: new stages must be mapped)
 # ---------------------------------------------------------------------------
@@ -330,9 +681,21 @@ class TestOwnershipAndStructure(unittest.TestCase):
             "runtime SKILL.md must route to the task-tracking reference",
         )
 
+    def test_state_schema_version_carries_tracking_narrowing(self):
+        """schema 2 is the mechanical discriminator §3.2 relies on; state.md must
+        document it, otherwise recovery cannot tell a legacy null from a fresh one."""
+        state = read(RUNTIME_STATE)
+        self.assertIn('"schema_version": 2', state, "state.md example must declare schema 2")
+        self.assertIn("§3.2", state, "state.md must route historical nulls to the migration rule")
+        self.assertIn("不得反向解释成从未尝试", state,
+                      "state.md must forbid reinterpreting a legacy null as never-attempted")
+        contract = read(RUNTIME_CONTRACT)
+        self.assertIn("schema_version: 2", contract, "runtime State Schema example must declare schema 2")
+
     def test_tracking_nested_schema_single_owner(self):
         contract = read(RUNTIME_CONTRACT)
-        schema_block = re.search(r"```yaml\nschema_version: 1\n.*?```", contract, re.S).group(0)
+        # schema 2 是本次 tracking null 语义收窄的载体（§3.2 依赖它做机械判别）。
+        schema_block = re.search(r"```yaml\nschema_version: 2\n.*?```", contract, re.S).group(0)
         self.assertIn("tracking: null", schema_block)
         for nested in ("issue_number", "sync_reason", "pending_checkpoint", "last_checkpoint_ref"):
             self.assertNotIn(
@@ -423,6 +786,33 @@ class TestBehavioralContracts(unittest.TestCase):
         self.assertIn("gh CLI", sec)
         self.assertIn("不得把", sec)
         self.assertIn("MCP", sec)
+
+
+class TestMandatoryBindingAttempt(unittest.TestCase):
+    """2026-10-02: feature/bug workflows must complete one tracking binding attempt
+    and persist its outcome before the Environment Gate. Success is not a Gate
+    precondition — recorded failures stay non-blocking — but silence is a red line."""
+
+    def test_owner_contract_states_attempt_and_record(self):
+        check_mandatory_attempt_and_record(read(TASK_TRACKING))
+
+    def test_runtime_contract_lists_standing_authorization_source(self):
+        check_external_action_authorization_source(read(RUNTIME_CONTRACT))
+
+    def test_consumers_delegate_without_restating(self):
+        feature_env = h2_section(read(FEATURE_INTAKE), "2. Environment")
+        bug_env = h2_section(read(BUG_DIAG), "2. Environment")
+        check_consumers_delegate_tracking(
+            {"feature intake": feature_env, "bug diagnosis": bug_env},
+            {"feature Environment": _gate_block(feature_env),
+             "bug Environment": _gate_block(bug_env)},
+            read(BUG_SKILL),
+        )
+
+    def test_bootstrap_stays_exempt(self):
+        self.assertIn("不自动创建", read(BOOTSTRAP_SKILL))
+        sec12 = h2_section(read(TASK_TRACKING), "12. 与相邻 Skill 的边界")
+        self.assertIn("均不适用于 project-bootstrap 整个工作流", sec12)
 
 
 class TestCrossMachineTakeover(unittest.TestCase):

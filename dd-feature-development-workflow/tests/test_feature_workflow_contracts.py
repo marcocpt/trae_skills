@@ -389,14 +389,63 @@ class TestTracerBulletContract(unittest.TestCase):
 
 
 class TestTrackingMissingDoesNotBlock(unittest.TestCase):
-    """task-tracking design: tracking binding failure must never block a Stage."""
+    """task-tracking design: tracking binding failure must never block a Stage.
+
+    The original probe was the literal "绑定失败" in this file. Since the binding
+    attempt became mandatory and its failure semantics moved to the owner
+    (task-tracking §3/§4), the literal is no longer the right probe — the
+    protection is now: the hook must exist, delegate the outcome, and keep the
+    Stage non-blocking. Owner-side non-blocking is asserted by
+    `check_failure_matrix_allows_workflow` in the runtime suite.
+    """
 
     def test_environment_gate_survives_binding_failure(self):
         text = read(WORKFLOW_ROOT / "references" / "intake-and-environment.md")
-        self.assertIn("绑定失败", text,
-                      "Environment must state how binding failure is handled (task-tracking)")
+        self.assertIn("task-tracking", text,
+                      "Environment must route the binding outcome to the owning contract")
         self.assertIn("不阻塞本 Stage", text,
                       "tracking binding failure must not block the Environment Stage (task-tracking)")
+
+
+class TestTrackingHookDelegatesToOwner(unittest.TestCase):
+    """task-tracking §2/§3: the Environment hook owns the call site only.
+
+    Primary protection is structural: exactly two lines in the Environment section
+    may touch tracking — the call-site hook and the Gate persistence clause — so
+    any added creation/failure/authorization rule is caught regardless of wording.
+    """
+
+    ENV = "2. Environment"
+    TOKENS = ("task-tracking", "tracking", "绑定", "Issue", "sync", "同步")
+
+    def _env(self) -> str:
+        return read(WORKFLOW_ROOT / "references" / "intake-and-environment.md") \
+            .split(f"## {self.ENV}", 1)[1].split("\n## ", 1)[0]
+
+    def test_environment_has_only_the_hook_and_the_gate_clause(self):
+        lines = [ln.strip() for ln in self._env().splitlines() if any(t in ln for t in self.TOKENS)]
+        self.assertEqual(
+            len(lines), 2,
+            f"Environment must contain exactly the tracking hook and the Gate clause, got {lines}",
+        )
+        hook, gate_clause = lines
+        for required in ("task-tracking", "§3", "持久化结果", "不阻塞本 Stage"):
+            self.assertIn(required, hook, f"hook must require {required}: {hook}")
+        self.assertIn("owner 合同", gate_clause,
+                      "Gate clause must defer to the owner-defined result")
+        self.assertIn("持久化", gate_clause, "Gate must require the result to be persisted")
+
+    def test_hook_does_not_become_a_blocking_precondition(self):
+        env = self._env()
+        self.assertIn("完全由该合同定义", env, "hook must defer semantics to the owner")
+        self.assertIn("不阻塞本 Stage", env, "tracking outcomes must stay non-blocking")
+
+    def test_owner_result_encoding_stays_out_of_the_gate(self):
+        gate = self._env().split("Gate：", 1)[1]
+        for token in ("sync_reason", "sync=", "user-declined", "binding-ambiguous",
+                      "create-outcome-unknown", "provider-unavailable", "no-policy"):
+            self.assertNotIn(token, gate,
+                             f"feature Gate must not enumerate owner result encoding ({token})")
 
 
 class TestNoTrackingFieldDuplicationInFeatureState(unittest.TestCase):

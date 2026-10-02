@@ -72,11 +72,11 @@ fix_branch: fix/F0-short-description
 - 无未解释的脏文件；
 - 基线测试/CI 证据可用；
 - 只能参考该 worktree 的未提交状态；
-- Environment Gate 前按 [task-tracking](../../dd-workflow-runtime/references/task-tracking.md) 绑定或确认 `tracking`；绑定失败按其失败矩阵处置（记 `sync` 结果），**不阻塞本 Stage**。
+- Environment Gate 前执行 [task-tracking](../../dd-workflow-runtime/references/task-tracking.md) §3 定义的 tracking 绑定尝试，并按该合同持久化结果；tracking 对本 Stage 的影响完全由该合同定义，**不阻塞本 Stage**。
 
 基线失败必须区分既有失败与当前 Bug；只有失败、冲突或风险需要 ASK。
 
-Gate：Bug state 原子写入，`current_stage=diagnosis-and-repair`。
+Gate：Bug state 原子写入，tracking 绑定尝试的结果已按 owner 合同持久化；`current_stage=diagnosis-and-repair`。
 
 ## 3. Reproduction
 
