@@ -12,6 +12,7 @@ description: 当实现需要规格套件、分阶段计划、TDD、CI 或用户�
 ## 不适用
 
 - Bug 修复：使用 `dd-bug-fix-workflow`；
+- 用户明确要先快速拿到可用实现（先跑起来、之后再补齐流程与测试）：使用 `dd-feature-fast-track`；
 - 项目级 Bootstrap：使用 `dd-project-bootstrap-workflow`；
 - 简单文本或纯文档微调：直接使用对应工具或 writer；
 - 只读审查。
