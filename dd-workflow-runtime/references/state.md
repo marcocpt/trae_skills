@@ -52,9 +52,12 @@
   "main_root": "/absolute/path/to/main/repo",
   "worktree_dir": "/absolute/path/to/project-worktrees",
   "current_step": "<步骤号>",
+  "tracking": null,
   "created_at": "<ISO 时间>"
 }
 ```
+
+`tracking` 记录该工作流外部任务绑定尝试的结果（已绑定一张 Issue，或已尝试但未绑定并记原因）；初始为 `null`，字段形状与枚举的唯一属主是 [task-tracking.md](task-tracking.md)，本文件不重复定义。
 
 `<BRANCH_FIELD>` 对 bug-fix / feature-development 分别为 `fix_branch` / `feature_branch`；project-bootstrap 不要求分支专用字段，使用 `worktree_path` 和 `base_branch` 即可。
 

@@ -42,6 +42,8 @@ tracking: null
 
 `host=auto` 时按运行环境识别 Trae、Codex 或 other。只有宿主差异会阻塞执行且无法识别时才询问。
 
+`tracking` 承载该工作流外部任务绑定尝试的结果，不只是"已绑定时的定位信息"：它同时表达已绑定一张 Issue 和"已尝试但未绑定"（含原因）。字段形状与枚举由 [task-tracking.md](references/task-tracking.md) 唯一拥有。
+
 `invocation_mode` 决定会话所有权：
 
 - `standalone`：本工作流拥有状态、最终摘要与 Host Close；
@@ -66,7 +68,8 @@ Stage 创建或消费规范文档、人审视图、弱模型执行包或验证�
 6. 标记产物为 `missing`、`partial`、`valid`、`stale` 或 `conflicting`；
 7. 生成 `blocking_gaps`、`deferred_gaps` 和下一 Stage；
 8. 只询问无法由状态、仓库或已批准文档回答的 blocker；
-9. 首次写文件前确定并持久化工作环境，并按 [state](references/state.md) 的写入租约取得跨宿主唯一写者租约；取不到时保持只读或停止，不得静默并行写入。
+9. 首次写文件前确定并持久化工作环境，并按 [state](references/state.md) 的写入租约取得跨宿主唯一写者租约；取不到时保持只读或停止，不得静默并行写入；
+10. 对声明了外部任务绑定义务的工作流（`workflow_type` 为 `feature-development` 或 `bug-fix`），建立执行环境的 Stage 之前必须完成一次绑定尝试：按 [task-tracking](references/task-tracking.md) §3 创建并绑定一张外部任务 Issue，没有既有绑定时默认新建，并把结果落盘；随后运行 `agents/validate-tracking-binding.py --state <state_file>`，非零退出即不得通过该 Stage 的 Gate。
 
 纯查询或只读审查不创建工作流状态，也不询问 worktree。
 
