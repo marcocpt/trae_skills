@@ -3,11 +3,11 @@
 - Feature: tracking-binding-reachability
 - Workflow ID: feature-development-20261003T053419Z-ee41fa8
 - Stage: Test Matrix（验证合同）
-- 基线 Requirements: v2 (`sha256:8c3bf1988ab692afc8f2e70d21e1f64d559427f77493f1d58a08e31516aa726a`)｜Design: v3 (`sha256:73509bb09d663d960db37648d743e0231ba744cc09de0ea223308b5f2b9a6b05`)
+- 基线 Requirements: v2 (`sha256:8c3bf1988ab692afc8f2e70d21e1f64d559427f77493f1d58a08e31516aa726a`)｜Design: v3 (`sha256:89706c1c2081e7d05bc7c6b3cc662f447094bd185f5566e0e53dc088f885ba7e`)
 - 版本: v3 — 绑定 Requirements v2 / Design v3；同步 §3.2 的 ①~⑪、豁免前置、无条件 legacy 豁免与非字符串 well-formedness 分支，并纳入四轮外部强审新增的全部反例
 - 日期: 2026-10-03
 
-> **版本沿革**：v1 绑定 Design v1（与已批准的 v2 冲突，T-24 与 §4 冲突，原因数写 10）；v2 同步 Design v2 并纳入第一轮强审反例；**v3 绑定 Requirements v2 / Design v3**，同步 §3.2 全部分派（含豁免前置、无条件 legacy 豁免、非字符串 well-formedness）、修正 T-63 oracle 与 T-72 描述、补 AC-13 行，并纳入第二至四轮强审新增的 T-27~T-29、T-62~T-67、T-74~T-77、M8~M10、T-14/T-15。当前版本即下述基线，历史版本不再是有效 oracle。
+> **版本沿革**：v1 绑定 Design v1（与已批准的 v2 冲突，T-24 与 §4 冲突，原因数写 10）；v2 同步 Design v2 并纳入第一轮强审反例；**v3 绑定 Requirements v2 / Design v3**，同步 §3.2 全部分派（含豁免前置、无条件 legacy 豁免、非字符串 well-formedness）、修正 T-63 oracle 与 T-72 描述、补 AC-13 行，并纳入第二至四轮强审新增的 T-27~T-29、T-62~T-68、T-74~T-77、M8~M10、T-14/T-15。当前版本即下述基线，历史版本不再是有效 oracle。
 
 ## 1. 验证分层
 
@@ -60,8 +60,9 @@
 | T-28 | `schema_version` ∈ {`"2"`, `"1"`, `True`, `False`, `2.5`, `[]`, `{}`, `-1`, `-2`} + `tracking=null` | exit 2（非整数与负数是残缺状态：不得当作 legacy 放行，也不得当作未尝试判 1。§3.2 字面写 `< 2`，判定器收窄为 {0,1} 并显式拒绝负数） |
 | T-29 | `workflow_type` ∈ {缺失, `""`, `"feature"`, `"Feature-Development"`, `7`} | **精确 exit 2 且无 Traceback**（未识别类型不得 fail-open，也不得靠 crash 蒙混过关） |
 | T-62 | `(sync, sync_reason)` 为 §4 未定义的交叉组合：`not-authorized`+`issue-missing`、`not-synced`+`user-declined`、`not-authorized`+`binding-ambiguous`、`not-synced`+`no-policy`、`disabled`+`issue-missing`、`synced`+`no-policy` | exit 1（词表合法但配对非法） |
-| T-63 | `tracking.provider` / `sync` / `sync_reason` 为 `[]`、`{}`、`7`、`[1,2]` | **exit 2 且 stderr 无 Traceback**。未捕获异常写 stderr 且退出码为 1（与 Gate FAIL 同码），只查 stdout 或只要求非 0 会让真实 crash 通过 |
+| T-63 | **无有效绑定时** `tracking.provider` / `sync` / `sync_reason` 为 `[]`、`{}`、`7`、`[1,2]` | **exit 2 且 stderr 无 Traceback**。未捕获异常写 stderr 且退出码为 1（与 Gate FAIL 同码），只查 stdout 或只要求非 0 会让真实 crash 通过 |
 | T-64 | state 文件为非法 UTF-8 字节 | exit 2，无 Traceback |
+| T-68 | **有效 `issue_number=8` + 非字符串 `provider`／`sync`／`sync_reason`**（各 ∈ `[]`、`{}`、`7`） | 精确 exit 2 且 stderr 无 Traceback。Design §3.2 ⑥ 必须先于 ⑧ 绑定检查：有效绑定与畸形 sync 并存的状态自相矛盾，不得凭绑定放行 |
 | T-65 | `workflow_type=project-bootstrap` + `schema_version` ∈ {`"2"`, `-1`, `True`, `[]`, `{}`} | exit 0。豁免是无条件 scope 豁免，不得被文件中其他位置的畸形 schema 否决（校验顺序：先身份后豁免） |
 | T-66 | `tracking={"sync":"synced","sync_reason":null}` 且**无** `issue_number` | exit 0，且输出含 `without a reason`。T-30 会因 `issue_number` 提前返回，缺此例则自记录配对分支从无行为覆盖 |
 
@@ -188,7 +189,7 @@ T-70~T-75 从 `task-tracking.md` 用正则抽取词表/配对，与判定器常�
 | AC-07 | T-20~T-29（FAIL/usage）, T-30~T-31（PASS） | L2 |
 | AC-08 | T-40~T-49（逐类 10 例）, T-62（反向非法配对） | L2 |
 | AC-09 | T-50~T-54, T-67 | L2 |
-| AC-10 | T-55, T-56, T-57, T-63, T-64, T-65, T-66 | L2 |
+| AC-10 | T-55, T-56, T-57, T-63, T-64, T-65, T-66, T-68 | L2 |
 | AC-11 | T-70~T-77, M1~M10 | L3 |
 | AC-12 | T-11, T-14, T-15 | L1 |
 | AC-13 | 全量既有测试模块 | L4 |

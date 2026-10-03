@@ -80,7 +80,9 @@
 ⑤ tracking 不是对象（当前 schema 下缺失或为 null）        → exit 1
 ⑥ provider / sync / sync_reason 非 null 且非字符串       → exit 2（MalformedState）
      显式类型前置：否则不可 hash 的值会触发 TypeError，未捕获异常退出码为 1，
-     与 Gate FAIL 同码，调用方无法区分崩溃与判决
+     与 Gate FAIL 同码，调用方无法区分崩溃与判决。
+     **必须先于 ⑧ 的绑定检查执行**：同时持有有效绑定与畸形 sync 的状态自相矛盾，
+     若凭绑定直接放行，等于让矛盾状态读作有效记录
 ⑦ provider 非 null 且不在已登记 provider 集              → exit 1
 ⑧ issue_number 为「非 bool 的正整数」                    → exit 0（已绑定）
 ⑨ (sync, sync_reason) ∈ §4 逐行定义的配对集              → exit 0（已记录）

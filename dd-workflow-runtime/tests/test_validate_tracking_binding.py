@@ -211,6 +211,21 @@ class TestMustAttemptFails(unittest.TestCase):
                         f"tracking.{field}={bogus!r} must be malformed input (exit 2); "
                         f"exit {code} means either a wrong verdict or a crash")
 
+    def test_t68_valid_binding_with_malformed_sibling_is_rejected(self):
+        # Design §3.2 step 6 runs before the binding check. A state holding both a
+        # valid issue_number and a non-string sync is internally inconsistent and
+        # must not pass on the strength of the binding.
+        for field in ("provider", "sync", "sync_reason"):
+            for bogus in ([], {}, 7):
+                with self.subTest(field=field, value=bogus):
+                    payload = {"provider": "github", "issue_number": 8, "sync": "synced"}
+                    payload[field] = bogus
+                    code, out, err = run_validator(tracked(payload))
+                    self.assertNotIn("Traceback", err, f"tracking.{field}={bogus!r} crashed")
+                    self.assertEqual(code, EXIT_USAGE,
+                                     f"valid binding + malformed tracking.{field} is a "
+                                     "malformed state, not a pass")
+
     def test_t64_invalid_utf8_is_a_usage_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "state.json"

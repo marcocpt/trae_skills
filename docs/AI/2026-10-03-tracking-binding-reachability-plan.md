@@ -24,13 +24,13 @@ source_manifest:
     stable_id: SPEC-DES
     path: docs/AI/2026-10-03-tracking-binding-reachability-design.md
     version: v3
-    digest: sha256:73509bb09d663d960db37648d743e0231ba744cc09de0ea223308b5f2b9a6b05
+    digest: sha256:89706c1c2081e7d05bc7c6b3cc662f447094bd185f5566e0e53dc088f885ba7e
     approval: {status: approved, authority: user, decided_at: 2026-10-03, evidence_ref: design-confirm}
   SPEC-TM:
     stable_id: SPEC-TM
     path: docs/AI/2026-10-03-tracking-binding-reachability-test-matrix.md
-    version: v2
-    digest: sha256:6976983aa5b71ed7c51779757a85a08150d9b52f7a55d8b1fa12d8956acef3df
+    version: v3
+    digest: sha256:e02746a17fe7594d3ac09b741f4646468ca41672c946f26d14483a49da551d40
     approval: {status: approved, authority: user, decided_at: 2026-10-03, evidence_ref: tm-confirm}
   OWNER-TT:
     stable_id: OWNER-TT
@@ -127,7 +127,7 @@ write_scope:
 
 - [ ] **步骤 3：编写最少实现**
 
-  实现 Design §3.2 的 ①~⑪ 分派（编号与 evaluate() docstring 一一对应）：`workflow_type` 身份 → **豁免前置** → schema 判定（legacy 精确集 {缺失,0,1}；非整数与负数判 exit 2）→ tracking 形状 → provider/sync/sync_reason 字符串 well-formedness → provider 未登记 → 正整数 `issue_number` → `RECORDED_OUTCOMES` 配对 → FAIL 兜底。只实现 T-20~T-29/T-55 所需分支。禁止 `socket`/`urllib`/`http`/`requests`/`gh`/`subprocess`。
+  实现 Design §3.2 的 ①~⑪ 分派（编号与 evaluate() docstring 一一对应）：`workflow_type` 身份 → **豁免前置** → schema 判定（legacy 精确集 {缺失,0,1}；非整数与负数判 exit 2）→ tracking 形状 → **provider/sync/sync_reason 字符串 well-formedness（先于绑定检查）** → provider 未登记 → 正整数 `issue_number` → `RECORDED_OUTCOMES` 配对 → FAIL 兜底。只实现 T-20~T-29/T-55 所需分支。禁止 `socket`/`urllib`/`http`/`requests`/`gh`/`subprocess`。
 
 - [ ] **步骤 4：运行测试验证通过**
 
@@ -159,7 +159,7 @@ write_scope:
 
 - [ ] **步骤 1：编写失败的测试（T-30~T-31, T-40~T-57）**
 
-  逐例构造 fixture：绑定（T-30/T-31）、§4 十类失败/拒绝（T-40~T-49）、legacy 三态（T-50~T-52）、**legacy 部分 tracking 对象（T-67：FAIL 只属于当前 schema）**、已绑定 legacy（T-53）、bootstrap（T-54）、豁免前置（T-65）、`("synced", None)` 无绑定的自记录配对分支（T-66）、嵌套非字符串值（T-63：精确 exit 2 + stderr 无 Traceback）、非法 UTF-8（T-64）、离线（T-56/T-57）。所有判 FAIL 的用例都要先过 `assert_clean_run`。
+  逐例构造 fixture：绑定（T-30/T-31）、§4 十类失败/拒绝（T-40~T-49）、legacy 三态（T-50~T-52）、**legacy 部分 tracking 对象（T-67：FAIL 只属于当前 schema）**、已绑定 legacy（T-53）、bootstrap（T-54）、豁免前置（T-65）、`("synced", None)` 无绑定的自记录配对分支（T-66）、嵌套非字符串值（T-63：精确 exit 2 + stderr 无 Traceback）、非法 UTF-8（T-64）、有效绑定 + 畸形兄弟字段（T-68）、离线（T-56/T-57）。所有判 FAIL 的用例都要先过 `assert_clean_run`。
 
 - [ ] **步骤 2：运行测试验证失败**
 
@@ -168,7 +168,7 @@ write_scope:
 
 - [ ] **步骤 3：补最少实现**
 
-  补 Design §3.2 ⑨⑩⑪：按 `RECORDED_OUTCOMES` 配对判定 `sync`/`sync_reason`；`("synced", None)` 与 `("disabled", None)` 两行不要求原因值；配对之外的组合与词表外取值判 exit 1。另补 ⑥ 的非字符串类型前置，使不可 hash 的嵌套值成为 exit 2 而非未捕获异常。
+  补 Design §3.2 ⑨⑩⑪：按 `RECORDED_OUTCOMES` 配对判定 `sync`/`sync_reason`；`("synced", None)` 与 `("disabled", None)` 两行不要求原因值；配对之外的组合与词表外取值判 exit 1。另补 ⑥ 的非字符串类型前置（**必须先于 ⑧ 的绑定检查**：有效绑定与畸形 sync 并存的状态自相矛盾，不得凭绑定放行，见 T-68），使不可 hash 的嵌套值成为 exit 2 而非未捕获异常。
 
 - [ ] **步骤 4：运行测试验证通过**
 
@@ -360,8 +360,8 @@ delivery_authorization: {status: not-required, actions: [], scope: none, authori
 | AC-07 | 1, 2 | T-20~T-29, T-30~T-31 |
 | AC-08 | 2 | T-40~T-49, T-62 |
 | AC-09 | 2 | T-50~T-54, T-67 |
-| AC-10 | 2 | T-55, T-56, T-57, T-63, T-64, T-65, T-66 |
-| AC-11 | 0, 3 | T-70~T-77, M1~M10 |
+| AC-10 | 2 | T-55, T-56, T-57, T-63, T-64, T-65, T-66, T-68 |
+| AC-11 | 0, 3 | T-70~T-77, M1~M11 |
 | AC-12 | 4, 6 | T-11, T-14, T-15 |
 | AC-13 | 6 | 全量既有测试模块 |
 | AC-14 | 6 | `git diff --name-only` |

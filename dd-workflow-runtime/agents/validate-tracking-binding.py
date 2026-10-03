@@ -163,19 +163,26 @@ def _string_field(tracking: dict, name: str) -> str | None:
 def evaluate(state: dict) -> tuple[int, str]:
     """Return (exit_code, reason) for one workflow state.
 
-    Mirrors Design §3.2 dispatch order:
-      1. workflow type unrecognized            -> MalformedState (never passes open)
-      2. workflow type explicitly exempt       -> pass (unconditional scope exemption,
-                                                so a malformed schema elsewhere in the
-                                                file must not deny it)
-      3. schema_version malformed              -> MalformedState
-      4. legacy schema (missing / 0 / 1)       -> pass, whatever tracking holds
-      5. tracking not an object               -> fail
-      6. provider / sync / sync_reason present
-         but not a string or null             -> MalformedState
-      7. provider well-formedness             -> fail
-      8. the owner's recorded outcome pairs    -> pass
-      9. otherwise                            -> fail
+    Mirrors Design §3.2 dispatch order, item for item:
+      1. workflow_type missing / not a string / neither mandatory nor exempt
+                                                     -> MalformedState (never passes open)
+      2. workflow_type in the exempt set            -> pass (unconditional scope
+                                                      exemption: a malformed schema
+                                                      elsewhere must not deny it)
+      3. schema_version non-integer (incl. bool) or negative -> MalformedState
+      4. schema_version in legacy set {missing,0,1} -> pass, whatever tracking holds
+      5. tracking is not an object                 -> fail
+      6. provider / sync / sync_reason present but not a string or null
+                                                     -> MalformedState
+      7. provider present but unregistered          -> fail
+      8. issue_number is a positive int (not bool)  -> pass (bound)
+      9. (sync, sync_reason) is an owner-defined §4 pair -> pass (recorded)
+     10. sync or sync_reason outside its vocabulary -> fail
+     11. otherwise                                  -> fail (attempt not recorded)
+
+    Step 6 precedes step 8 deliberately: a state holding both a valid binding and a
+    malformed sync is internally inconsistent, and silently passing it on the
+    strength of the binding would let a contradiction read as a valid record.
     """
     wf_type = state.get("workflow_type")
     if not isinstance(wf_type, str) or not wf_type:
@@ -198,16 +205,19 @@ def evaluate(state: dict) -> tuple[int, str]:
     if not isinstance(tracking, dict):
         return EXIT_FAIL, "tracking absent or null under the current schema: never attempted"
 
+    # Design §3.2 step 6: all three type checks run before the binding check, so a
+    # state holding both a valid issue_number and a malformed sync is rejected as
+    # malformed instead of passing on the strength of the binding.
     provider = _string_field(tracking, "provider")
+    sync = _string_field(tracking, "sync")
+    reason = _string_field(tracking, "sync_reason")
+
     if provider is not None and provider not in SUPPORTED_PROVIDERS:
         return EXIT_FAIL, f"provider={provider!r} is not a registered provider (task-tracking §2)"
 
     issue_number = _issue_number_of(tracking)
     if issue_number is not None:
         return EXIT_PASS, f"bound to issue #{issue_number}"
-
-    sync = _string_field(tracking, "sync")
-    reason = _string_field(tracking, "sync_reason")
 
     if (sync, reason) in RECORDED_OUTCOMES:
         if reason is None:
