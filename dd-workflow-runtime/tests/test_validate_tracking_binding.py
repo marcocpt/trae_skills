@@ -124,6 +124,79 @@ class TestMustAttemptFails(unittest.TestCase):
                                          "sync_reason": "no-policy"}))
         self.assertEqual(code, EXIT_FAIL, "task-tracking §2: provider, when non-null, must be supported")
 
+    def test_t27_invalid_issue_number_is_not_a_binding(self):
+        # 0 / "" / False are falsy; -1 is truthy but not an issue number; [] is not
+        # a number at all. None of them may stand in for a created card.
+        for bogus in (0, "", False, -1, [], {}, 1.0):
+            with self.subTest(issue_number=bogus):
+                code, _ = run_validator(tracked({"provider": "github", "issue_number": bogus}))
+                self.assertEqual(code, EXIT_FAIL,
+                                 f"issue_number={bogus!r} is not a real issue; only a positive "
+                                 "int counts as bound")
+
+    def test_t28_non_integer_schema_version_does_not_bypass(self):
+        # A hand-written "2" must not be read as the current schema (which would
+        # FAIL here) and must not be read as legacy either (which would PASS and
+        # let a never-attempted state through). It is a malformed state.
+        for bogus in ("2", "1", True, False, 2.5, [], {}):
+            with self.subTest(schema_version=bogus):
+                code, _ = run_validator(make_state(schema_version=bogus, tracking=None))
+                self.assertEqual(
+                    code, EXIT_USAGE,
+                    f"schema_version={bogus!r} is not an integer; a malformed state must "
+                    "not silently pass as legacy or fail as never-attempted")
+
+    def test_t29_unknown_or_missing_workflow_type_does_not_pass_open(self):
+        for bogus in (None, "", "feature", "Feature-Development", 7):
+            with self.subTest(workflow_type=bogus):
+                state = make_state(tracking=None)
+                if bogus is None:
+                    state.pop("workflow_type")
+                else:
+                    state["workflow_type"] = bogus
+                code, _ = run_validator(state)
+                self.assertNotEqual(
+                    code, EXIT_PASS,
+                    f"workflow_type={bogus!r} is neither a mandatory nor a registered "
+                    "exempt type; an unrecognized state must not pass open")
+
+    def test_t62_cross_pairs_absent_from_the_owner_matrix_fail(self):
+        # §4 pairs each sync value with specific reasons. Checking the two
+        # vocabularies independently would accept combinations the owner never
+        # states, making the validator a second source of truth.
+        for sync, reason in (("not-authorized", "issue-missing"),
+                             ("not-synced", "user-declined"),
+                             ("not-authorized", "binding-ambiguous"),
+                             ("not-synced", "no-policy"),
+                             ("disabled", "issue-missing"),
+                             ("synced", "no-policy")):
+            with self.subTest(pair=(sync, reason)):
+                code, _ = run_validator(tracked({"sync": sync, "sync_reason": reason}))
+                self.assertEqual(code, EXIT_FAIL,
+                                 f"({sync}, {reason}) is not a pair task-tracking §4 defines")
+
+    def test_t63_nested_non_string_values_do_not_crash(self):
+        # An uncaught TypeError exits 1, which is indistinguishable from a real
+        # Gate FAIL — the caller could not tell a crash from a verdict.
+        for field in ("provider", "sync", "sync_reason"):
+            for bogus in ([], {}, 7, [1, 2]):
+                with self.subTest(field=field, value=bogus):
+                    code, out = run_validator(tracked({field: bogus, "sync": "not-synced",
+                                                       "sync_reason": "no-policy"}))
+                    self.assertNotIn("Traceback", out, f"tracking.{field}={bogus!r} crashed")
+                    self.assertIn(code, (EXIT_FAIL, EXIT_USAGE),
+                                  f"tracking.{field}={bogus!r} must be rejected, not crash")
+
+    def test_t64_invalid_utf8_is_a_usage_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            path.write_bytes(b'{"schema_version": 2, "workflow_type": "\xff\xfe"}')
+            proc = subprocess.run(
+                [sys.executable, str(VALIDATOR), "--state", str(path)],
+                capture_output=True, text=True, cwd=str(REPO_ROOT))
+            self.assertEqual(proc.returncode, EXIT_USAGE)
+            self.assertNotIn("Traceback", proc.stderr)
+
     def test_t55_missing_state_file_is_usage_error(self):
         proc = subprocess.run(
             [sys.executable, str(VALIDATOR), "--state", "/nonexistent/state.json"],
