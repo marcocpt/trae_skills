@@ -18,7 +18,7 @@ source_manifest:
     stable_id: SPEC-REQ
     path: docs/AI/2026-10-03-tracking-binding-reachability-requirements.md
     version: v2
-    digest: sha256:0d5f2239d9b6d7908e8c3c6cca492fdf316e137beae5954bcd77ad37525d4e6e
+    digest: sha256:8c3bf1988ab692afc8f2e70d21e1f64d559427f77493f1d58a08e31516aa726a
     approval: {status: approved, authority: user, decided_at: 2026-10-03, evidence_ref: intake-confirm}
   SPEC-DES:
     stable_id: SPEC-DES
@@ -30,7 +30,7 @@ source_manifest:
     stable_id: SPEC-TM
     path: docs/AI/2026-10-03-tracking-binding-reachability-test-matrix.md
     version: v2
-    digest: sha256:2886d810d841656c94713910b6dff95a00f6fe793be5449737659efff7e9bfd7
+    digest: sha256:8756991d57c86d13e396ae04243f0137ed306ea9fc7b26ce2494ddda9b3ac3d0
     approval: {status: approved, authority: user, decided_at: 2026-10-03, evidence_ref: tm-confirm}
   OWNER-TT:
     stable_id: OWNER-TT
@@ -116,7 +116,9 @@ write_scope:
 
 - [ ] **步骤 1：编写失败的测试（T-20~T-26, T-55）**
 
-  写 `make_state(**overrides)` fixture 与 T-20~T-26、T-55 共 8 例，用 `subprocess` 取退出码。
+  写 `make_state(**overrides)` fixture 与 T-20~T-29、T-55，用 `subprocess` 取 `(returncode, stdout, stderr)`。
+
+`run_validator` 必须返回 stderr：未捕获异常的 traceback 写 stderr 且退出码为 1（与 Gate FAIL 同码）。只读 stdout、或只要求「非 0」、或只要求 `assertIn(code, (FAIL, USAGE))`，都会让真实 crash 变成绿灯。
 
 - [ ] **步骤 2：运行测试验证失败**
 
@@ -125,7 +127,7 @@ write_scope:
 
 - [ ] **步骤 3：编写最少实现**
 
-  实现 Design §3.2 分派：`workflow_type` 白名单 → legacy 豁免 → bootstrap 豁免 → `provider` well-formedness → FAIL 兜底。只实现 T-20~T-26/T-55 所需分支。禁止 `socket`/`urllib`/`http`/`requests`/`gh`/`subprocess`。
+  实现 Design §3.2 的 ①~⑪ 分派：`workflow_type` 身份 → **豁免前置** → schema 判定（legacy 精确集 {缺失,0,1}；非整数与负数判 exit 2）→ tracking 形状 → provider/sync/sync_reason 字符串 well-formedness → provider 未登记 → 正整数 `issue_number` → `RECORDED_OUTCOMES` 配对 → FAIL 兜底。只实现 T-20~T-29/T-55 所需分支。禁止 `socket`/`urllib`/`http`/`requests`/`gh`/`subprocess`。
 
 - [ ] **步骤 4：运行测试验证通过**
 
@@ -157,7 +159,7 @@ write_scope:
 
 - [ ] **步骤 1：编写失败的测试（T-30~T-31, T-40~T-57）**
 
-  逐例构造 fixture：绑定（T-30/T-31）、§4 十类失败/拒绝（T-40~T-49 各一例）、legacy 三态（T-50~T-52）、已绑定 legacy（T-53）、bootstrap（T-54）、离线（T-56 源码无网络与子进程符号；T-57 清空 `HOME`+`PATH` 子进程仍 exit 0）。
+  逐例构造 fixture：绑定（T-30/T-31）、§4 十类失败/拒绝（T-40~T-49）、legacy 三态（T-50~T-52）、**legacy 部分 tracking 对象（T-67：FAIL 只属于当前 schema）**、已绑定 legacy（T-53）、bootstrap（T-54）、豁免前置（T-65）、`("synced", None)` 无绑定的自记录配对分支（T-66）、嵌套非字符串值（T-63：精确 exit 2 + stderr 无 Traceback）、非法 UTF-8（T-64）、离线（T-56/T-57）。所有判 FAIL 的用例都要先过 `assert_clean_run`。
 
 - [ ] **步骤 2：运行测试验证失败**
 
@@ -182,11 +184,11 @@ delivery_authorization: {status: not-required, actions: [], scope: none, authori
 
 ### 任务 3：词表双向漂移锁定
 
-**sources:** `[{ref: SPEC-DES, anchors: [3.4]}, {ref: SPEC-REQ, anchors: [FR-8, AC-11]}, {ref: SPEC-TM, anchors: [T-70, T-73]}]`
+**sources:** `[{ref: SPEC-DES, anchors: [3.4]}, {ref: SPEC-REQ, anchors: [FR-8, AC-11]}, {ref: SPEC-TM, anchors: [T-70, T-77]}]`
 
 **Consumes：** 任务 0 的抽取结论、任务 1/2 的判定器常量、`OWNER-TT`。
 
-**Produces：** `dd-workflow-runtime/tests/test_task_tracking.py` 新增 `TestVocabularyDrift`（4 例）。
+**Produces：** `dd-workflow-runtime/tests/test_task_tracking.py` 新增 `TestVocabularyDrift`（8 例）与 `TestVocabularyDriftMutations`（10 个变异）。
 
 ```
 write_scope:
@@ -195,9 +197,26 @@ write_scope:
   - delete: none
 ```
 
-- [ ] **步骤 1：编写失败的测试（T-70~T-73）**
+- [ ] **步骤 1：编写失败的测试（T-70~T-77）**
 
-  新增 `TestVocabularyDrift`：`importlib` 读判定器的 `SYNC_VALUES`/`SYNC_REASONS`/`TRACKING_FIELDS`；`re` 从 `OWNER-TT` §2 与 §4 抽词表。T-70 `sync` 双向相等；T-71 `sync_reason` 覆盖 §4 全部（owner 新增即失败）；T-72 判定器词表 ⊆ §4 ∪ `disabled` 允许集；T-73 判定器引用的子字段名 ⊆ `OWNER-TT` §2 schema 块。**抽取失败必须 FAIL，不得 skip。**
+  新增 `TestVocabularyDrift`：`importlib` 读判定器常量；`re` 从 `OWNER-TT` 抽取。
+
+  - T-70 `sync` 双向相等；
+  - T-71 `sync_reason` 覆盖 §4 全部（owner 新增即失败）；
+  - T-72 判定器词表 ⊆ §4 `sync_reason` 列（`disabled` 是 `sync` 取值，不属该词表）；
+  - T-73 子字段名 ⊆ §2 schema 块；
+  - T-74 `RECORDED_OUTCOMES` 配对集 == §4 逐行 `(sync, sync_reason)` 配对；
+  - T-75 `SUPPORTED_PROVIDERS` == §2 登记的 provider；
+  - T-76 mandatory／exempt workflow type 集 == §2 与 §12（§12 按「声明不适用」的行识别，不按在表中出现，否则 `dd-git-workflow` 会被误认）；
+  - T-77 legacy 边界：§3.2 字面写 `< 2`；判定器保留所有低于当前版本的**非负**整数并显式拒绝负数。这是对字面文本的有意收窄（否则负版本会让未尝试状态通过），因此断言写成关系（`legacy == range(current)`、负数不在 legacy、owner 表达式仍为 `< 2`）而非与字面相等。
+
+  **抽取失败必须 FAIL，不得 skip。**
+
+- [ ] **步骤 1b：编写变异探针（M1~M10）**
+
+  `TestVocabularyDriftMutations` 在内存中改判定器或 owner 副本，要求对应 guard 变红：M1 新增词表外 `sync`；M2 新增词表外 `sync_reason`；M3 owner 新增 `sync_reason`；M4 读 owner 未声明字段；M5 `RECORDED_OUTCOMES` 删 `disabled`；M6 新增 §4 未定义交叉配对；M7 清空 `SUPPORTED_PROVIDERS`；M8 owner 新增第三个 mandatory type；M9 owner 把边界改为 `< 3`；M10 判定器把当前版本吞进 legacy。
+
+  harness 必须断言 `errors == []`、至少一个 failure、且**所有** failure 都属于该变异的预期断言——夹带一个无关断言失败也要判红。只看 `wasSuccessful()` 会把 SyntaxError 或 import 失败误判为「已捕获」。
 
 - [ ] **步骤 2：运行测试验证失败**
 
@@ -206,11 +225,11 @@ write_scope:
 
 - [ ] **步骤 3：补最少实现**
 
-  在判定器中把 `SYNC_VALUES`/`SYNC_REASONS`/`TRACKING_FIELDS` 提为模块级常量，不改变判定行为。
+  在判定器中把 `SYNC_VALUES`/`SYNC_REASONS`/`TRACKING_FIELDS`/`RECORDED_OUTCOMES`/`SUPPORTED_PROVIDERS`/`MANDATORY_WORKFLOW_TYPES`/`EXEMPT_WORKFLOW_TYPES`/`LEGACY_SCHEMA_VERSIONS` 提为模块级常量，不改变判定行为。`SELF_RECORDING_SYNC` 必须从 `RECORDED_OUTCOMES` 派生，不可独立硬编码。
 
 - [ ] **步骤 4：运行测试验证通过**
 
-  `verification:` `python3 -m unittest dd-workflow-runtime.tests.test_task_tracking.TestVocabularyDrift`
+  `verification:` `python3 -m unittest dd-workflow-runtime.tests.test_task_tracking.TestVocabularyDrift dd-workflow-runtime.tests.test_task_tracking.TestVocabularyDriftMutations`
   预期：PASS。
 
 ```
@@ -338,16 +357,18 @@ delivery_authorization: {status: not-required, actions: [], scope: none, authori
 | AC-04 | 5 | T-03, T-05 |
 | AC-05 | 5 | T-07, T-08 |
 | AC-06 | 5 | T-09, T-10 |
-| AC-07 | 1, 2 | T-20~T-26, T-30~T-31 |
-| AC-08 | 2 | T-40~T-49 |
-| AC-09 | 2 | T-50~T-54 |
-| AC-10 | 2 | T-55, T-56, T-57 |
-| AC-11 | 0, 3 | T-70~T-73 |
-| AC-12 | 4, 6 | T-11 |
-| AC-13 | 6 | 全量回归 |
+| AC-07 | 1, 2 | T-20~T-29, T-30~T-31 |
+| AC-08 | 2 | T-40~T-49, T-62 |
+| AC-09 | 2 | T-50~T-54, T-67 |
+| AC-10 | 2 | T-55, T-56, T-57, T-63, T-64, T-65, T-66 |
+| AC-11 | 0, 3 | T-70~T-77, M1~M10 |
+| AC-12 | 4, 6 | T-11, T-14, T-15 |
+| AC-13 | 6 | 全量既有测试模块 |
 | AC-14 | 6 | `git diff --name-only` |
 
-AC-01~AC-14 全部有 Task 与 Test，无孤立项。T-13 为 Planning 阶段新增的负向断言（超出 Test Matrix v1），来源是 `review_level=high` 判定中命中的安全或权限触发器，已在任务 4 步骤 1 显式记录。
+AC-01~AC-14 全部有 Task 与 Test，无孤立项。
+
+T-13~T-15 为 Planning 与外部强审阶段新增的断言，已回填 Test Matrix v2：T-13 是负向断言（入口义务句不得出现 checkpoint/关闭/看板，来源 `review_level=high` 命中的安全或权限触发器）；T-14 是入口语义变异（极性/时序/子句拆分/未授权措辞）；T-15 专测「把必须留在无关句里」这一子句绑定的绕过目标。
 
 ## Tracer 判定
 

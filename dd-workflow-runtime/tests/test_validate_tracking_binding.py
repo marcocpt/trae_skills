@@ -142,6 +142,7 @@ class TestMustAttemptFails(unittest.TestCase):
         for bogus in (0, "", False, -1, [], {}, 1.0):
             with self.subTest(issue_number=bogus):
                 code, out, err = run_validator(tracked({"provider": "github", "issue_number": bogus}))
+                assert_clean_run(self, code, out, err)
                 self.assertEqual(code, EXIT_FAIL,
                                  f"issue_number={bogus!r} is not a real issue; only a positive "
                                  "int counts as bound")
@@ -186,20 +187,29 @@ class TestMustAttemptFails(unittest.TestCase):
                              ("synced", "no-policy")):
             with self.subTest(pair=(sync, reason)):
                 code, out, err = run_validator(tracked({"sync": sync, "sync_reason": reason}))
+                assert_clean_run(self, code, out, err)
                 self.assertEqual(code, EXIT_FAIL,
                                  f"({sync}, {reason}) is not a pair task-tracking §4 defines")
 
     def test_t63_nested_non_string_values_do_not_crash(self):
         # An uncaught TypeError exits 1, which is indistinguishable from a real
-        # Gate FAIL — the caller could not tell a crash from a verdict.
+        # Gate FAIL — the caller could not tell a crash from a verdict. The
+        # traceback lands on stderr, and exit 1 is the Gate FAIL code, so this must
+        # require exit 2 AND a clean stderr, not merely "not a crash in stdout".
         for field in ("provider", "sync", "sync_reason"):
             for bogus in ([], {}, 7, [1, 2]):
                 with self.subTest(field=field, value=bogus):
-                    code, out, err = run_validator(tracked({field: bogus, "sync": "not-synced",
-                                                       "sync_reason": "no-policy"}))
-                    self.assertNotIn("Traceback", out, f"tracking.{field}={bogus!r} crashed")
-                    self.assertIn(code, (EXIT_FAIL, EXIT_USAGE),
-                                  f"tracking.{field}={bogus!r} must be rejected, not crash")
+                    # Build the fixture first, then override: putting {field: bogus}
+                    # inline would be clobbered by the literal sync/sync_reason keys.
+                    payload = {"sync": "not-synced", "sync_reason": "no-policy"}
+                    payload[field] = bogus
+                    code, out, err = run_validator(tracked(payload))
+                    self.assertNotIn("Traceback", err,
+                                     f"tracking.{field}={bogus!r} crashed:\n{err}")
+                    self.assertEqual(
+                        code, EXIT_USAGE,
+                        f"tracking.{field}={bogus!r} must be malformed input (exit 2); "
+                        f"exit {code} means either a wrong verdict or a crash")
 
     def test_t64_invalid_utf8_is_a_usage_error(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -279,19 +289,44 @@ class TestHistoricalAndOutOfScopePass(unittest.TestCase):
         state = make_state(tracking=ABSENT)
         state.pop("schema_version")
         code, out, err = run_validator(state)
+        assert_clean_run(self, code, out, err)
         self.assertEqual(code, EXIT_PASS, "pre-contract state must not be forced to have attempted")
 
     def test_t51_schema_1_null_tracking(self):
         code, out, err = run_validator(make_state(schema_version=1, tracking=None))
+        assert_clean_run(self, code, out, err)
         self.assertEqual(code, EXIT_PASS, "schema 1 null is legacy-unknown, not never-attempted")
 
     def test_t52_schema_0_null_tracking(self):
         code, out, err = run_validator(make_state(schema_version=0, tracking=None))
+        assert_clean_run(self, code, out, err)
         self.assertEqual(code, EXIT_PASS)
+
+    def test_t67_legacy_state_with_partial_tracking_passes(self):
+        # FAIL belongs to the current schema only. A pre-contract state may carry a
+        # partial tracking object; failing it would block the Gate on history the
+        # contract never required (FR-7).
+        partials = ({}, {"provider": "github"}, {"sync": "synced"},
+                    {"provider": "github", "issue_number": 8},
+                    {"sync": "not-synced", "sync_reason": "issue-missing"},
+                    {"provider": "gitlab"})
+        for version in (None, 0, 1):
+            for tracking in partials:
+                with self.subTest(schema_version=version, tracking=tracking):
+                    state = make_state(tracking=tracking)
+                    if version is None:
+                        state.pop("schema_version")
+                    else:
+                        state["schema_version"] = version
+                    code, out, err = run_validator(state)
+                    assert_clean_run(self, code, out, err)
+                    self.assertEqual(code, EXIT_PASS,
+                                     f"schema {version} + {tracking} must not be failed")
 
     def test_t53_legacy_state_with_binding_passes(self):
         code, out, err = run_validator(make_state(schema_version=1, tracking={
             "provider": "github", "repository": "o/r", "issue_number": 8, "sync": "synced"}))
+        assert_clean_run(self, code, out, err)
         self.assertEqual(code, EXIT_PASS, "an already-bound legacy state stays valid")
 
     def test_t54_bootstrap_is_out_of_scope(self):

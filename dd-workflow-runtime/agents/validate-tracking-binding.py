@@ -169,11 +169,13 @@ def evaluate(state: dict) -> tuple[int, str]:
                                                 so a malformed schema elsewhere in the
                                                 file must not deny it)
       3. schema_version malformed              -> MalformedState
-      4. legacy schema with no tracking        -> pass (never force-attempt)
+      4. legacy schema (missing / 0 / 1)       -> pass, whatever tracking holds
       5. tracking not an object               -> fail
-      6. provider well-formedness             -> fail
-      7. the owner's recorded outcome pairs    -> pass
-      8. otherwise                            -> fail
+      6. provider / sync / sync_reason present
+         but not a string or null             -> MalformedState
+      7. provider well-formedness             -> fail
+      8. the owner's recorded outcome pairs    -> pass
+      9. otherwise                            -> fail
     """
     wf_type = state.get("workflow_type")
     if not isinstance(wf_type, str) or not wf_type:
@@ -186,11 +188,13 @@ def evaluate(state: dict) -> tuple[int, str]:
         return EXIT_PASS, f"workflow_type={wf_type!r} is exempt (task-tracking §12)"
 
     legacy, _ = _judge_schema_version(state)
-
-    tracking = state.get("tracking")
-    if legacy and tracking is None:
+    if legacy:
+        # The exemption covers the whole pre-contract state, not just a null
+        # tracking: an older state may carry a partial tracking object, and FR-7
+        # forbids failing it. FAIL belongs to the current schema only.
         return EXIT_PASS, "pre-contract state (task-tracking §3.2): no forced attempt"
 
+    tracking = state.get("tracking")
     if not isinstance(tracking, dict):
         return EXIT_FAIL, "tracking absent or null under the current schema: never attempted"
 

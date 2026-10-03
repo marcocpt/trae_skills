@@ -1558,25 +1558,30 @@ class TestVocabularyDrift(unittest.TestCase):
             f"validator SUPPORTED_PROVIDERS drifted from task-tracking §2 "
             f"(owner={sorted(owner)}, validator={sorted(validator)})")
 
-    def test_t76_mandatory_workflow_types_are_owned(self):
-        """task-tracking §2 names the workflow types under the constraint, and
-        §12 names the exempt one. Both decide PASS vs FAIL, so both are locked.
+    def owner_mandatory_workflow_types(self) -> set[str]:
+        """§2's own enumeration of the types under the constraint.
 
-        The owner writes the exempt type by Skill name
-        (``dd-project-bootstrap-workflow``); the state schema spells the same
-        workflow as ``project-bootstrap``. The `dd-`/`-workflow` affixes are the
-        repository-wide naming convention, so the value is derived rather than
-        hardcoded here. The §12 boundary table also lists neighbours
-        (`dd-git-workflow`, `dd-later-tracking`), so the exemption is identified by
-        the row that actually disclaims the §2 constraint, not by mere presence.
+        Read from the clause that introduces them, and every backticked kebab-case
+        token in it is treated as a type — so a third type added tomorrow is
+        picked up. Hardcoding today's two values inside the regex would make the
+        lock blind to exactly the change it exists to catch.
         """
         tt = read(TASK_TRACKING)
-        mandatory = set(re.findall(r"`(feature-development|bug-fix)`", tt))
-        self.assertTrue(mandatory, "could not extract mandatory workflow types — guard must FAIL")
-        self.assertEqual(set(self.mod.MANDATORY_WORKFLOW_TYPES), mandatory,
-                         "validator MANDATORY_WORKFLOW_TYPES drifted from task-tracking")
+        anchor = re.search(r"对\s*`([^`]+)`\s*与\s*`([^`]+)`\s*工作流", tt)
+        self.assertIsNotNone(anchor,
+                             "could not locate §2's enumeration of mandatory workflow "
+                             "types — guard must FAIL")
+        # Bound the span at 工作流: the same sentence continues with sync/sync_reason
+        # and the bootstrap carve-out, which are not workflow types.
+        end = tt.index("工作流", anchor.start())
+        span = tt[anchor.start():end]
+        types = set(re.findall(r"`([a-z][a-z0-9-]+)`", span))
+        self.assertTrue(types, "could not extract mandatory workflow types — guard must FAIL")
+        return types
 
-        sec12 = _slice_section(tt, 2, "12. 与相邻 Skill 的边界")
+    def owner_exempt_workflow_types(self) -> set[str]:
+        """§12's row that disclaims the §2 constraint."""
+        sec12 = _slice_section(read(TASK_TRACKING), 2, "12. 与相邻 Skill 的边界")
         exempt = set()
         for row in self._table_rows(sec12):
             if "不适用" not in row[-1]:
@@ -1584,21 +1589,43 @@ class TestVocabularyDrift(unittest.TestCase):
             for name in re.findall(r"`dd-([a-z-]+-workflow)`", row[0]):
                 exempt.add(name.removesuffix("-workflow"))
         self.assertTrue(exempt, "could not extract the exempt workflow — guard must FAIL")
-        self.assertEqual(set(self.mod.EXEMPT_WORKFLOW_TYPES), exempt,
-                         "validator EXEMPT_WORKFLOW_TYPES drifted from task-tracking §12")
+        return exempt
+
+    def owner_legacy_boundary_expression(self) -> str:
+        """How §3.2 spells the legacy boundary."""
+        tt = read(TASK_TRACKING)
+        m = re.search(r"`< (\d+)`", tt)
+        self.assertIsNotNone(m,
+                             "could not locate §3.2's legacy boundary expression — "
+                             "guard must FAIL")
+        return m.group(0)
 
     def test_t77_legacy_schema_boundary_is_owned(self):
-        """§3.2 scopes the legacy exemption to specific versions. Expressed as
-        `< 2` it would also cover negatives, letting a never-attempted state pass."""
-        tt = read(TASK_TRACKING)
-        legacy = set(re.findall(r"`< 2`|\{0, 1\}|\b0 或 1\b", tt))
-        self.assertTrue(legacy, "could not confirm §3.2 legacy scope text — guard must FAIL")
-        self.assertEqual(set(self.mod.LEGACY_SCHEMA_VERSIONS), {0, 1},
-                         "task-tracking §3.2 covers schema 0 and 1 (plus a missing "
-                         "version); the validator must not widen this to `< 2`")
-        self.assertEqual(self.mod.CURRENT_SCHEMA_VERSION, 2,
-                         "task-tracking §3.2 names schema_version 2 as the discriminator")
+        """§3.2 writes the boundary as `< 2`. The validator keeps every non-negative
+        version below the current one and rejects negatives outright, which is a
+        deliberate narrowing: a negative schema version is meaningless, and reading
+        it as legacy let a never-attempted state pass (external review round 3).
 
+        This is therefore a relation, not an equality with the literal `< 2`.
+        """
+        self.assertEqual(self.owner_legacy_boundary_expression(), "`< 2`",
+                         "task-tracking §3.2's legacy boundary expression changed")
+        legacy = set(self.mod.LEGACY_SCHEMA_VERSIONS)
+        current = self.mod.CURRENT_SCHEMA_VERSION
+        self.assertEqual(legacy, set(range(current)),
+                         "every non-negative schema version below the current one is "
+                         "legacy, and none at or above it")
+        for negative in (-1, -2, -100):
+            self.assertNotIn(negative, legacy,
+                             "negatives must be rejected, never treated as legacy")
+
+    def test_t76_mandatory_workflow_types_are_owned(self):
+        self.assertEqual(set(self.mod.MANDATORY_WORKFLOW_TYPES),
+                         self.owner_mandatory_workflow_types(),
+                         "validator MANDATORY_WORKFLOW_TYPES drifted from task-tracking §2")
+        self.assertEqual(set(self.mod.EXEMPT_WORKFLOW_TYPES),
+                         self.owner_exempt_workflow_types(),
+                         "validator EXEMPT_WORKFLOW_TYPES drifted from task-tracking §12")
 
 class TestVocabularyDriftMutations(unittest.TestCase):
     """The drift guard must actually turn red on semantic tampering.
@@ -1713,6 +1740,26 @@ class TestVocabularyDriftMutations(unittest.TestCase):
                                      'SUPPORTED_PROVIDERS = frozenset()')
         self.assertNotEqual(mutated, self.v_src, "mutation target must exist")
         self.assertTrue(self._guard_fails(mutated, self.tt_src, ("test_t75",)), "M7 not caught")
+    def test_m8_owner_gains_a_third_mandatory_workflow_type(self):
+        mutated = self.tt_src.replace(
+            "对 `feature-development` 与 `bug-fix` 工作流",
+            "对 `feature-development` 与 `bug-fix` 与 `release` 工作流")
+        self.assertNotEqual(mutated, self.tt_src, "mutation target must exist")
+        self.assertTrue(self._guard_fails(self.v_src, mutated, ("test_t76",)),
+                        "M8 not caught — a new mandatory type must reach the validator")
+
+    def test_m9_owner_moves_the_legacy_boundary(self):
+        mutated = self.tt_src.replace("`< 2`", "`< 3`")
+        self.assertNotEqual(mutated, self.tt_src, "mutation target must exist")
+        self.assertTrue(self._guard_fails(self.v_src, mutated, ("test_t77",)),
+                        "M9 not caught — the legacy boundary must be re-checked by hand")
+
+    def test_m10_validator_widens_the_legacy_set(self):
+        mutated = self.v_src.replace("LEGACY_SCHEMA_VERSIONS = frozenset({0, 1})",
+                                     "LEGACY_SCHEMA_VERSIONS = frozenset({0, 1, 2})")
+        self.assertNotEqual(mutated, self.v_src, "mutation target must exist")
+        self.assertTrue(self._guard_fails(mutated, self.tt_src, ("test_t77",)),
+                        "M10 not caught — swallowing the current schema as legacy")
 
 
 class TestEntrypointReachability(unittest.TestCase):
@@ -1734,9 +1781,16 @@ class TestEntrypointReachability(unittest.TestCase):
     OBLIGATION = ("task-tracking", "§3")
     ACTION = ("创建", "Issue")
 
-    # Wording that would invert or void the obligation.
-    NEGATIONS = ("无需", "不必", "可选", "非必须", "可以不", "自行决定", "视情况",
-                 "建议", "禁止", "不得创建", "尽量", "最好")
+    # Wording that would invert or void the obligation. A blacklist can always be
+    # extended, so the mandate itself is matched positively (see MANDATE below)
+    # and these only add readable diagnostics.
+    NEGATIONS = ("无需", "不必", "非必须", "可以不", "不得创建", "禁止", "尽量", "最好")
+
+    # A negated mandate still contains 必须 ("不是必须", "并非要求必须"). These
+    # prefixes are what make 必须 not a mandate, so they are checked before the
+    # bare 必须 is accepted.
+    NEGATING_PREFIXES = ("不是必须", "并非必须", "并非要求必须", "不是要求必须",
+                         "可以选择是否必须", "不再必须", "未必须")
 
     # Softeners that replace a mandate without being plain negations.
     PROHIBITED_MANDATES = ("应当", "应该", "宜", "鼓励")
@@ -1779,11 +1833,14 @@ class TestEntrypointReachability(unittest.TestCase):
         for token in cls.NEGATIONS:
             if token in clause:
                 return f"obligation is negated by {token!r}"
+        for prefix in cls.NEGATING_PREFIXES:
+            if prefix in clause:
+                return f"mandate is negated by {prefix!r}"
         for token in cls.PROHIBITED_MANDATES:
             if token in clause:
                 return f"obligation is not a mandate ({token!r})"
-        if "必须" not in clause:
-            return "tracking clause is not mandatory (no 必须 inside the clause)"
+        if not re.search(r"(?<!不)(?<!非)必须", clause):
+            return "tracking clause has no positive 必须 mandate"
         for token in cls.BAD_TIMING:
             if token in clause:
                 return f"attempt is placed outside the Gate by {token!r}"
@@ -1940,6 +1997,12 @@ class TestEntrypointReachability(unittest.TestCase):
          lambda c: c.replace("必须", "建议", 1)),
         ("forbidden", "极性反转：必须 -> 禁止",
          lambda c: c.replace("必须", "禁止", 1)),
+        ("not_mandatory", "否定式：不是必须",
+         lambda c: c.replace("必须按", "不是必须按", 1)),
+        ("not_required", "否定式：并非要求必须",
+         lambda c: c.replace("必须按", "并非要求必须按", 1)),
+        ("choose_whether", "可疑式：可以选择是否必须",
+         lambda c: c.replace("必须按", "可以选择是否必须按", 1)),
         ("should", "强制词弱化为 应当",
          lambda c: c.replace("必须", "应当", 1)),
         ("drop_mandate", "删除 tracking 子句里的 必须",

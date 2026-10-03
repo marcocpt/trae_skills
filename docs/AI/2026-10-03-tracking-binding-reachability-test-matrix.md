@@ -57,8 +57,8 @@
 | T-25 | `tracking.sync="not-synced"`, `sync_reason="不存在的值"` | exit 1（未知原因值不合规） |
 | T-26 | `tracking.provider="gitlab"`（未登记 provider） | exit 1 |
 | T-27 | `issue_number` ∈ {`0`, `""`, `False`, `-1`, `[]`, `{}`, `1.0`}，无 `sync` | exit 1（只有正整数才是 Issue 号；`-1` 虽为真值但不是 Issue 号） |
-| T-28 | `schema_version` ∈ {`"2"`, `"1"`, `True`, `False`, `2.5`, `[]`, `{}`} + `tracking=null` | exit 2（非整数是残缺状态，不得当作 legacy 放行，也不得当作未尝试判 1） |
-| T-29 | `workflow_type` ∈ {缺失, `""`, `"feature"`, `"Feature-Development"`, `7`} | 非 exit 0（未识别类型不得 fail-open） |
+| T-28 | `schema_version` ∈ {`"2"`, `"1"`, `True`, `False`, `2.5`, `[]`, `{}`, `-1`, `-2`} + `tracking=null` | exit 2（非整数与负数是残缺状态：不得当作 legacy 放行，也不得当作未尝试判 1。§3.2 字面写 `< 2`，判定器收窄为 {0,1} 并显式拒绝负数） |
+| T-29 | `workflow_type` ∈ {缺失, `""`, `"feature"`, `"Feature-Development"`, `7`} | **精确 exit 2 且无 Traceback**（未识别类型不得 fail-open，也不得靠 crash 蒙混过关） |
 | T-62 | `(sync, sync_reason)` 为 §4 未定义的交叉组合：`not-authorized`+`issue-missing`、`not-synced`+`user-declined`、`not-authorized`+`binding-ambiguous`、`not-synced`+`no-policy`、`disabled`+`issue-missing`、`synced`+`no-policy` | exit 1（词表合法但配对非法） |
 | T-63 | `tracking.provider` / `sync` / `sync_reason` 为 `[]`、`{}`、`7`、`[1,2]` | **exit 2 且 stderr 无 Traceback**。未捕获异常写 stderr 且退出码为 1（与 Gate FAIL 同码），只查 stdout 或只要求非 0 会让真实 crash 通过 |
 | T-64 | state 文件为非法 UTF-8 字节 | exit 2，无 Traceback |
@@ -93,11 +93,12 @@
 
 | Test ID | 输入 | 期望 | 依据 |
 |---|---|---|---|
-| T-50 | `schema_version` 缺失, `tracking` 缺失 | exit 0 | Design §3.2 分支 2；不得据其触发创建 |
-| T-51 | `schema_version=1`, `tracking: null` | exit 0 | 同上 |
-| T-52 | `schema_version=0`, `tracking: null` | exit 0 | 同上 |
+| T-50 | `schema_version` 缺失, `tracking` 缺失 | exit 0 | Design v3 §3.2 分支④；不得据其触发创建 |
+| T-51 | `schema_version=1`, `tracking: null` | exit 0 | 同上（分支④） |
+| T-52 | `schema_version=0`, `tracking: null` | exit 0 | 同上（分支④） |
 | T-53 | `schema_version=1`, `tracking` 对象带有效 `issue_number` | exit 0 | 已绑定即有效 |
-| T-54 | `workflow_type=project-bootstrap`, `schema_version=2`, `tracking` 缺失 | exit 0 | owner §12：bootstrap 不适用 |
+| T-67 | `schema_version` ∈ {缺失, 0, 1} × `tracking` ∈ {`{}`, `{provider}`, `{sync}`, `{provider,issue_number}`, `{sync,sync_reason}`, `{provider:gitlab}`} | exit 0（全部 18 例）。FAIL 只属于当前 schema；旧状态可能带部分 tracking 对象，FR-7 禁止因此判不通过 |
+| T-54 | `workflow_type=project-bootstrap`, `schema_version=1`, `tracking=null` | exit 0 | owner §12：bootstrap 不适用 |
 | T-55 | 状态文件不存在 | exit 2 | 输入错误，不是 Gate 失败 |
 
 ### 3.5 离线性（AC-10）
@@ -117,6 +118,8 @@
 | T-73 | 判定器引用的 `tracking` 子字段名 ⊆ owner 合同 §2 schema 块声明的字段名 |
 | T-74 | 判定器 `RECORDED_OUTCOMES`（`(sync, sync_reason)` 配对集）== §4 表逐行抽出的配对集，双向相等 |
 | T-75 | 判定器 `SUPPORTED_PROVIDERS` == §2 登记的 provider |
+| T-76 | 判定器 mandatory／exempt workflow type 集 == §2 的枚举与 §12 中**声明不适用**的行（按在表中出现识别会误收 `dd-git-workflow`） |
+| T-77 | legacy 边界：owner §3.2 表达式仍为 `` `< 2` ``，判定器 `LEGACY_SCHEMA_VERSIONS == set(range(CURRENT))` 且负数不在 legacy。这是**关系**而非与字面相等——判定器对字面文本做了有意收窄 |
 
 T-70~T-75 从 `task-tracking.md` 用正则抽取词表/配对，与判定器常量双向比对。抽取失败（如表格结构变化）必须 FAIL 而非静默跳过——否则 owner 改版后测试假绿。
 
@@ -133,10 +136,30 @@ T-70~T-75 从 `task-tracking.md` 用正则抽取词表/配对，与判定器常�
 | M5 | `RECORDED_OUTCOMES` 删掉 `disabled` 行 | T-74、自记录断言 |
 | M6 | 判定器新增 §4 未定义的交叉配对 | T-74 |
 | M7 | 判定器清空 `SUPPORTED_PROVIDERS` | T-75 |
+| M8 | owner §2 新增第三个强制 workflow type | T-76 |
+| M9 | owner 把 legacy 边界表达式改为 `` `< 3` `` | T-77 |
+| M10 | 判定器把当前版本吞进 `LEGACY_SCHEMA_VERSIONS` | T-77 |
 
 变异 harness 必须断言 `errors == []`、至少一个 failure、且失败者是上表预期断言之一。只看 `wasSuccessful()` 会把 SyntaxError、import 失败或抽取 helper 的意外异常误判为"已捕获"。
 
-**T-14 入口层语义变异**（`TestEntrypointReachability`）：入口断言不满足于关键词存在，必须在下列语义反转后全部变红——删除义务句、极性反转为「无需按」／「可选」、时序反转为 `Gate 后`、时序反转为 `进入 Environment Stage 之前`、引入未授权的 `checkpoint` 措辞。入口谓词同时禁止否定词（无需／不必／可选／非必须／可以不／自行决定／视情况）与错误时序（`Gate 后`／`Gate 之后`／`Stage 之前`／`阶段之前`／`进入 Environment 前`）。
+**T-14/T-15 入口层语义变异**（`TestEntrypointReachability`）：入口断言不满足于关键词存在。
+
+谓词先定位**同时含 `task-tracking` + `§3` + `Issue` 的同一子句**，再只在该子句内校验动作、否定、强制词与时序——整段 token 聚合会让 tracking 句借用无关句的「必须」（"恢复任务…必须复用并验证"）。
+
+| 变异 | 期望 |
+|---|---|
+| 删除义务句 | 红 |
+| 极性反转：必须按 → 无需按／可选／建议／禁止 | 红 |
+| 否定式：不是必须／并非要求必须／可以选择是否必须 | 红 |
+| 强制词弱化：必须 → 应当 | 红 |
+| 删除子句内的 必须 | 红 |
+| 时序反转：`Gate 前` → `Gate 后`／`进入 Environment Stage 之前` | 红 |
+| 把 Gate 锚点拆出 tracking 子句 | 红 |
+| 引入未授权的 `checkpoint` 措辞 | 红 |
+
+**T-15** 专测子句绑定要防的那一个绕过：剥掉 tracking 子句里的「必须」，而无关句仍留着「必须」——必须判红。
+
+禁止词表与错误时序黑名单：`无需`／`不必`／`非必须`／`可以不`／`不得创建`／`禁止`／`尽量`／`最好`，`不是必须`／`并非必须`／`并非要求必须`／`不是要求必须`／`可以选择是否必须`／`不再必须`／`未必须`，`应当`／`应该`／`宜`／`鼓励`，`Gate 后`／`Gate 之后`／`Stage 之前`／`阶段之前`／`进入 Environment 前`。
 
 ## 5. Population 分母与 item registry
 
@@ -164,9 +187,9 @@ T-70~T-75 从 `task-tracking.md` 用正则抽取词表/配对，与判定器常�
 | AC-06 | T-09, T-10 | L1 |
 | AC-07 | T-20~T-29（FAIL/usage）, T-30~T-31（PASS） | L2 |
 | AC-08 | T-40~T-49（逐类 10 例）, T-62（反向非法配对） | L2 |
-| AC-09 | T-50~T-54 | L2 |
+| AC-09 | T-50~T-54, T-67 | L2 |
 | AC-10 | T-55, T-56, T-57, T-63, T-64, T-65, T-66 | L2 |
-| AC-11 | T-70~T-75, M1~M7 | L3 |
+| AC-11 | T-70~T-77, M1~M10 | L3 |
 | AC-12 | T-11, T-14, T-15 | L1 |
 | AC-13 | 全量既有测试模块 | L4 |
 | AC-14 | `git diff --name-only` 不含 `task-tracking.md` | L4 |
