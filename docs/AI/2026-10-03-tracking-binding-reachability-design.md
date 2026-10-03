@@ -4,7 +4,8 @@
 - Workflow ID: feature-development-20261003T053419Z-ee41fa8
 - Stage: Design（WHO／结构）
 - 基线 Requirements: v2
-- 版本: v3 — §3.2 判定算法同步实现（外部强审 H-02：canonical Design 与代码分叉）
+- 版本: v4 — §3.2 判定算法同步实现；强制工作流类型集按 owner §2 扩为四类长流程工作流
+  （2026-10-03 合并 origin/develop 的 fast-track 工作流后修订）
 - 日期: 2026-10-03
 
 ## 1. 架构定位
@@ -66,6 +67,11 @@
 
 按 `workflow_type`、`schema_version` 与 `tracking` 形态分派。编号与
 `validate-tracking-binding.py::evaluate()` 的 docstring 一一对应：
+
+强制类型集（owner §2 的四类长流程工作流）：
+`feature-development`、`bug-fix`、`feature-fast-track`、`bug-fast-track`。
+它们的**绑定 Gate 不同**（Feature/Bug 为 Environment Gate，两个速通为 Intake Gate），
+但"必须尝试并记录"的义务与结果词表相同，因此判定逻辑一致。
 
 ```text
 读取 state 失败 / 非法 UTF-8 / 非 dict 对象            → exit 2
@@ -135,6 +141,7 @@ owner 合同 §3.1 的对账与创建需要网络与凭据。判定层若做对�
 | v1 | 初版四条 PASS 分支 + provider 前置检查 | 用户批准 |
 | v2 | 细化 PASS 分支（synced/disabled 免原因值） | Test Matrix 自检发现 v1 与 §4 冲突 |
 | v3 | 配对化判定、legacy 集精确为 {缺失,0,1}、豁免前置、issue_number 收为正整数、非整数 schema 与未识别 workflow_type 判 exit 2 | 外部强审两轮 FINDINGS（H-01/H-02/H-03、M-01） |
+| v4 | 强制类型集扩为四类长流程工作流；FAIL 诊断改称"对应绑定 Gate"并区分 Environment/Intake | 合并 `origin/develop` 后 T-76 漂移锁报警：owner §2 已纳入 `feature-fast-track`／`bug-fast-track`，判定器原会把它们判为未识别类型而 exit 2 |
 
 ## 4. 数据流
 

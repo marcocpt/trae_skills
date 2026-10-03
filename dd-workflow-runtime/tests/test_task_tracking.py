@@ -152,18 +152,39 @@ def check_no_absolute_paths(tt: str) -> None:
     assert "C:\\" not in tt, "contract must not embed absolute paths"
 
 
-def check_stage_projection_covers_canonical_stages(tt: str, feature: list[str], bug: list[str]) -> None:
-    """§10: every canonical Feature/Bug stage maps exactly once."""
+def _projection_blocks(block: str) -> dict:
+    """Split the §10 mapping block per workflow header (unindented line)."""
+    blocks: dict = {}
+    current = None
+    for line in block.splitlines():
+        if line and not line[:1].isspace():
+            current = line.strip()
+            blocks.setdefault(current, [])
+        elif current is not None:
+            blocks[current].append(line)
+    return blocks
+
+
+def check_stage_projection_covers_canonical_stages(
+    tt: str, feature: list, bug: list, feature_fast: list, bug_fast: list
+) -> None:
+    """§10: every canonical stage of each long-running workflow maps exactly once.
+
+    Blocks are split per workflow header instead of by a single `bug-fix` split,
+    so a new workflow's stages cannot be silently counted against another
+    workflow's coverage (and vice versa).
+    """
     sec = h2_section(tt, "10. 看板投影")
     block = re.search(r"```text\n(.*?)```", sec, re.S).group(1)
-    assert "bug-fix" in block, "projection block must have a bug-fix part"
-    feat_part, bug_part = block.split("bug-fix", 1)
-    for stage in feature:
-        n = len(re.findall(rf"(?<![\w-]){re.escape(stage)}(?![\w-])", feat_part))
-        assert n == 1, f"feature stage {stage!r} mapped {n} times (must be exactly 1)"
-    for stage in bug:
-        n = len(re.findall(rf"(?<![\w-]){re.escape(stage)}(?![\w-])", bug_part))
-        assert n == 1, f"bug stage {stage!r} mapped {n} times (must be exactly 1)"
+    blocks = _projection_blocks(block)
+    for wf, stages in (("feature-development", feature), ("bug-fix", bug),
+                       ("feature-fast-track", feature_fast), ("bug-fast-track", bug_fast)):
+        assert wf in blocks, f"projection block must have a {wf} part"
+        assert stages, f"canonical stage list for {wf} must not be empty"
+        part = "\n".join(blocks[wf])
+        for stage in stages:
+            n = len(re.findall(rf"(?<![\w-]){re.escape(stage)}(?![\w-])", part))
+            assert n == 1, f"{wf} stage {stage!r} mapped {n} times (must be exactly 1)"
 
 
 def check_section61_selection_rule(tt: str) -> None:
@@ -334,7 +355,7 @@ def check_mandatory_attempt_and_record(tt: str) -> None:
     assert "必须已完成一次 tracking 绑定尝试" in sec2, "§2 must require a completed attempt"
     assert "未尝试且未记录就通过 Gate 属违规" in sec2, "§2 must forbid passing untried and unrecorded"
     assert "不是\"绑定必须成功\"" in sec2, "§2 must state the rule is attempt-and-record, not a blocking bind"
-    for wf in ("feature-development", "bug-fix"):
+    for wf in ("feature-development", "feature-fast-track", "bug-fix", "bug-fast-track"):
         assert wf in sec2, f"§2 obligation must cover {wf}"
     assert "第一阶段" in sec2, "§2 exemption must be scoped to bootstrap phase 1"
     assert "remote-unresolvable" in sec2, "§2 must use the same reason token as the §4 matrix"
@@ -357,10 +378,12 @@ def check_mandatory_attempt_and_record(tt: str) -> None:
         "§2 must give recovery a mechanical discriminator for old vs new null"
     # §2 itself must scope the three-state discrimination to feature/bug: an unscoped
     # rule would give project-bootstrap a different answer than §3.2 / state.md.
-    assert "对 `feature-development` 与 `bug-fix`：`tracking` 缺失或 `null`" in sec2, \
-        "§2 must scope the null semantics to feature/bug workflows"
-    assert "上述两类工作流的新旧 null 机械判别式" in sec2, \
-        "§2 must scope the discriminator to the same two workflows"
+    assert "对 `feature-development`、`feature-fast-track`、`bug-fix` 与 `bug-fast-track`" in sec2, \
+        "§2 must scope the null semantics to the four long-running workflows"
+    assert "四类长流程工作流" in sec2, \
+        "§2 must name the shared scope once so consumers can reference it"
+    assert "上述四类工作流的新旧 null 机械判别式" in sec2, \
+        "§2 must scope the discriminator to the same four workflows"
     assert "不使用上述三态判别" in sec2 and "project-bootstrap" in sec2, \
         "§2 must state that bootstrap does not use the three-state discrimination"
     assert "不得直接当作从未尝试" in sec2, \
@@ -560,8 +583,10 @@ def check_mandatory_attempt_and_record(tt: str) -> None:
     assert "其第一阶段另明确不自动创建/绑定/投影" in sec12, \
         "§12 must keep the bootstrap phase-1 opt-out explicit"
     sec13 = h2_section(tt, "13. 红线")
-    assert "就通过 Environment Gate" in sec13 and "必须尝试并记录" in sec13, \
-        "§13 must forbid passing the Gate untried and unrecorded"
+    assert "就通过对应的绑定 Gate" in sec13 and "必须尝试并记录" in sec13, \
+        "§13 must forbid passing the binding Gate untried and unrecorded"
+    assert "四类长流程工作流" in sec13, \
+        "§13 must scope the binding red line to the four long-running workflows"
     assert "首次创建常设授权" in sec13, "§13 must keep the standing authorization out of wider Git scope"
 
 
@@ -670,6 +695,13 @@ def bug_canonical_stages() -> list[str]:
     m = re.search(r"```text\n((?:\d+ → [a-z][a-z0-9-]*\n)+)```", state)
     assert m, "bug state.md must carry the legacy step mapping"
     return [line.split("→")[1].strip() for line in m.group(1).strip().splitlines()]
+
+
+def fast_track_canonical_stages(skill_dir: str) -> list[str]:
+    skill = read(REPO_ROOT / skill_dir / "SKILL.md")
+    m = re.search(r"required_exit_stages:\s*\n((?:\s+- [a-z][a-z0-9-]*\n)+)", skill)
+    assert m, f"{skill_dir} SKILL.md must declare required_exit_stages"
+    return re.findall(r"- ([a-z][a-z0-9-]*)", m.group(1))
 
 
 # ---------------------------------------------------------------------------
@@ -856,7 +888,11 @@ class TestProjectionAndRouting(unittest.TestCase):
     def test_stage_projection_covers_all_stages(self):
         tt = read(TASK_TRACKING)
         check_stage_projection_covers_canonical_stages(
-            tt, feature_canonical_stages(), bug_canonical_stages()
+            tt,
+            feature_canonical_stages(),
+            bug_canonical_stages(),
+            fast_track_canonical_stages("dd-feature-fast-track"),
+            fast_track_canonical_stages("dd-bug-fast-track"),
         )
 
     def test_projection_table_single_owner(self):
@@ -898,6 +934,56 @@ class TestProjectionAndRouting(unittest.TestCase):
         text = read(BOOTSTRAP_SKILL)
         for token in ("不自动创建", "不自动绑定", "不自动投影", "task-tracking"):
             self.assertIn(token, text)
+
+
+class TestFastTrackWorkflowsCarryTheBindingCallSite(unittest.TestCase):
+    """§2/§3/§12: the two fast-track workflows are long-running workflows, so they
+    owe the same one attempt-and-record call site — in Intake, non-blocking, with
+    every binding semantic left to task-tracking.md.
+    """
+
+    CASES = ("dd-feature-fast-track", "dd-bug-fast-track")
+
+    def _intake(self, skill_dir: str) -> str:
+        ref = read(REPO_ROOT / skill_dir / "references" / "fast-track.md")
+        return ref.split("## 1. Intake", 1)[1].split("\n## ", 1)[0]
+
+    def test_intake_carries_hook_and_gate_clause(self):
+        for skill_dir in self.CASES:
+            intake = self._intake(skill_dir)
+            self.assertIn("task-tracking", intake,
+                          f"{skill_dir} Intake must route to the tracking owner")
+            self.assertIn("§3", intake,
+                          f"{skill_dir} hook must call §3, not invent a binding rule")
+            self.assertIn("绑定 Gate 就是 Intake", intake,
+                          f"{skill_dir} must name Intake as its binding Gate")
+            self.assertIn("不阻塞本 Stage", intake,
+                          f"{skill_dir} binding failure must stay non-blocking")
+            self.assertIn("Intake Gate：", intake,
+                          f"{skill_dir} Intake must close with a Gate clause")
+            self.assertLess(intake.find("task-tracking"), intake.find("Intake Gate："),
+                            f"{skill_dir} hook must precede the Gate clause")
+            self.assertIn("落盘", intake.split("Intake Gate：", 1)[1],
+                          f"{skill_dir} Gate must require the owner result to be persisted")
+
+    def test_hook_does_not_restate_owner_semantics(self):
+        for skill_dir in self.CASES:
+            intake = self._intake(skill_dir)
+            for token in ("sync_reason", "not-authorized", "binding-ambiguous",
+                          "create-outcome-unknown", "no-policy", "provider-unavailable",
+                          "legacy-tracking-unknown", "issue_number"):
+                self.assertNotIn(token, intake,
+                                 f"{skill_dir} must not restate owner vocabulary ({token})")
+
+    def test_skill_routes_task_tracking_and_keeps_the_ask_at_one(self):
+        for skill_dir in self.CASES:
+            skill = read(REPO_ROOT / skill_dir / "SKILL.md")
+            self.assertIn("references/task-tracking.md", skill,
+                          f"{skill_dir} SKILL.md must route to task-tracking.md")
+            self.assertIn("唯一一次询问", skill,
+                          f"{skill_dir} must keep the restatement as the only ask")
+            self.assertIn("不因此向用户发问", self._intake(skill_dir),
+                          f"{skill_dir} binding must not add an ask to the fast track")
 
 
 class TestSection61Selection(unittest.TestCase):
@@ -1561,21 +1647,24 @@ class TestVocabularyDrift(unittest.TestCase):
     def owner_mandatory_workflow_types(self) -> set[str]:
         """§2's own enumeration of the types under the constraint.
 
-        Read from the clause that introduces them, and every backticked kebab-case
-        token in it is treated as a type — so a third type added tomorrow is
-        picked up. Hardcoding today's two values inside the regex would make the
-        lock blind to exactly the change it exists to catch.
+        Located by the bullet that opens with 对 ` ... and mentions 工作流, then the
+        backticked names are read from the list itself. Two earlier attempts at this
+        were wrong in instructive ways: hardcoding today's names inside the regex
+        would be blind to a fourth type, and anchoring on the literal tail
+        "与 `Y` 工作流" broke when the owner reworded the list to
+        "对 `X`、`Y`、`Z` 与 `W`（下称…）：". So the list is read, not the sentence.
         """
-        tt = read(TASK_TRACKING)
-        sec2 = _slice_section(tt, 2, "2. 状态字段")
-        anchor = re.search(r"对\s*`([^`]+)`\s*与\s*`([^`]+)`\s*工作流", sec2)
-        self.assertIsNotNone(anchor,
-                             "could not locate §2's enumeration of mandatory workflow "
-                             "types — guard must FAIL")
-        # Bound the span at 工作流: the same sentence continues with sync/sync_reason
-        # and the bootstrap carve-out, which are not workflow types.
-        end = sec2.index("工作流", anchor.start())
-        types = set(re.findall(r"`([a-z][a-z0-9-]+)`", sec2[anchor.start():end]))
+        sec2 = _slice_section(read(TASK_TRACKING), 2, "2. 状态字段")
+        bullets = [ln for ln in sec2.splitlines()
+                   if ln.lstrip().startswith("- 对 `") and "工作流" in ln]
+        self.assertTrue(bullets,
+                        "could not locate §2's enumeration of mandatory workflow "
+                        "types — guard must FAIL")
+        types = set()
+        for bullet in bullets:
+            # The name list ends at the first Chinese bracket or colon that follows it.
+            head = re.split(r"[（(:：]", bullet, maxsplit=1)[0]
+            types.update(re.findall(r"`([a-z][a-z0-9-]+)`", head))
         self.assertTrue(types, "could not extract mandatory workflow types — guard must FAIL")
         return types
 
@@ -1744,10 +1833,9 @@ class TestVocabularyDriftMutations(unittest.TestCase):
                                      'SUPPORTED_PROVIDERS = frozenset()')
         self.assertNotEqual(mutated, self.v_src, "mutation target must exist")
         self.assertTrue(self._guard_fails(mutated, self.tt_src, ("test_t75",)), "M7 not caught")
-    def test_m8_owner_gains_a_third_mandatory_workflow_type(self):
+    def test_m8_owner_gains_an_extra_mandatory_workflow_type(self):
         mutated = self.tt_src.replace(
-            "对 `feature-development` 与 `bug-fix` 工作流",
-            "对 `feature-development` 与 `bug-fix` 与 `release` 工作流")
+            "与 `bug-fast-track`（下称", "与 `bug-fast-track`、`release`（下称")
         self.assertNotEqual(mutated, self.tt_src, "mutation target must exist")
         self.assertTrue(self._guard_fails(self.v_src, mutated, ("test_t76",)),
                         "M8 not caught — a new mandatory type must reach the validator")

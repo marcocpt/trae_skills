@@ -42,11 +42,11 @@ tracking:
 
 约束：
 
-- 对 `feature-development` 与 `bug-fix`：`tracking` 缺失或 `null` 表示**从未尝试**；对象存在但 `issue_number` 为 `null` 表示**已完成绑定尝试但未形成绑定**（授权条件不满足、创建失败或对账失败，见 §3.1 与 §4）。**本合同生效前**持久化的 state 里的缺失/`null` 属第三种含义——历史未分类，按 §3.2 迁移，**不得直接当作从未尝试**。三者都**不得阻塞任何 Workflow Gate**，也不得因此 ASK；
-- **上述两类工作流的新旧 null 机械判别式**：以 state 的 `schema_version` 判定——`>= 2` 的 `null` 是"从未尝试"（本合同语义）；`< 2`（含缺失、按 schema 0 兼容读取）的 `null` 是历史未分类，走 §3.2。恢复器不得靠推断工作流阶段来猜版本；
+- 对 `feature-development`、`feature-fast-track`、`bug-fix` 与 `bug-fast-track`（下称**四类长流程工作流**；两个速通工作流与 Feature/Bug 对等）：`tracking` 缺失或 `null` 表示**从未尝试**；对象存在但 `issue_number` 为 `null` 表示**已完成绑定尝试但未形成绑定**（授权条件不满足、创建失败或对账失败，见 §3.1 与 §4）。**本合同生效前**持久化的 state 里的缺失/`null` 属第三种含义——历史未分类，按 §3.2 迁移，**不得直接当作从未尝试**。三者都**不得阻塞任何 Workflow Gate**，也不得因此 ASK；
+- **上述四类工作流的新旧 null 机械判别式**：以 state 的 `schema_version` 判定——`>= 2` 的 `null` 是"从未尝试"（本合同语义）；`< 2`（含缺失、按 schema 0 兼容读取）的 `null` 是历史未分类，走 §3.2。恢复器不得靠推断工作流阶段来猜版本；
 - `dd-project-bootstrap-workflow` **不使用上述三态判别**，其 `tracking` 语义按 §12 与 [state.md](state.md) 保持不变（缺失或 `null` 仍按未绑定读取，不走 §3.2 迁移）；上面的"已尝试未绑定"变体同样只适用于上述两类工作流；
 - 已尝试未绑定时必须写出该对象：填 `sync` 与 `sync_reason`（必要时 `provider` / `repository`，无法推导时允许为 `null`），`issue_number` / `last_checkpoint_ref` 保持 `null`；对象存在时 `provider` 若非 `null` 必须是受支持值。这样"尝试并记录"在状态层可表示，不依赖把失败塞进 `tracking: null`；
-- 对 `feature-development` 与 `bug-fix` 工作流，Environment Gate **必须已完成一次 tracking 绑定尝试并把结果落盘**：已绑定一张 Issue，或已按 §4 记 `sync` 与 `sync_reason`；**未尝试且未记录就通过 Gate 属违规**（§13）。这里的硬约束是"必须尝试并记录"，不是"绑定必须成功"。默认动作是新建 Issue（§3、§3.1）。`dd-project-bootstrap-workflow` **第一阶段**不在此约束内（见 §12）；
+- 对四类长流程工作流，**worktree 与分支确定之后、该工作流对应的绑定 Gate 之前**（Feature/Bug 为 Environment Gate；两个速通工作流为 Intake Gate）**必须已完成一次 tracking 绑定尝试并把结果落盘**：已绑定一张 Issue，或已按 §4 记 `sync` 与 `sync_reason`；**未尝试且未记录就通过 Gate 属违规**（§13）。这里的硬约束是"必须尝试并记录"，不是"绑定必须成功"。默认动作是新建 Issue（§3、§3.1）。`dd-project-bootstrap-workflow` **第一阶段**不在此约束内（见 §12）；
 - `sync` 四种语义互不混用：
 
 | 取值 | 含义 | 后续 |
@@ -62,8 +62,8 @@ tracking:
 
 ## 3. 绑定规则
 
-- 绑定时机：Environment Stage，worktree 与分支确定之后、Environment Gate 之前；
-- **默认动作是新建**：`feature-development` 与 `bug-fix` 工作流在没有既有绑定 Issue 时，必须在 Environment Gate 前创建一张并绑定；创建前先按 §3.1 对账，新建属窄范围常设授权（范围与禁止项见 §8.1）；
+- 绑定时机：worktree 与分支确定之后、该工作流对应的绑定 Gate 之前——Feature/Bug 在 Environment Stage，两个速通工作流在 Intake Stage；
+- **默认动作是新建**：四类长流程工作流在没有既有绑定 Issue 时，必须在对应绑定 Gate 前创建一张并绑定；创建前先按 §3.1 对账，新建属窄范围常设授权（范围与禁止项见 §8.1）；
 - 新建时按 §5 骨架填写标题与稳定信息正文（含 `Workflow ID` 行），**禁止写入 worktree 绝对路径**；创建后必须在本轮摘要或 checkpoint 中报告 Issue 号；
 - **只有已绑定**（`issue_number` 非 `null`）的 `tracking` 才复用并校验 `repository` / `issue_number`，不重建；对象存在但 `issue_number` 为 `null` 属已尝试未绑定（§2），按 §3.1 与 §4 的对应原因恢复，**不得当成既有绑定而跳过对账**；
 - `repository` 由当前仓库 remote 推导，不由模型猜测；推不出来时记 `sync=not-synced` + `sync_reason=remote-unresolvable`，继续推进；
@@ -276,7 +276,7 @@ Issue 评论里写 `CI PASS` 不等于 `full_ci_run=PASS`。接管方必须按�
 
 ### 8.1 创建 tracking Issue 的常设授权（窄范围）
 
-`feature-development` 与 `bug-fix` 工作流**首次创建本工作流自己的那一张** tracking Issue，属本合同授予的窄范围常设授权；其授权来源与上限见 [runtime-contract.md](runtime-contract.md) §7，无需逐次 ASK。
+四类长流程工作流**首次创建本工作流自己的那一张** tracking Issue，属本合同授予的窄范围常设授权；其授权来源与上限见 [runtime-contract.md](runtime-contract.md) §7，无需逐次 ASK。
 
 授权范围**仅限**：
 
@@ -354,11 +354,21 @@ bug-fix
   sync-and-ci / user-verification / documentation            → 待验证
   delivery / integration-and-closure                         → 待收尾
 
-两者
+feature-fast-track
+  intake / fast-implementation / smoke                       → 开发中
+  backfill                                                   → 待验证
+  closure                                                    → 待收尾
+
+bug-fast-track
+  intake / fast-fix / smoke                                  → 开发中
+  backfill                                                   → 待验证
+  closure                                                    → 待收尾
+
+四类长流程工作流
   status=completed → 完成（优先于阶段映射）
 ```
 
-**覆盖完备性要求**：Feature 与 Bug 的 canonical Stage 列表中，每个适用 Stage 必须恰好映射一次；新增 Stage 而映射未更新即视为合同违约（由合同测试机械校验）。
+**覆盖完备性要求**：四类长流程工作流的 canonical Stage 列表中，每个适用 Stage 必须恰好映射一次；新增 Stage 而映射未更新即视为合同违约（由合同测试机械校验）。
 
 `status=abandoned` 的唯一看板处置：把对应卡片**从看板移出**（archive item），不得进入「完成」列，也不得留在原列。
 
@@ -382,6 +392,7 @@ bug-fix
 | `dd-workflow-runtime` | state schema、Stage Gate、Recovery、Host Close、`host` 与 `status` 的 canonical 取值 | 不改其语义，只加可选字段；不重列其枚举 |
 | `dd-git-workflow` | 分支模型、worktree 布局、私有/共享可见性与清理 | 不复制路径推导，不在 Issue 里存绝对路径，不推定分支可见性 |
 | `dd-project-bootstrap-workflow` | 项目治理与基础环境 | **第一阶段不自动创建、不自动绑定、不自动投影**；runtime schema 容忍 `tracking` 不等于默认覆盖；§2 的强制尝试约束与 §8.1 常设授权均不适用于 project-bootstrap 整个工作流；其第一阶段另明确不自动创建/绑定/投影 |
+| `dd-feature-fast-track` / `dd-bug-fast-track` | 速通与补齐的领域规则（含各自的绑定 Gate 位置） | 不改 `tracking` 语义、不复制 §4 词表；只在 Intake 提供 §3 调用点，并把绑定结果按 owner 合同落盘 |
 | `multi-agent-branch-integration` | 多 Agent 分支可见性、同步与集成门禁 | 不管分支集成，只管任务索引与恢复定位 |
 | `dd-later-tracking` | LATER 项的文件即 ID 体系 | **不改 LATER**。LATER 提升为开发任务时，Issue 正文引用 LATER 文件路径，不搬运内容 |
 
@@ -392,7 +403,7 @@ bug-fix
 - 用 Issue 承载 Stage / Gate / candidate SHA 的完整状态，制造第二事实源；
 - 在 Issue 里写 worktree 绝对路径；
 - 因 `tracking` 缺失、绑定失败、写回失败或未授权而阻塞 Workflow Gate；
-- 对 `feature-development` / `bug-fix` 工作流，既未尝试创建或绑定 tracking Issue、也未按 §4 记录 `sync` 与 `sync_reason`，就通过 Environment Gate（硬约束是"必须尝试并记录"，不是"绑定必须成功"）；
+- 对四类长流程工作流，既未尝试创建或绑定 tracking Issue、也未按 §4 记录 `sync` 与 `sync_reason`，就通过对应的绑定 Gate（硬约束是"必须尝试并记录"，不是"绑定必须成功"）；
 - 未写 checkpoint 就释放写入租约并宣称已移交；写回失败却宣称 handoff 完成；
 - 从 `state_status=active` 的 checkpoint 静默接管；
 - 把接管冲突检测描述成"互斥锁"或"弱锁"；

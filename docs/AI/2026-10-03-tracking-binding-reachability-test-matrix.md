@@ -3,11 +3,11 @@
 - Feature: tracking-binding-reachability
 - Workflow ID: feature-development-20261003T053419Z-ee41fa8
 - Stage: Test Matrix（验证合同）
-- 基线 Requirements: v2 (`sha256:8c3bf1988ab692afc8f2e70d21e1f64d559427f77493f1d58a08e31516aa726a`)｜Design: v3 (`sha256:89706c1c2081e7d05bc7c6b3cc662f447094bd185f5566e0e53dc088f885ba7e`)
-- 版本: v3 — 绑定 Requirements v2 / Design v3；同步 §3.2 的 ①~⑪、豁免前置、无条件 legacy 豁免与非字符串 well-formedness 分支，并纳入四轮外部强审新增的全部反例
+- 基线 Requirements: v3 (`sha256:b2320ef0bab51cf9f5b218d5e427fe78130a7cb67cac7840e1093c2f47396225`)｜Design: v4 (`sha256:0e273803293bf67d4933ee8b8c60c7a5ac30c51c455a9cd8c4febbf5fd6551c7`)
+- 版本: v4 — 绑定 Requirements v3 / Design v4；纳入四类长流程工作流的判定覆盖（T-78~T-81）
 - 日期: 2026-10-03
 
-> **版本沿革**：v1 绑定 Design v1（与已批准的 v2 冲突，T-24 与 §4 冲突，原因数写 10）；v2 同步 Design v2 并纳入第一轮强审反例；**v3 绑定 Requirements v2 / Design v3**，同步 §3.2 全部分派（含豁免前置、无条件 legacy 豁免、非字符串 well-formedness）、修正 T-63 oracle 与 T-72 描述、补 AC-13 行，并纳入第二至四轮强审新增的 T-27~T-29、T-62~T-69、T-74~T-77、M8~M10、T-14/T-15。当前版本即下述基线，历史版本不再是有效 oracle。
+> **版本沿革**：v1 绑定 Design v1（与已批准的 v2 冲突，T-24 与 §4 冲突，原因数写 10）；v2 同步 Design v2 并纳入第一轮强审反例；**v3 绑定 Requirements v2 / Design v3**，同步 §3.2 全部分派（含豁免前置、无条件 legacy 豁免、非字符串 well-formedness）、修正 T-63 oracle 与 T-72 描述、补 AC-13 行，并纳入第二至四轮强审新增的 T-27~T-29、T-62~T-69、T-74~T-77、M8~M11、T-14/T-15；**v4 绑定 Requirements v3 / Design v4**，因合并 `origin/develop` 后 owner §2 已把 `feature-fast-track`／`bug-fast-track` 纳入强制类型集，判定器随之扩范围并新增 T-78~T-81。当前版本即下述基线，历史版本不再是有效 oracle。
 
 ## 1. 验证分层
 
@@ -63,6 +63,10 @@
 | T-63 | **无有效绑定时** `tracking.provider` / `sync` / `sync_reason` 为 `[]`、`{}`、`7`、`[1,2]` | **exit 2 且 stderr 无 Traceback**。未捕获异常写 stderr 且退出码为 1（与 Gate FAIL 同码），只查 stdout 或只要求非 0 会让真实 crash 通过 |
 | T-64 | state 文件为非法 UTF-8 字节 | exit 2，无 Traceback |
 | T-69 | `{"sync":null,"sync_reason":词表外}`、`{"sync_reason":词表外}`、`{"sync":"synced","sync_reason":词表外}`、`{"sync":"not-a-real-value"}` | exit 1 且输出含 `outside the task-tracking`。Design §3.2 ⑩ 对两个词表各自独立判定——若给 reason 检查加上多余的 `sync is not None` 前置，这四种会落到 ⑪ 兜底，退出码虽同，编号映射即失效 |
+| T-78 | `workflow_type` = `feature-fast-track`／`bug-fast-track`，当前 schema + `tracking: null` | exit 1。owner §2 已把两个速通工作流纳入强制约束；原实现会判「未识别类型」而 exit 2，等于拒掉合同要求的两类工作流 |
+| T-79 | 同上但已绑定一张 Issue | exit 0 |
+| T-80 | FAIL 诊断文本 | 同时出现 `Intake Gate` 与 `Environment Gate`。速通的绑定 Gate 是 Intake，一律输出 "Environment Gate" 会把速通执行者指向错误边界 |
+| T-81 | `workflow_type` = 两个速通类型 + legacy schema（1）+ `tracking: null` | exit 0（legacy 豁免对四类一致） |
 | T-68 | **有效 `issue_number=8` + 非字符串 `provider`／`sync`／`sync_reason`**（各 ∈ `[]`、`{}`、`7`） | 精确 exit 2 且 stderr 无 Traceback。Design §3.2 ⑥ 必须先于 ⑧ 绑定检查：有效绑定与畸形 sync 并存的状态自相矛盾，不得凭绑定放行 |
 | T-65 | `workflow_type=project-bootstrap` + `schema_version` ∈ {`"2"`, `-1`, `True`, `[]`, `{}`} | exit 0。豁免是无条件 scope 豁免，不得被文件中其他位置的畸形 schema 否决（校验顺序：先身份后豁免） |
 | T-66 | `tracking={"sync":"synced","sync_reason":null}` 且**无** `issue_number` | exit 0，且输出含 `without a reason`。T-30 会因 `issue_number` 提前返回，缺此例则自记录配对分支从无行为覆盖 |
@@ -138,7 +142,7 @@ T-70~T-75 从 `task-tracking.md` 用正则抽取词表/配对，与判定器常�
 | M5 | `RECORDED_OUTCOMES` 删掉 `disabled` 行 | T-74、自记录断言 |
 | M6 | 判定器新增 §4 未定义的交叉配对 | T-74 |
 | M7 | 判定器清空 `SUPPORTED_PROVIDERS` | T-75 |
-| M8 | owner §2 新增第三个强制 workflow type | T-76 |
+| M8 | owner §2 的强制类型清单新增一个类型 | T-76 |
 | M9 | owner 把 legacy 边界表达式改为 `` `< 3` `` | T-77 |
 | M10 | 判定器把当前版本吞进 `LEGACY_SCHEMA_VERSIONS` | T-77 |
 | M11 | 判定器单方面把 `CURRENT_SCHEMA_VERSION`→3 且 `LEGACY`→{0,1,2}，owner 不动（联合漂移） | T-77 |
@@ -188,8 +192,8 @@ T-70~T-75 从 `task-tracking.md` 用正则抽取词表/配对，与判定器常�
 | AC-04 | T-03, T-05 | L1 |
 | AC-05 | T-07, T-08 | L1 |
 | AC-06 | T-09, T-10 | L1 |
-| AC-07 | T-20~T-29（FAIL/usage）, T-30~T-31（PASS） | L2 |
-| AC-08 | T-40~T-49（逐类 10 例）, T-62（反向非法配对） | L2 |
+| AC-07 | T-20~T-29（FAIL/usage）, T-30~T-31（PASS）, T-78~T-79（速通）, T-81 | L2 |
+| AC-08 | T-40~T-49（逐类 10 例）, T-62（反向非法配对）, T-80（诊断文本） | L2 |
 | AC-09 | T-50~T-54, T-67 | L2 |
 | AC-10 | T-55, T-56, T-57, T-63, T-64, T-65, T-66, T-68, T-69 | L2 |
 | AC-11 | T-70~T-77, M1~M11 | L3 |

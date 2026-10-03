@@ -17,33 +17,33 @@ source_manifest:
   SPEC-REQ:
     stable_id: SPEC-REQ
     path: docs/AI/2026-10-03-tracking-binding-reachability-requirements.md
-    version: v2
-    digest: sha256:8c3bf1988ab692afc8f2e70d21e1f64d559427f77493f1d58a08e31516aa726a
+    version: v32
+    digest: sha256:b2320ef0bab51cf9f5b218d5e427fe78130a7cb67cac7840e1093c2f47396225
     approval: {status: approved, authority: user, decided_at: 2026-10-03, evidence_ref: intake-confirm}
   SPEC-DES:
     stable_id: SPEC-DES
     path: docs/AI/2026-10-03-tracking-binding-reachability-design.md
-    version: v3
-    digest: sha256:89706c1c2081e7d05bc7c6b3cc662f447094bd185f5566e0e53dc088f885ba7e
+    version: v43
+    digest: sha256:0e273803293bf67d4933ee8b8c60c7a5ac30c51c455a9cd8c4febbf5fd6551c7
     approval: {status: approved, authority: user, decided_at: 2026-10-03, evidence_ref: design-confirm}
   SPEC-TM:
     stable_id: SPEC-TM
     path: docs/AI/2026-10-03-tracking-binding-reachability-test-matrix.md
-    version: v3
-    digest: sha256:fd5379b1c5a3110a600155d4b0c6375d2bc56db274623d95324ec6de748750b5
+    version: v43
+    digest: sha256:931fec2b0f4c9086042d8ed8bd8933af06751f5f7baed6a05b891b3ca4ee9334
     approval: {status: approved, authority: user, decided_at: 2026-10-03, evidence_ref: tm-confirm}
   OWNER-TT:
     stable_id: OWNER-TT
     path: dd-workflow-runtime/references/task-tracking.md
     version: current
-    digest: sha256:bb4339161b084d3e1bf9c92f3968eeac81ff0dabd185f5dbbabf5507ac67b274
+    digest: sha256:833004169350ced186f585c7e6730f5566252eb9a7635f67fb4c6284c5589f07
     approval: {status: frozen-owner, authority: repository, decided_at: 2026-10-02, evidence_ref: commit-903a96e}
     note: 语义属主，本计划只读，零改动
   BASE-STATE:
     stable_id: BASE-STATE
     path: dd-workflow-runtime/references/state.md
     version: current
-    digest: sha256:b1ebe0c2706b803b5977ac00db7495cb8d3cd12f5b7b7e628c648c11a0d5c2e6
+    digest: sha256:0c29a143f46df7b26574d509002f2ed010df6f4665ce1d979769d2f68f383b87
     approval: {status: baseline, authority: repository, decided_at: 2026-10-03, evidence_ref: commit-ee41fa8}
 ```
 
@@ -127,7 +127,7 @@ write_scope:
 
 - [ ] **步骤 3：编写最少实现**
 
-  实现 Design §3.2 的 ①~⑪ 分派（编号与 evaluate() docstring 一一对应）：`workflow_type` 身份 → **豁免前置** → schema 判定（legacy 精确集 {缺失,0,1}；非整数与负数判 exit 2）→ tracking 形状 → **provider/sync/sync_reason 字符串 well-formedness（先于绑定检查）** → provider 未登记 → 正整数 `issue_number` → `RECORDED_OUTCOMES` 配对 → FAIL 兜底。只实现 T-20~T-29/T-55 所需分支。禁止 `socket`/`urllib`/`http`/`requests`/`gh`/`subprocess`。
+  实现 Design §3.2 的 ①~⑪ 分派（编号与 evaluate() docstring 一一对应）：`workflow_type` 身份（强制集 = owner §2 的四类长流程工作流） → **豁免前置** → schema 判定（legacy 精确集 {缺失,0,1}；非整数与负数判 exit 2）→ tracking 形状 → **provider/sync/sync_reason 字符串 well-formedness（先于绑定检查）** → provider 未登记 → 正整数 `issue_number` → `RECORDED_OUTCOMES` 配对 → FAIL 兜底。只实现 T-20~T-29/T-55 所需分支。禁止 `socket`/`urllib`/`http`/`requests`/`gh`/`subprocess`。
 
 - [ ] **步骤 4：运行测试验证通过**
 
@@ -159,7 +159,7 @@ write_scope:
 
 - [ ] **步骤 1：编写失败的测试（T-30~T-31, T-40~T-57）**
 
-  逐例构造 fixture：绑定（T-30/T-31）、§4 十类失败/拒绝（T-40~T-49）、legacy 三态（T-50~T-52）、**legacy 部分 tracking 对象（T-67：FAIL 只属于当前 schema）**、已绑定 legacy（T-53）、bootstrap（T-54）、豁免前置（T-65）、`("synced", None)` 无绑定的自记录配对分支（T-66）、嵌套非字符串值（T-63：精确 exit 2 + stderr 无 Traceback）、非法 UTF-8（T-64）、有效绑定 + 畸形兄弟字段（T-68）、词表外取值无 sync 时的 ⑩ 分支（T-69）、离线（T-56/T-57）。所有判 FAIL 的用例都要先过 `assert_clean_run`。
+  逐例构造 fixture：绑定（T-30/T-31）、§4 十类失败/拒绝（T-40~T-49）、legacy 三态（T-50~T-52）、**legacy 部分 tracking 对象（T-67：FAIL 只属于当前 schema）**、已绑定 legacy（T-53）、bootstrap（T-54）、豁免前置（T-65）、`("synced", None)` 无绑定的自记录配对分支（T-66）、嵌套非字符串值（T-63：精确 exit 2 + stderr 无 Traceback）、非法 UTF-8（T-64）、有效绑定 + 畸形兄弟字段（T-68）、词表外取值无 sync 时的 ⑩ 分支（T-69）、**四类长流程工作流的判定覆盖（T-78~T-81：两个速通类型未尝试判 1、已绑定判 0、FAIL 诊断须区分 Environment/Intake Gate、legacy 豁免一致）**、离线（T-56/T-57）。所有判 FAIL 的用例都要先过 `assert_clean_run`。
 
 - [ ] **步骤 2：运行测试验证失败**
 
@@ -357,8 +357,8 @@ delivery_authorization: {status: not-required, actions: [], scope: none, authori
 | AC-04 | 5 | T-03, T-05 |
 | AC-05 | 5 | T-07, T-08 |
 | AC-06 | 5 | T-09, T-10 |
-| AC-07 | 1, 2 | T-20~T-29, T-30~T-31 |
-| AC-08 | 2 | T-40~T-49, T-62 |
+| AC-07 | 1, 2 | T-20~T-29, T-30~T-31, T-78~T-79, T-81 |
+| AC-08 | 2 | T-40~T-49, T-62, T-80 |
 | AC-09 | 2 | T-50~T-54, T-67 |
 | AC-10 | 2 | T-55, T-56, T-57, T-63, T-64, T-65, T-66, T-68, T-69 |
 | AC-11 | 0, 3 | T-70~T-77, M1~M11 |

@@ -394,6 +394,55 @@ class TestHistoricalAndOutOfScopePass(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
+class TestFastTrackWorkflowsAreCovered(unittest.TestCase):
+    """task-tracking §2 was widened to four long-running workflows.
+
+    The two fast-track workflows bind at their Intake Gate, but the attempt
+    requirement and its vocabulary are identical, so the validator must judge
+    them the same way. Before this was added they fell through to "unrecognized
+    workflow type" and exited 2 — rejecting two workflows the owner mandates.
+    """
+
+    TYPES = ("feature-fast-track", "bug-fast-track")
+
+    def test_t78_fast_track_untried_fails_the_gate(self):
+        for wf_type in self.TYPES:
+            with self.subTest(workflow_type=wf_type):
+                code, out, err = run_validator(make_state(
+                    workflow_type=wf_type, schema_version=2, tracking=None))
+                assert_clean_run(self, code, out, err)
+                self.assertEqual(code, EXIT_FAIL,
+                                 f"{wf_type} is under the same mandatory constraint")
+
+    def test_t79_fast_track_bound_passes(self):
+        for wf_type in self.TYPES:
+            with self.subTest(workflow_type=wf_type):
+                code, out, err = run_validator(make_state(
+                    workflow_type=wf_type, schema_version=2,
+                    tracking={"provider": "github", "issue_number": 8, "sync": "synced"}))
+                assert_clean_run(self, code, out, err)
+                self.assertEqual(code, EXIT_PASS)
+
+    def test_t80_fail_message_names_the_binding_gate_not_the_environment_gate(self):
+        # The owner distinguishes Environment Gate (Feature/Bug) from Intake Gate
+        # (fast-track). A diagnostic that always says "Environment Gate" would
+        # point a fast-track Agent at the wrong boundary.
+        _, out, err = run_validator(make_state(workflow_type="bug-fast-track",
+                                               schema_version=2, tracking=None))
+        combined = out + err
+        self.assertIn("Intake Gate", combined)
+        self.assertIn("Environment Gate", combined,
+                      "the message should still name the Feature/Bug gate for contrast")
+
+    def test_t81_fast_track_legacy_state_passes(self):
+        for wf_type in self.TYPES:
+            with self.subTest(workflow_type=wf_type):
+                code, out, err = run_validator(make_state(
+                    workflow_type=wf_type, schema_version=1, tracking=None))
+                assert_clean_run(self, code, out, err)
+                self.assertEqual(code, EXIT_PASS)
+
+
 class TestValidatorIsOffline(unittest.TestCase):
     FORBIDDEN = ("socket", "urllib", "requests", "http.client", "httpx",
                  "subprocess", "os.system", "gh\x20", "git\x20")

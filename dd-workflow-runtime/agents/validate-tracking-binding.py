@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Environment Gate check: has the tracking binding attempt been recorded?
+"""Binding Gate check: has the tracking binding attempt been recorded?
 
 Deterministic, offline state-shape checker. It answers exactly one question —
 "was a binding attempt recorded in this state?" — and never touches the network,
@@ -9,13 +9,13 @@ nothing (Design §3.3).
 Semantic owner: dd-workflow-runtime/references/task-tracking.md.
 This file is its mechanical realization, not a second source of truth: the only
 FAIL condition mirrors that contract's "not attempted and not recorded, yet the
-Environment Gate passed" red line. The vocabularies it compares against are
+binding Gate passed" red line. The vocabularies it compares against are
 locked against the owner from the other side by
 tests/test_task_tracking.py::TestVocabularyDrift.
 
 Exit codes:
     0  attempt recorded (Gate may pass)
-    1  attempt not recorded (Environment Gate must not pass)
+    1  attempt not recorded (the binding Gate must not pass)
     2  usage / unreadable input
 
 Usage:
@@ -83,7 +83,15 @@ TRACKING_FIELDS = frozenset({
 })
 
 # task-tracking §2: workflow types under the mandatory-attempt constraint.
-MANDATORY_WORKFLOW_TYPES = frozenset({"feature-development", "bug-fix"})
+# All four long-running workflows are in scope; their binding Gate differs
+# (Environment Gate for Feature/Bug, Intake Gate for the two fast-track ones),
+# but the attempt requirement and its outcome vocabulary are the same.
+MANDATORY_WORKFLOW_TYPES = frozenset({
+    "feature-development",
+    "bug-fix",
+    "feature-fast-track",
+    "bug-fast-track",
+})
 
 # task-tracking §12: workflow types the contract explicitly exempts. Anything
 # outside MANDATORY_WORKFLOW_TYPES *and* outside this set is not a recognized
@@ -259,8 +267,10 @@ def main(argv: list[str] | None = None) -> int:
           f"{'recorded' if code == EXIT_PASS else 'NOT recorded'} — {why}")
 
     if code == EXIT_FAIL:
-        print("Environment Gate must not pass until the attempt is bound or "
-              "recorded with sync + sync_reason (task-tracking §2/§13).", file=sys.stderr)
+        print("The binding Gate must not pass until the attempt is bound or "
+              "recorded with sync + sync_reason (task-tracking §2/§13). The binding "
+              "Gate is the Environment Gate for Feature/Bug and the Intake Gate for "
+              "the two fast-track workflows.", file=sys.stderr)
 
     return code
 
