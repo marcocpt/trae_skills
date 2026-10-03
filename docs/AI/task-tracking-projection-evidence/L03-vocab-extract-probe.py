@@ -84,14 +84,30 @@ def main() -> int:
             print("PROBLEM:", p)
         return 1
 
-    # 对本工作流真实 state 跑一次判定探针（分支 ①：已绑定）
+    # 对本工作流真实 state 跑一次判定（Design §3.2 分支 ①：已绑定）
     state = subprocess.run(
         ["git", "rev-parse", "--git-dir"], cwd=REPO_ROOT,
         capture_output=True, text=True, check=True).stdout.strip()
     state_file = Path(state) / "feature-development-state.json"
-    print("真实 state:", state_file, "exists=", state_file.exists())
+    if not state_file.exists():
+        print(f"PROBLEM: 真实 state 不存在: {state_file}")
+        return 1
+    print("真实 state:", state_file)
 
-    print("\nRESULT: passed — Design §3.4 抽取假设成立")
+    validator = REPO_ROOT / "dd-workflow-runtime" / "agents" / "validate-tracking-binding.py"
+    if not validator.exists():
+        print("NOTE: 判定器尚未实现（Phase 1 Task 1 产出），跳过真实 state 判定")
+        print("\nRESULT: passed（仅词表抽取假设成立；真实 state 判定待 Phase 1 补验）")
+        return 0
+
+    proc = subprocess.run([sys.executable, str(validator), "--state", str(state_file)],
+                          capture_output=True, text=True)
+    print(f"判定器退出码: {proc.returncode} | {proc.stdout.strip()}")
+    if proc.returncode != 0:
+        print("PROBLEM: 真实 state 未通过判定器")
+        return 1
+
+    print("\nRESULT: passed — Design §3.4 抽取假设成立，且真实 state 判定为 PASS")
     return 0
 
 

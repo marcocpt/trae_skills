@@ -3,7 +3,9 @@
 - Feature: tracking-binding-reachability
 - Workflow ID: feature-development-20261003T053419Z-ee41fa8
 - Stage: Design（WHO／结构）
-- 基线 Requirements: v1 (`cf02335951f58a5c`)
+- 基线 Requirements: v3 (`sha256:dceaecc699c94daf72393f0adb6a50300cd9bb91e777c9deec02f68943fbd08c`)
+- 版本: v4 — §3.2 判定算法同步实现；强制工作流类型集按 owner §2 扩为四类长流程工作流
+  （2026-10-03 合并 origin/develop 的 fast-track 工作流后修订）
 - 日期: 2026-10-03
 
 ## 1. 架构定位
@@ -63,33 +65,48 @@
 
 ### 3.2 判定算法
 
-按 `schema_version` 与 `tracking` 形态分派：
+按 `workflow_type`、`schema_version` 与 `tracking` 形态分派。编号与
+`validate-tracking-binding.py::evaluate()` 的 docstring 一一对应：
+
+强制类型集（owner §2 的四类长流程工作流）：
+`feature-development`、`bug-fix`、`feature-fast-track`、`bug-fast-track`。
+它们的**绑定 Gate 不同**（Feature/Bug 为 Environment Gate，两个速通为 Intake Gate），
+但"必须尝试并记录"的义务与结果词表相同，因此判定逻辑一致。
 
 ```text
-读取 state，失败 → exit 2
+读取 state 失败 / 非法 UTF-8 / 非 dict 对象            → exit 2
 
-若 workflow_type 不在 {feature-development, bug-fix} → PASS
-    （owner 合同 §12 明确 bootstrap 不适用该强制约束）
-
-若 schema_version 缺失或 < 2 且 tracking 缺失或为 null
-    → PASS
-    （本次改动之前的历史状态，FR-7；不得据其触发创建）
-
-若 tracking 为对象：
-    ├ provider 非 null 且不在已登记 provider 集 → FAIL   （§2 well-formedness 前置检查）
-    ├ ① issue_number 非 null                          → PASS  已绑定
-    ├ ② sync ∈ {synced, disabled}                     → PASS  §4 中这两行本就不带原因值
-    ├ ③ sync ∈ {not-synced, not-authorized}
-    │     且 sync_reason ∈ §4 词表                     → PASS  已记录原因
-    └ ④ 其余                                            → FAIL  尝试未记录
-
-否则（tracking 缺失或为 null，schema_version >= 2）
-    → FAIL
+① workflow_type 缺失／非字符串／既非强制类型也非豁免类型 → exit 2（MalformedState）
+② workflow_type ∈ 豁免集（project-bootstrap）           → exit 0
+     豁免是无条件 scope 豁免：文件中其他位置 schema_version 畸形不得否决它
+③ schema_version 非整数（含 bool）或为负数               → exit 2（MalformedState）
+④ schema_version ∈ legacy 集 {缺失, 0, 1}               → exit 0
+     无条件豁免，**不论 tracking 内容**：旧状态可能已带部分 tracking 对象，
+     对其判不通过等于用新合同阻塞历史（FR-7）
+⑤ tracking 不是对象（当前 schema 下缺失或为 null）        → exit 1
+⑥ provider / sync / sync_reason 非 null 且非字符串       → exit 2（MalformedState）
+     显式类型前置：否则不可 hash 的值会触发 TypeError，未捕获异常退出码为 1，
+     与 Gate FAIL 同码，调用方无法区分崩溃与判决。
+     **必须先于 ⑧ 的绑定检查执行**：同时持有有效绑定与畸形 sync 的状态自相矛盾，
+     若凭绑定直接放行，等于让矛盾状态读作有效记录
+⑦ provider 非 null 且不在已登记 provider 集              → exit 1
+⑧ issue_number 为「非 bool 的正整数」                    → exit 0（已绑定）
+⑨ (sync, sync_reason) ∈ §4 逐行定义的配对集              → exit 0（已记录）
+     含 ("synced", None) 与 ("disabled", None) 两行：§4 该两行 sync_reason 为 `—`，
+     要求它们带原因值会否决合同明确允许的状态
+⑩ sync 非 null 且不在 §2 词表 / sync_reason 非 null 且不在 §4 词表 → exit 1
+⑪ 其余                                                    → exit 1（尝试未记录）
 ```
 
-**为什么是四条 PASS 分支而不是一条**：owner 合同 §4 的 11 行里，`绑定有效→synced` 与 `用户明确禁用→disabled` 两行的 `sync_reason` 列本就允许为空；其余 9 行都带具体原因。若要求"任何 PASS 都必须有原因值"，这两行会被误判成未尝试，等于用判定器把合同明确允许的状态拦死——直接违反 FR-6。反之若只认 `issue_number`，则 10 类失败/拒绝全被误判，同样违反 FR-6。
+**为什么按配对而不是两个独立词表**：§4 为每个 `sync` 值配定了**特定**原因值。分别校验两个词表会放过 `not-authorized` + `issue-missing` 这类合同从未定义的组合，等于判定器在组合语义上成为第二事实源。
 
-**不通过条件的唯一形态**：`schema_version >= 2`、`workflow_type` 属强制范围、`tracking` 不通过 ①~③ 中任一分支、且未触发 legacy 或 bootstrap 豁免。这精确对应 owner 合同 §2 的"未尝试且未记录就通过 Gate 属违规"，不宽不窄。
+**为什么 legacy 写成集合而不是 `< 2`**：owner §3.2 字面写 `< 2`，但负整数会被读成 legacy，`{"schema_version": -1, "tracking": null}` 就能让"从未尝试"的状态 PASS。判定器收窄为 `{0, 1}` 并显式拒绝负数——这是对 owner 字面文本的**有意收窄**，由 T-77 以关系式断言锁定（不是与字面相等）。
+
+**`issue_number` 的 provenance**：⑧ 是 GitHub Issue number 的**本地结构有效性检查**（非 bool 的正整数），属于判定器自有的输入 well-formedness 规则。它不新增绑定结果或 `sync` 语义，不属于 owner 词表，因此不参与 vocabulary drift lock——把它锁进 owner 需要修订 owner 合同，而本 Feature 要求 owner 零改动。若项目治理要求连标量类型也必须 owner-owned，应另开一次 owner 修订。
+
+**唯一的 FAIL 形态**：强制工作流类型、schema 为当前版本、且 ⑤⑦⑩⑪ 之一成立而 ⑧⑨ 均不成立。这精确对应 owner §2 的"未尝试且未记录就通过 Gate 属违规"，不宽不窄。exit 2 是输入错误，既不是通过也不是 Gate 失败。
+
+**判定器不是防篡改证明器**：它只检查可信状态上的形状。伪造 `schema_version: 1`、伪造 `sync: disabled`、伪造一个不存在的正整数 Issue 号都能通过。这个信任模型的归属方是 owner 合同与状态完整性，不在本 Feature 内追加 provenance／时间戳／Git 历史等新判据——那会违反"owner 唯一拥有绑定语义"。
 
 ### 3.3 为什么不做远端对账
 
@@ -117,15 +134,30 @@ owner 合同 §3.1 的对账与创建需要网络与凭据。判定层若做对�
 
 **不采用**运行时解析 `task-tracking.md` 提取枚举：那会让规范 Markdown 成为可执行依赖，规范一改行为就变，且解析器本身成为新的失败面。
 
+### 3.5 版本沿革
+
+| 版本 | 变更 | 触发 |
+|---|---|---|
+| v1 | 初版四条 PASS 分支 + provider 前置检查 | 用户批准 |
+| v2 | 细化 PASS 分支（synced/disabled 免原因值） | Test Matrix 自检发现 v1 与 §4 冲突 |
+| v3 | 配对化判定、legacy 集精确为 {缺失,0,1}、豁免前置、issue_number 收为正整数、非整数 schema 与未识别 workflow_type 判 exit 2 | 外部强审两轮 FINDINGS（H-01/H-02/H-03、M-01） |
+| v4 | 强制类型集扩为四类长流程工作流；FAIL 诊断改称"对应绑定 Gate"并区分 Environment/Intake | 合并 `origin/develop` 后 T-76 漂移锁报警：owner §2 已纳入 `feature-fast-track`／`bug-fast-track`，判定器原会把它们判为未识别类型而 exit 2 |
+
 ## 4. 数据流
 
 ```text
+Feature / Bug（入口与 runtime Preflight 的责任范围）
 Agent 读入口 SKILL.md
   → 得知 Environment Gate 前须完成绑定尝试（FR-1/FR-02）
   → 打开 owner 合同 §3/§3.1/§8.1 执行尝试（语义仍唯一属主）
   → 写 state.tracking
   → Environment Gate 前运行 validate-tracking-binding.py --state <path>
   → exit 0 才允许过 Gate（FR-10）
+
+feature-fast-track / bug-fast-track（判定范围，但入口不由本 Feature 改写）
+速通 Skill 自带的 Intake 调用点执行同一次尝试并落盘
+  → Intake Gate 前运行 validate-tracking-binding.py --state <path>
+  → 判定逻辑与上面完全相同；只有调用时机与绑定 Gate 位置不同
 ```
 
 失败分支：
@@ -156,7 +188,7 @@ Agent 读入口 SKILL.md
 | `dd-feature-development-workflow/SKILL.md` | 红线 → 阶段纪律 | 新增一条：未完成绑定尝试并通过判定就过 Environment Gate |
 | `dd-bug-fix-workflow/SKILL.md` | Stage 路由 → Environment 段 | 段内补义务句与判定要求（该文件用分段而非表格） |
 | `dd-bug-fix-workflow/SKILL.md` | 红线 | 同上 |
-| `dd-workflow-runtime/SKILL.md` | Preflight | 新增一条：声明该义务的工作流在 Environment Gate 前必须完成尝试 |
+| `dd-workflow-runtime/SKILL.md` | Preflight | 新增一条：以 Environment Gate 为绑定 Gate 的 Feature/Bug 两类工作流在 Environment Gate 前必须完成尝试。两个速通工作流的绑定 Gate 是 Intake Gate，由其自身 Skill 在 Intake 提供调用点，本条不代为声明 |
 | `dd-workflow-runtime/SKILL.md` | 调用契约字段说明 | 明确 `tracking` 字段语义为"尝试结果"，非仅"已绑定时用于定位" |
 
 **为什么写两处（Stage 行 + 红线）**：Stage 行保证"做什么"可见，红线保证"跳过会被判违规"。只有 Stage 行，Agent 可能读作建议；只有红线，Agent 不知道该做什么。
@@ -185,7 +217,7 @@ Agent 读入口 SKILL.md
 | FR-3 | §6 `dd-workflow-runtime/SKILL.md` Preflight + 字段语义 |
 | FR-4 | §5 `state.md` 预留位 |
 | FR-5 | §3.1 判定层 CLI |
-| FR-6 | §3.2 判定算法 + §3.3 不做对账 |
+| FR-6 | §3.2 判定算法（配对化 + legacy 精确集）+ §3.3 不做对账 |
 | FR-7 | §3.2 第二分支（legacy 直接 PASS） |
 | FR-8 | §3.4 双向漂移断言 |
 | FR-9 | §6 两入口对称改动 |

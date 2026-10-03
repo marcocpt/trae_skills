@@ -20,11 +20,18 @@ $ python3 docs/AI/task-tracking-projection-evidence/L03-vocab-extract-probe.py
                  'legacy-tracking-unknown', 'no-issue-capable-remote', 'no-policy',
                  'provider-unavailable', 'remote-unresolvable', 'user-declined']
 真实 state: /Users/dengdeng/Working/AGENT/skills/.git/worktrees/
-            tracking-binding-reachability/feature-development-state.json exists= True
+            tracking-binding-reachability/feature-development-state.json
+判定器退出码: 0 | PASS: tracking attempt recorded — bound to issue #8
 
-RESULT: passed
+RESULT: passed — Design §3.4 抽取假设成立，且真实 state 判定为 PASS
 exit=0
 ```
+
+> **Phase 0 原始运行**（判定器尚未实现，探针当时只验证路径定位）：
+> `RESULT: passed — Design §3.4 抽取假设成立`，并注明"本次仅确认 state 文件可定位"。
+> 判定器在 Phase 1 Task 1 产出后已重跑本探针，上面的 `判定器退出码: 0` 行为补验结果。
+> 外部强审 L-02 指出原计划 Step 3 声称"对真实 state 执行判定逻辑"而探针只定位路径——
+> 该偏差已通过让探针真正调用判定器消除，并把 `limitations` 相应收窄。
 
 ## 3. 假设结论
 

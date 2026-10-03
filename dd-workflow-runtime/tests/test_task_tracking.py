@@ -1550,6 +1550,28 @@ class TestVocabularyDrift(unittest.TestCase):
         self.assertTrue(values, "could not extract sync_reason values from §4 — guard must FAIL")
         return values
 
+    def owner_outcomes(self) -> set[tuple[str, str | None]]:
+        """§4 failure matrix, (sync, sync_reason) pairs — the rows' own shape.
+
+        §4 pairs each sync value with specific reasons; the pairing is owner-owned
+        semantics, so it is locked separately from the flat vocabularies.
+        """
+        block = _slice_section(read(TASK_TRACKING), 2, "4. 绑定失败矩阵")
+        rows = self._table_rows(block)
+        header = rows[0]
+        i_sync, i_reason = header.index("`sync`"), header.index("`sync_reason`")
+        pairs = {(self._code(r[i_sync]), self._code(r[i_reason])) for r in rows[1:]}
+        pairs.discard((None, None))
+        self.assertTrue(pairs, "could not extract (sync, sync_reason) pairs — guard must FAIL")
+        return pairs
+
+    def owner_providers(self) -> set[str]:
+        """§2: the provider value the contract registers."""
+        block = _slice_section(read(TASK_TRACKING), 2, "2. 状态字段")
+        m = re.search(r"^\s*provider:\s*(\S+)", block, re.M)
+        self.assertIsNotNone(m, "§2 must declare a provider value — guard must FAIL")
+        return {m.group(1).strip("`")}
+
     def owner_tracking_fields(self) -> set[str]:
         """§2 yaml block declaring the nested schema."""
         block = _slice_section(read(TASK_TRACKING), 2, "2. 状态字段")
@@ -1605,6 +1627,98 @@ class TestVocabularyDrift(unittest.TestCase):
                          "self-recording sync values drifted from §4's "
                          "no-reason rows")
 
+    def test_t74_outcome_pairs_match_owner_in_both_directions(self):
+        owner = self.owner_outcomes()
+        validator = set(self.mod.RECORDED_OUTCOMES)
+        self.assertEqual(
+            validator, owner,
+            "validator RECORDED_OUTCOMES drifted from task-tracking §4 pairs "
+            f"(owner-only={sorted(owner - validator)}, "
+            f"validator-only={sorted(validator - owner)})")
+
+    def test_t75_provider_matches_owner(self):
+        owner = self.owner_providers()
+        validator = set(self.mod.SUPPORTED_PROVIDERS)
+        self.assertEqual(
+            validator, owner,
+            f"validator SUPPORTED_PROVIDERS drifted from task-tracking §2 "
+            f"(owner={sorted(owner)}, validator={sorted(validator)})")
+
+    def owner_mandatory_workflow_types(self) -> set[str]:
+        """§2's own enumeration of the types under the constraint.
+
+        Located by the bullet that opens with 对 ` ... and mentions 工作流, then the
+        backticked names are read from the list itself. Two earlier attempts at this
+        were wrong in instructive ways: hardcoding today's names inside the regex
+        would be blind to a fourth type, and anchoring on the literal tail
+        "与 `Y` 工作流" broke when the owner reworded the list to
+        "对 `X`、`Y`、`Z` 与 `W`（下称…）：". So the list is read, not the sentence.
+        """
+        sec2 = _slice_section(read(TASK_TRACKING), 2, "2. 状态字段")
+        bullets = [ln for ln in sec2.splitlines()
+                   if ln.lstrip().startswith("- 对 `") and "工作流" in ln]
+        self.assertTrue(bullets,
+                        "could not locate §2's enumeration of mandatory workflow "
+                        "types — guard must FAIL")
+        types = set()
+        for bullet in bullets:
+            # The name list ends at the first Chinese bracket or colon that follows it.
+            head = re.split(r"[（(:：]", bullet, maxsplit=1)[0]
+            types.update(re.findall(r"`([a-z][a-z0-9-]+)`", head))
+        self.assertTrue(types, "could not extract mandatory workflow types — guard must FAIL")
+        return types
+
+    def owner_exempt_workflow_types(self) -> set[str]:
+        """§12's row that disclaims the §2 constraint."""
+        sec12 = _slice_section(read(TASK_TRACKING), 2, "12. 与相邻 Skill 的边界")
+        exempt = set()
+        for row in self._table_rows(sec12):
+            if "不适用" not in row[-1]:
+                continue
+            for name in re.findall(r"`dd-([a-z-]+-workflow)`", row[0]):
+                exempt.add(name.removesuffix("-workflow"))
+        self.assertTrue(exempt, "could not extract the exempt workflow — guard must FAIL")
+        return exempt
+
+    def owner_legacy_boundary_expression(self) -> tuple[str, int]:
+        """How §3.2 spells the legacy boundary, with its threshold."""
+        tt = read(TASK_TRACKING)
+        m = re.search(r"`< (\d+)`", tt)
+        self.assertIsNotNone(m,
+                             "could not locate §3.2's legacy boundary expression — "
+                             "guard must FAIL")
+        return m.group(0), int(m.group(1))
+
+    def test_t77_legacy_schema_boundary_is_owned(self):
+        """§3.2 writes the boundary as `< 2`. The validator keeps every non-negative
+        version below the current one and rejects negatives outright, which is a
+        deliberate narrowing: a negative schema version is meaningless, and reading
+        it as legacy let a never-attempted state pass (external review round 3).
+
+        The threshold is compared against the owner's, not a literal `2`, so moving
+        both the owner's boundary and the validator's constants together still has
+        to be justified by the owner text rather than passing on a stale constant.
+        """
+        expression, owner_current = self.owner_legacy_boundary_expression()
+        legacy = set(self.mod.LEGACY_SCHEMA_VERSIONS)
+
+        self.assertEqual(self.mod.CURRENT_SCHEMA_VERSION, owner_current,
+                         f"owner §3.2 boundary is {expression}; the validator's current "
+                         f"schema is {self.mod.CURRENT_SCHEMA_VERSION}")
+        self.assertEqual(legacy, set(range(owner_current)),
+                         "every non-negative schema version below the owner's boundary "
+                         "is legacy, and none at or above it")
+        for negative in (-1, -2, -100):
+            self.assertNotIn(negative, legacy,
+                             "negatives must be rejected, never treated as legacy")
+
+    def test_t76_mandatory_workflow_types_are_owned(self):
+        self.assertEqual(set(self.mod.MANDATORY_WORKFLOW_TYPES),
+                         self.owner_mandatory_workflow_types(),
+                         "validator MANDATORY_WORKFLOW_TYPES drifted from task-tracking §2")
+        self.assertEqual(set(self.mod.EXEMPT_WORKFLOW_TYPES),
+                         self.owner_exempt_workflow_types(),
+                         "validator EXEMPT_WORKFLOW_TYPES drifted from task-tracking §12")
 
 class TestVocabularyDriftMutations(unittest.TestCase):
     """The drift guard must actually turn red on semantic tampering.
@@ -1622,11 +1736,19 @@ class TestVocabularyDriftMutations(unittest.TestCase):
         self.v_src = read(self.v_path)
         self.tt_src = read(self.tt_path)
 
-    def _guard_fails(self, v_src, tt_src) -> bool:
+    def _guard_fails(self, v_src, tt_src, expect_tests: tuple[str, ...]) -> bool:
         """Run TestVocabularyDrift against patched sources; True when it fails.
 
         The owner's extraction helpers read the module-global TASK_TRACKING, so
         the patch redirects that global at a temp copy and restores it after.
+
+        `wasSuccessful()` alone is not enough: a SyntaxError in the mutated
+        validator, an import error in setUpClass, or any unrelated exception would
+        also make the run unsuccessful and be mistaken for "the guard caught it".
+        This requires zero errors, at least one failure, and that *every* failure
+        is one of the expected drift assertions. Requiring only "at least one
+        expected failure" would let an unrelated assertion fail alongside it and
+        still report the mutation as caught.
         """
         globals()["TASK_TRACKING_ORIGINAL"] = globals()["TASK_TRACKING"]
         original_validator = TestVocabularyDrift.VALIDATOR
@@ -1641,23 +1763,36 @@ class TestVocabularyDriftMutations(unittest.TestCase):
                 suite = unittest.TestLoader().loadTestsFromTestCase(TestVocabularyDrift)
                 result = unittest.TextTestRunner(
                     stream=io.StringIO(), verbosity=0).run(suite)
-                return not result.wasSuccessful()
             finally:
                 globals()["TASK_TRACKING"] = globals().pop("TASK_TRACKING_ORIGINAL")
                 TestVocabularyDrift.VALIDATOR = original_validator
+
+        if result.errors:
+            self.fail(f"mutation produced errors, not assertion failures "
+                      f"(unrelated breakage): {result.errors}")
+        failed = {str(t).rsplit(".", 1)[-1] for t, _ in result.failures}
+        if not failed:
+            return False
+        unexpected = {n for n in failed
+                      if not any(n.startswith(prefix) for prefix in expect_tests)}
+        self.assertFalse(
+            unexpected,
+            f"guard must fail only on the expected assertions; unrelated failures "
+            f"also fired: {sorted(unexpected)} (expected one of {expect_tests})")
+        return True
 
     def test_m1_validator_invents_a_sync_value(self):
         mutated = self.v_src.replace(
             'SYNC_VALUES = frozenset({"synced", "not-synced", "not-authorized", "disabled"})',
             'SYNC_VALUES = frozenset({"synced", "not-synced", "not-authorized", "disabled", "partial"})')
         self.assertNotEqual(mutated, self.v_src, "mutation target must exist")
-        self.assertTrue(self._guard_fails(mutated, self.tt_src), "M1 not caught")
+        self.assertTrue(self._guard_fails(mutated, self.tt_src, ("test_t70",)), "M1 not caught")
 
     def test_m2_validator_invents_a_sync_reason(self):
         mutated = self.v_src.replace(
             '"provider-unavailable",\n})', '"provider-unavailable",\n    "totally-made-up",\n})')
         self.assertNotEqual(mutated, self.v_src, "mutation target must exist")
-        self.assertTrue(self._guard_fails(mutated, self.tt_src), "M2 not caught")
+        self.assertTrue(self._guard_fails(mutated, self.tt_src, ("test_t72",)), "M2 not caught")
 
     def test_m3_owner_gains_a_reason_the_validator_lacks(self):
         mutated = self.tt_src.replace(
@@ -1665,23 +1800,66 @@ class TestVocabularyDriftMutations(unittest.TestCase):
             "| 认证/权限不足或 provider 不可用 | `not-synced` | `provider-unavailable` |\n"
             "| 新增情形 | `not-synced` | `brand-new-reason` |")
         self.assertNotEqual(mutated, self.tt_src, "mutation target must exist")
-        self.assertTrue(self._guard_fails(self.v_src, mutated),
-                        "M3 not caught — owner-side drift is the direction that matters most")
+        self.assertTrue(
+            self._guard_fails(self.v_src, mutated, ("test_t71", "test_t74")),
+            "M3 not caught — owner-side drift is the direction that matters most")
 
     def test_m4_validator_reads_an_undeclared_field(self):
         mutated = self.v_src.replace(
             '"provider", "repository", "issue_number",',
             '"provider", "repository", "issue_number", "secret_extra",')
         self.assertNotEqual(mutated, self.v_src, "mutation target must exist")
-        self.assertTrue(self._guard_fails(mutated, self.tt_src), "M4 not caught")
+        self.assertTrue(self._guard_fails(mutated, self.tt_src, ("test_t73",)), "M4 not caught")
 
     def test_m5_self_recording_set_drifts(self):
-        mutated = self.v_src.replace(
-            'SELF_RECORDING_SYNC = frozenset({"synced", "disabled"})',
-            'SELF_RECORDING_SYNC = frozenset({"synced"})')
+        mutated = self.v_src.replace('    ("disabled", None),\n', "")
         self.assertNotEqual(mutated, self.v_src, "mutation target must exist")
-        self.assertTrue(self._guard_fails(mutated, self.tt_src),
-                        "M5 not caught — dropping `disabled` would fail a state §4 permits")
+        self.assertTrue(
+            self._guard_fails(mutated, self.tt_src,
+                              ("test_t74", "test_self_recording")),
+            "M5 not caught — dropping `disabled` would fail a state §4 permits")
+
+    def test_m6_validator_invents_an_outcome_pair(self):
+        mutated = self.v_src.replace(
+            '    ("not-synced", "provider-unavailable"),\n})',
+            '    ("not-synced", "provider-unavailable"),\n'
+            '    ("not-authorized", "issue-missing"),\n})')
+        self.assertNotEqual(mutated, self.v_src, "mutation target must exist")
+        self.assertTrue(self._guard_fails(mutated, self.tt_src, ("test_t74",)),
+                        "M6 not caught — an unlisted cross-pair must be rejected")
+
+    def test_m7_validator_drops_a_provider(self):
+        mutated = self.v_src.replace('SUPPORTED_PROVIDERS = frozenset({"github"})',
+                                     'SUPPORTED_PROVIDERS = frozenset()')
+        self.assertNotEqual(mutated, self.v_src, "mutation target must exist")
+        self.assertTrue(self._guard_fails(mutated, self.tt_src, ("test_t75",)), "M7 not caught")
+    def test_m8_owner_gains_an_extra_mandatory_workflow_type(self):
+        mutated = self.tt_src.replace(
+            "与 `bug-fast-track`（下称", "与 `bug-fast-track`、`release`（下称")
+        self.assertNotEqual(mutated, self.tt_src, "mutation target must exist")
+        self.assertTrue(self._guard_fails(self.v_src, mutated, ("test_t76",)),
+                        "M8 not caught — a new mandatory type must reach the validator")
+
+    def test_m9_owner_moves_the_legacy_boundary(self):
+        mutated = self.tt_src.replace("`< 2`", "`< 3`")
+        self.assertNotEqual(mutated, self.tt_src, "mutation target must exist")
+        self.assertTrue(self._guard_fails(self.v_src, mutated, ("test_t77",)),
+                        "M9 not caught — the legacy boundary must be re-checked by hand")
+
+    def test_m10_validator_widens_the_legacy_set(self):
+        mutated = self.v_src.replace("LEGACY_SCHEMA_VERSIONS = frozenset({0, 1})",
+                                     "LEGACY_SCHEMA_VERSIONS = frozenset({0, 1, 2})")
+        self.assertNotEqual(mutated, self.v_src, "mutation target must exist")
+        self.assertTrue(self._guard_fails(mutated, self.tt_src, ("test_t77",)),
+                        "M10 not caught — swallowing the current schema as legacy")
+    def test_m11_validator_moves_the_boundary_without_the_owner(self):
+        mutated = (self.v_src.replace("CURRENT_SCHEMA_VERSION = 2",
+                                      "CURRENT_SCHEMA_VERSION = 3")
+                          .replace("LEGACY_SCHEMA_VERSIONS = frozenset({0, 1})",
+                                   "LEGACY_SCHEMA_VERSIONS = frozenset({0, 1, 2})"))
+        self.assertNotEqual(mutated, self.v_src, "mutation target must exist")
+        self.assertTrue(self._guard_fails(mutated, self.tt_src, ("test_t77",)),
+                        "M11 not caught — current/legacy must track the owner's threshold")
 
 
 class TestEntrypointReachability(unittest.TestCase):
@@ -1692,28 +1870,88 @@ class TestEntrypointReachability(unittest.TestCase):
     the entry SKILL.md never saw the obligation, so nothing was ever attempted and
     no Issue was ever created. These checks pin the obligation where first-read
     surfaces are: the Stage table/paragraph an Agent consults, plus a red line.
+
+    Token presence alone would be satisfied by "无需按 task-tracking §3 创建 Issue"
+    or by moving the attempt after the Gate, so the predicate asserts polarity (a
+    mandate, not an option) and timing (after the environment is known, before the
+    Gate) instead of raw substrings.
     """
 
-    # A pass requires the obligation, an explicit action, and the owner link.
+    # A pass requires the owner link, an explicit action, and mandate wording.
     OBLIGATION = ("task-tracking", "§3")
     ACTION = ("创建", "Issue")
 
+    # Wording that would invert or void the obligation. A blacklist can always be
+    # extended, so the mandate itself is matched positively (see MANDATE below)
+    # and these only add readable diagnostics.
+    NEGATIONS = ("无需", "不必", "非必须", "可以不", "不得创建", "禁止", "尽量", "最好")
+
+    # A negated mandate still contains 必须 ("不是必须", "并非要求必须"). These
+    # prefixes are what make 必须 not a mandate, so they are checked before the
+    # bare 必须 is accepted.
+    NEGATING_PREFIXES = ("不是必须", "并非必须", "并非要求必须", "不是要求必须",
+                         "可以选择是否必须", "不再必须", "未必须")
+
+    # Softeners that replace a mandate without being plain negations.
+    PROHIBITED_MANDATES = ("应当", "应该", "宜", "鼓励")
+
+    # Timing that would place the attempt outside the Environment Gate.
+    BAD_TIMING = ("Gate 后", "Gate 之后", "Stage 之前", "阶段之前", "进入 Environment 前")
+
     # §8.1 authorizes creating the first Issue only. Naming checkpoint/close/board
-    # in this sentence would imply an authorization that does not exist.
+    # would imply an authorization that does not exist.
     OVER_BROAD = ("checkpoint", "关闭", "看板")
 
     FEATURE_SKILL = REPO_ROOT / "dd-feature-development-workflow" / "SKILL.md"
-    RUNTIME_STATE = RUNTIME_STATE  # state.md — tracking placeholder must exist there
 
-    # -- helpers -------------------------------------------------------------
+    # -- predicate -----------------------------------------------------------
 
-    @staticmethod
-    def _has_obligation(text: str) -> bool:
-        return all(t in text for t in TestEntrypointReachability.OBLIGATION)
+    # Split on the separators that end a clause, so mandate/action/timing must all
+    # live in ONE tracking clause. Aggregating over the whole Environment row would
+    # let an unrelated sentence's 必须 (e.g. "恢复任务…必须复用") stand in for the
+    # tracking mandate, and "建议按 task-tracking §3 创建 Issue" would still pass.
+    CLAUSE_SPLIT = re.compile(r"[；;。\n]")
 
-    @staticmethod
-    def _has_action(text: str) -> bool:
-        return all(t in text for t in TestEntrypointReachability.ACTION)
+    @classmethod
+    def tracking_clause(cls, text: str) -> str | None:
+        """The clause that names the owner contract and an Issue, if any."""
+        for clause in cls.CLAUSE_SPLIT.split(text):
+            if "task-tracking" in clause and "§3" in clause and "Issue" in clause:
+                return clause
+        return None
+
+    @classmethod
+    def obligation_problem(cls, text: str) -> str | None:
+        """Return why `text` fails to state a mandatory, correctly-timed attempt."""
+        clause = cls.tracking_clause(text)
+        if clause is None:
+            return ("no single clause names task-tracking §3 and an Issue; the obligation "
+                    "must be stated in one place, not assembled from separate sentences")
+        for token in cls.ACTION:
+            if token not in clause:
+                return f"tracking clause missing action token {token!r}"
+        for token in cls.NEGATIONS:
+            if token in clause:
+                return f"obligation is negated by {token!r}"
+        for prefix in cls.NEGATING_PREFIXES:
+            if prefix in clause:
+                return f"mandate is negated by {prefix!r}"
+        for token in cls.PROHIBITED_MANDATES:
+            if token in clause:
+                return f"obligation is not a mandate ({token!r})"
+        if not re.search(r"(?<!不)(?<!非)必须", clause):
+            return "tracking clause has no positive 必须 mandate"
+        for token in cls.BAD_TIMING:
+            if token in clause:
+                return f"attempt is placed outside the Gate by {token!r}"
+        if "Gate 前" not in clause and "Gate 之前" not in clause:
+            return "tracking clause does not anchor to the Environment Gate deadline"
+        for token in cls.OVER_BROAD:
+            if token in clause:
+                return f"implies authorization for {token!r}"
+        return None
+
+    # -- extraction ----------------------------------------------------------
 
     @staticmethod
     def _feature_environment_row() -> str:
@@ -1728,49 +1966,53 @@ class TestEntrypointReachability(unittest.TestCase):
         assert "### Environment" in text, "bug SKILL.md must keep an Environment stage section"
         return text.split("### Environment", 1)[1].split("\n### ", 1)[0]
 
-    # -- T-01/T-02/T-03: feature entry ---------------------------------------
+    @staticmethod
+    def _runtime_preflight() -> str:
+        text = read(RUNTIME_SKILL)
+        assert "## Preflight" in text, "runtime SKILL.md must keep a Preflight section"
+        return text.split("## Preflight", 1)[1].split("\n## ", 1)[0]
+
+    @staticmethod
+    def _red_lines(text: str) -> str:
+        assert "## 红线" in text, "entry must keep a red-lines section"
+        return text.split("## 红线", 1)[1]
+
+    # -- T-01/T-02/T-03: feature entry --------------------------------------
 
     def test_t01_feature_environment_row_states_the_obligation_and_action(self):
         row = self._feature_environment_row()
-        self.assertTrue(self._has_obligation(row),
-                        f"feature Environment row must name the owner contract; got: {row}")
-        self.assertTrue(self._has_action(row),
-                        f"feature Environment row must name creating an Issue; got: {row}")
+        self.assertIsNone(self.obligation_problem(row),
+                          f"feature Environment row: {self.obligation_problem(row)}")
 
     def test_t02_obligation_is_not_only_in_the_trailing_router_list(self):
         text = read(self.FEATURE_SKILL)
         router = text.split("- 外部任务绑定与投影", 1)
         self.assertEqual(len(router), 2, "feature SKILL.md must keep its trailing router entry")
-        self.assertFalse(
-            self._has_action(router[1]),
-            "the trailing router list is reference material, not the Stage instruction; "
-            "the obligation must be restated in the Environment row itself")
+        self.assertIsNotNone(
+            self.obligation_problem(router[1]),
+            "the trailing router list is reference material, not the Stage instruction")
 
     def test_t03_feature_red_line_covers_skipping_the_attempt(self):
-        text = read(self.FEATURE_SKILL)
-        red = text.split("## 红线", 1)[1]
-        self.assertTrue(self._has_obligation(red) or self._has_action(red),
-                        "feature red lines must forbid passing the Environment Gate untried")
+        red = self._red_lines(read(self.FEATURE_SKILL))
+        lines = [ln for ln in red.splitlines() if "Environment Gate" in ln and "§3" in ln]
+        self.assertTrue(lines, "feature red lines must forbid passing the Environment Gate untried")
 
     # -- T-04/T-05/T-06: bug entry ------------------------------------------
 
     def test_t04_bug_environment_section_states_the_obligation_and_action(self):
         section = self._bug_environment_section()
-        self.assertTrue(self._has_obligation(section),
-                        f"bug Environment section must name the owner contract; got: {section}")
-        self.assertTrue(self._has_action(section),
-                        f"bug Environment section must name creating an Issue; got: {section}")
+        self.assertIsNone(self.obligation_problem(section),
+                          f"bug Environment section: {self.obligation_problem(section)}")
 
     def test_t05_bug_red_line_covers_skipping_the_attempt(self):
-        text = read(BUG_SKILL)
-        red = text.split("## 红线", 1)[1]
-        self.assertTrue(self._has_obligation(red) or self._has_action(red),
-                        "bug red lines must forbid passing the Environment Gate untried")
+        red = self._red_lines(read(BUG_SKILL))
+        lines = [ln for ln in red.splitlines() if "Environment Gate" in ln and "§3" in ln]
+        self.assertTrue(lines, "bug red lines must forbid passing the Environment Gate untried")
 
     def test_t06_bug_obligation_is_not_in_the_locked_bug_state_section(self):
         # ## Bug State holds exactly one canonical router paragraph (no creation
         # verb) and is locked verbatim by check_consumers_delegate_tracking. The
-        # obligation itself must live in ## Stage 路由 / ### Environment.
+        # obligation belongs in ## Stage 路由 / ### Environment.
         text = read(BUG_SKILL)
         state_section = text.split("## Bug State", 1)[1].split("\n## ", 1)[0]
         for verb in ("创建", "新建", "远端工单", "任务卡"):
@@ -1778,40 +2020,27 @@ class TestEntrypointReachability(unittest.TestCase):
                              f"## Bug State must not carry a task-creation obligation "
                              f"({verb}); it belongs in ### Environment")
 
-    # -- T-12: symmetry -------------------------------------------------------
-
-    def test_t12_both_entries_carry_the_obligation_symmetrically(self):
-        feature, bug = self._feature_environment_row(), self._bug_environment_section()
-        for name, text in (("feature", feature), ("bug-fix", bug)):
-            with self.subTest(entry=name):
-                self.assertTrue(self._has_obligation(text))
-                self.assertTrue(self._has_action(text))
-
-    # -- T-13: no authorization creep ---------------------------------------
-
-    def test_t13_obligation_sentences_do_not_name_unauthorized_actions(self):
-        for name, text in (("feature", self._feature_environment_row()),
-                           ("bug-fix", self._bug_environment_section())):
-            with self.subTest(entry=name):
-                for token in self.OVER_BROAD:
-                    self.assertNotIn(token, text,
-                                     f"{name} entry must not imply authorization for {token}")
-
     # -- T-07/T-08: runtime entry -------------------------------------------
 
     def test_t07_runtime_preflight_requires_the_attempt(self):
-        text = read(RUNTIME_SKILL)
-        preflight = text.split("## Preflight", 1)[1].split("\n## ", 1)[0]
-        self.assertTrue(self._has_obligation(preflight),
-                        "runtime Preflight must require the attempt before the Environment Gate")
-        self.assertTrue(self._has_action(preflight),
-                        "runtime Preflight must name creating an Issue")
+        preflight = self._runtime_preflight()
+        self.assertIsNone(self.obligation_problem(preflight),
+                          f"runtime Preflight: {self.obligation_problem(preflight)}")
         self.assertIn("validate-tracking-binding", preflight,
                       "runtime Preflight must require the deterministic Gate check")
+        # The owner widened the mandatory set to four long-running workflows, but
+        # Preflight speaks only for the two whose binding Gate is the Environment
+        # Gate. A generalized "workflows that declare the obligation" would map all
+        # four onto the Environment Gate; the fast-track pair binds at Intake.
+        self.assertRegex(
+            preflight, r"以 Environment Gate 为绑定 Gate",
+            "Preflight must scope the obligation to the Environment-Gate pair")
+        self.assertRegex(
+            preflight, r"Intake Gate",
+            "Preflight must say where the other two workflows bind instead")
 
     def test_t08_preflight_keeps_the_owner_link(self):
-        preflight = read(RUNTIME_SKILL).split("## Preflight", 1)[1].split("\n## ", 1)[0]
-        self.assertIn("references/task-tracking.md", preflight,
+        self.assertIn("references/task-tracking.md", self._runtime_preflight(),
                       "the new obligation item must link the owner, not replace the "
                       "recovery-path link already present")
 
@@ -1833,19 +2062,104 @@ class TestEntrypointReachability(unittest.TestCase):
             self.assertNotIn(nested, state,
                              f"state.md must not duplicate the owner's {nested}")
 
-    # -- T-11: mutation — deleting the sentence must break the guard ---------
+    # -- T-12: symmetry ------------------------------------------------------
+
+    def test_t12_both_entries_carry_the_obligation_symmetrically(self):
+        for name, text in (("feature", self._feature_environment_row()),
+                           ("bug-fix", self._bug_environment_section())):
+            with self.subTest(entry=name):
+                self.assertIsNone(self.obligation_problem(text),
+                                  f"{name}: {self.obligation_problem(text)}")
+
+    # -- T-13: no authorization creep ---------------------------------------
+
+    def test_t13_obligation_sentences_do_not_name_unauthorized_actions(self):
+        for name, text in (("feature", self._feature_environment_row()),
+                           ("bug-fix", self._bug_environment_section()),
+                           ("runtime", self._runtime_preflight())):
+            with self.subTest(entry=name):
+                for token in self.OVER_BROAD:
+                    self.assertNotIn(token, text,
+                                     f"{name} entry must not imply authorization for {token}")
+
+    # -- T-11/T-14: semantic mutations must break the guard -----------------
+
+    def _mutate_clause(self, text: str, fn) -> str:
+        """Apply `fn` to the tracking clause only, not the first match anywhere.
+
+        The Environment row carries other 必须 ("恢复任务…必须复用并验证"), so a
+        whole-text replace would edit an unrelated sentence and leave the tracking
+        mandate intact — proving nothing.
+        """
+        clause = self.tracking_clause(text)
+        assert clause is not None, "no tracking clause to mutate"
+        mutated = fn(clause)
+        self.assertNotEqual(mutated, clause, "clause mutation must change the clause")
+        return text.replace(clause, mutated, 1)
+
+    # (label, fn(clause) -> mutated clause)
+    MUTATIONS = (
+        ("no_need", "极性反转：必须按 -> 无需按",
+         lambda c: c.replace("必须按", "无需按")),
+        ("optional", "极性反转：必须 -> 可选",
+         lambda c: c.replace("必须", "可选", 1)),
+        ("suggest", "极性反转：必须 -> 建议",
+         lambda c: c.replace("必须", "建议", 1)),
+        ("forbidden", "极性反转：必须 -> 禁止",
+         lambda c: c.replace("必须", "禁止", 1)),
+        ("not_mandatory", "否定式：不是必须",
+         lambda c: c.replace("必须按", "不是必须按", 1)),
+        ("not_required", "否定式：并非要求必须",
+         lambda c: c.replace("必须按", "并非要求必须按", 1)),
+        ("choose_whether", "可疑式：可以选择是否必须",
+         lambda c: c.replace("必须按", "可以选择是否必须按", 1)),
+        ("should", "强制词弱化为 应当",
+         lambda c: c.replace("必须", "应当", 1)),
+        ("drop_mandate", "删除 tracking 子句里的 必须",
+         lambda c: c.replace("必须", "", 1)),
+        ("move_mandate", "把 必须 移出 tracking 子句",
+         lambda c: c.replace("必须", "", 1)),
+        ("after_gate", "时序反转：Gate 前 -> Gate 后",
+         lambda c: c.replace("Environment Gate 前", "Environment Gate 后")),
+        ("before_stage", "时序反转：worktree 确定后 -> 进入 Environment Stage 之前",
+         lambda c: c.replace("worktree 与分支确定后、Environment Gate 前",
+                             "进入 Environment Stage 之前")),
+        ("split_clause", "把 Gate 锚点拆出 tracking 子句",
+         lambda c: c.replace("worktree 与分支确定后、Environment Gate 前，必须按",
+                             "worktree 与分支确定后，必须按", 1)),
+        ("over_broad", "引入未授权的 checkpoint 措辞",
+         lambda c: c.replace("创建并绑定一张 GitHub Issue",
+                             "创建并绑定一张 GitHub Issue 并追加 checkpoint")),
+    )
+
+    def test_t14_semantic_mutations_break_the_guard(self):
+        original = self._feature_environment_row()
+        self.assertIsNone(self.obligation_problem(original),
+                          "the unmutated entry must pass before mutations mean anything")
+        for tag, label, fn in self.MUTATIONS:
+            with self.subTest(mutation=tag):
+                mutated = self._mutate_clause(original, fn)
+                self.assertIsNotNone(self.obligation_problem(mutated),
+                                     f"guard stayed green after: {label}")
 
     def test_t11_removing_the_obligation_breaks_the_guard(self):
+        original = self._feature_environment_row()
+        stripped = re.sub(r"\*\*worktree 与分支确定后.*?通过\*\*", "", original)
+        self.assertNotEqual(stripped, original, "mutation target must exist")
+        self.assertIsNotNone(self.obligation_problem(stripped),
+                             "guard must detect a removed obligation sentence")
+
+    def test_t15_moving_the_mandate_into_an_unrelated_sentence_does_not_help(self):
+        """The exact bypass the clause-scoped predicate exists to catch: strip 必须
+        from the tracking clause while an unrelated sentence still has one."""
         row = self._feature_environment_row()
-        stripped = self._OBLIGATION_SENTENCE.sub("", row)
-        self.assertNotEqual(stripped, row, "mutation target sentence must exist")
-        self.assertFalse(self._has_obligation(stripped),
-                         "guard must detect a removed obligation sentence")
-        self.assertFalse(self._has_action(stripped),
-                         "guard must detect a removed action wording")
-
-    _OBLIGATION_SENTENCE = re.compile(r"[^|]*?创建[^|]*?Issue[^|]*?(?=\s*\|)")
-
+        clause = self.tracking_clause(row)
+        self.assertIn("必须", clause, "precondition: the clause carries the mandate")
+        hacked = row.replace(clause, clause.replace("必须", ""), 1)
+        self.assertIn("必须", hacked,
+                      "precondition: an unrelated sentence still carries 必须")
+        self.assertIsNotNone(self.obligation_problem(hacked),
+                             "a 必须 borrowed from an unrelated sentence must not count")
 
 if __name__ == "__main__":
     unittest.main()
