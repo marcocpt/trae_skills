@@ -46,7 +46,7 @@ delivery_policy: project-rules
 ## 工作流怎么运行
 
 1. **复述症状并取得确认**——唯一一次询问：现在看到什么、期望是什么、这次修到哪个范围；
-2. **按推荐项直接做最小修复**——默认新建隔离 fix worktree（不询问），快速定位后改最小一处，中途不打断、不复核、不派审查，自主判断记入 `decisions`；
+2. **按推荐项直接做最小修复**——先新建隔离 fix worktree（强制，不询问；例外只有恢复复用已有 fix worktree 与用户明确要求在当前工作区），快速定位后改最小一处，中途不打断、不复核、不派审查，自主判断记入 `decisions`；
 3. **冒烟自证并交付可用产物**——真实跑一次确认症状消失，UI Bug 用真实路径证据，告诉用户怎么立刻验证；
 4. **进入补齐**——补复现测试与红绿对照、补根因证据、补回归 CI、补文档，逐条关闭欠账并附证据；
 5. **收尾或交接**——欠账全清则写 Completion Receipt 并 Host Close；根因无法证明或命中升级触发器则交接 `dd-bug-fix-workflow`。
@@ -54,12 +54,13 @@ delivery_policy: project-rules
 ## 核心不变量
 
 1. 全程只询问一次（症状复述对齐），其余按推荐执行并记录；
-2. 速通阶段不得宣称根因已证明，只能记"疑似根因 + 待补证据"；
-3. 冒烟必须真实跑通，用户可见 Bug 必须真实路径证据；
-4. 补齐阶段的复现测试必须在回退实现上验证红、在修复实现上验证绿；
-5. 症状消失 ≠ 根因已证明 ≠ 验收通过；
-6. 内容完成不等于 Git 或外部动作授权；
-7. 根因无法证明时交接，不关闭根因欠账。
+2. 首次建立执行环境必须新建隔离 fix worktree，且在修改项目产物之前完成；例外只有恢复任务复用已提供 worktree（仅验证不重建）和用户明确要求在当前工作区（须记 `reason`）；
+3. 速通阶段不得宣称根因已证明，只能记"疑似根因 + 待补证据"；
+4. 冒烟必须真实跑通，用户可见 Bug 必须真实路径证据；
+5. 补齐阶段的复现测试必须在回退实现上验证红、在修复实现上验证绿；
+6. 症状消失 ≠ 根因已证明 ≠ 验收通过；
+7. 内容完成不等于 Git 或外部动作授权；
+8. 根因无法证明时交接，不关闭根因欠账。
 
 ## Stage 路由
 
@@ -71,7 +72,7 @@ intake → fast-fix → smoke → backfill → closure
 
 | Stage | 实际要做什么 | 完成标志 | 详细规则 |
 |---|---|---|---|
-| Intake | 复述症状、期望行为与修复范围并取得确认；确定并持久化工作环境（默认按推荐新建隔离 fix worktree），并在本 Stage Gate 前完成一次 tracking 绑定尝试 | 症状复述已获用户确认，工作环境已持久化，tracking 绑定结果已按 owner 合同落盘（绑定失败不阻塞本 Stage） | [fast-track.md](references/fast-track.md) |
+| Intake | 复述症状、期望行为与修复范围并取得确认；确定并持久化工作环境——新建隔离 fix worktree，且在修改任何项目产物之前完成（仅恢复任务复用已有 fix worktree、或用户明确要求在当前工作区时才例外，后者须记 `reason`）；并在本 Stage Gate 前完成一次 tracking 绑定尝试 | 症状复述已获用户确认，隔离 fix worktree 已新建或已复用并验证且已持久化，tracking 绑定结果已按 owner 合同落盘（绑定失败不阻塞本 Stage） | [fast-track.md](references/fast-track.md) |
 | Fast Fix | 快速定位后做最小修复，不改无关行为，不宣称根因；自主判断记入 `decisions` | 修改完成，构建可过，`decisions` 已记录 | [fast-track.md](references/fast-track.md) |
 | Smoke | 真实运行确认症状消失；用户可见 Bug 取真实路径证据；交付可用产物与验证步骤 | 症状已消失且有真实证据，欠账台账已写入并持久化 | [fast-track.md](references/fast-track.md) |
 | Backfill | 补复现测试与红绿对照 → 补根因证据 → 补回归 CI → 补文档，逐条关闭欠账并附证据 | 所有 `open` 欠账为 `closed` 或经用户确认 `waived`，验证绑定同一最终 SHA | [backfill.md](references/backfill.md) |
@@ -98,6 +99,12 @@ intake → fast-fix → smoke → backfill → closure
 - 复述未获确认（含 null、取消）就往下走；
 - 速通阶段除 fast-track-contract §3.2 四种例外外再次询问或插入复核；
 - 把"用户催得急"推断为免检或免补。
+
+### 工作环境纪律
+
+- 未新建隔离 fix worktree 就修改项目产物（恢复任务复用已提供 fix worktree、用户明确要求在当前工作区的例外除外）；
+- 用当前工作区却不把原因写入 `reason`；
+- 中途切换 worktree，或在隔离 fix worktree 之外修改交付范围内文件。
 
 ### 根因纪律
 

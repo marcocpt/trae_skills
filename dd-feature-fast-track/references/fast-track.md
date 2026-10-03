@@ -14,9 +14,16 @@
 
 复述后**不再就实现细节提问**。未确认（null、取消、空输入）→ 按 [ask](../../dd-workflow-runtime/references/ask.md) 重问。
 
-### 1.2 工作环境（不询问，按推荐执行）
+### 1.2 工作环境（强制新建隔离 worktree，不询问）
 
-默认按推荐项新建隔离 worktree，且在修改任何项目产物之前完成，遵循 `dd-git-workflow` 的 branch 与 worktree 规则。无法创建（非 Git 仓库、无可用基线等）时才使用当前工作区，并把原因写入状态 `reason`。
+**首次建立执行环境时必须新建隔离 worktree，且在修改任何项目产物（代码、测试、规格、项目文档等交付范围内文件）之前完成**，遵循 `dd-git-workflow` 的 branch 与 worktree 规则。这不是推荐项，也不询问用户。
+
+只有两种例外：
+
+- 恢复任务或父工作流已提供 worktree → 复用并验证，不重新创建；
+- 用户明确要求在当前工作区修改 → 允许，但必须把原因写入状态 `reason`。
+
+除此之外不允许默认就在当前工作区改代码。runtime 状态文件与工作流内部证据文件按 runtime 合同处理，不属于项目产物修改。
 
 工作环境确定后立即持久化状态，写入 `fast_track=true`、`track_phase=fast-track`、`requirement_confirmed=true`。
 
