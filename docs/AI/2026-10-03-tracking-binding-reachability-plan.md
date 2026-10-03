@@ -24,13 +24,13 @@ source_manifest:
     stable_id: SPEC-DES
     path: docs/AI/2026-10-03-tracking-binding-reachability-design.md
     version: v4
-    digest: sha256:fa02d9b5d4a1e21de67eb5ce080f7228425e9aba73b165a47bfaa733a8b0e249
+    digest: sha256:e09f81c17510eb19d9e21675efe371cf9718e2f8ff41090f7148de4ec54b1217
     approval: {status: approved, authority: user, decided_at: 2026-10-03, evidence_ref: design-confirm}
   SPEC-TM:
     stable_id: SPEC-TM
     path: docs/AI/2026-10-03-tracking-binding-reachability-test-matrix.md
     version: v4
-    digest: sha256:878e2aa70ce94a58a23cd6b638ad0336e07e0b4b1a184982ff987e9df18d6765
+    digest: sha256:83c00898d2a3d1887426d6c1859ba0b960eb823ad03337542c1773d7d3a8f9f3
     approval: {status: approved, authority: user, decided_at: 2026-10-03, evidence_ref: tm-confirm}
   OWNER-TT:
     stable_id: OWNER-TT
@@ -292,7 +292,7 @@ write_scope:
 
   - Feature `SKILL.md`：`| Environment |` 行"实际要做什么"列加入"Environment Gate 前必须为本工作流创建并绑定一张 GitHub Issue（按 owner 合同 §3）"，"完成标志"列加入"绑定尝试结果已记录且判定器通过"；红线 → 阶段纪律加一条。
   - Bug `SKILL.md`：`### Environment` 段内加同义义务句与判定要求；红线加一条。**不得触碰 `## Bug State` 节**（既有测试逐字锁定该段）。
-  - `dd-workflow-runtime/SKILL.md`：Preflight 新增一条"声明该义务的工作流在 Environment Gate 前必须完成尝试"；调用契约 `tracking` 说明改为表述尝试结果而非仅已绑定时定位；保留既有 `references/task-tracking.md` 链接（T-08）。
+  - `dd-workflow-runtime/SKILL.md`：Preflight 新增一条"以 Environment Gate 为绑定 Gate 的 Feature/Bug 两类工作流在 Environment Gate 前必须完成尝试"（并写明速通工作流走 Intake Gate、不由本条声明）；调用契约 `tracking` 说明改为表述尝试结果而非仅已绑定时定位；保留既有 `references/task-tracking.md` 链接（T-08）。
   - 三处义务句只表述"创建并绑定 Issue"（§8.1 授权范围内），**不得提及 checkpoint/关闭/看板**（T-13）。
 
 - [ ] **步骤 2：按 T-09/T-10 补状态表示**

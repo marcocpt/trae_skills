@@ -2028,6 +2028,16 @@ class TestEntrypointReachability(unittest.TestCase):
                           f"runtime Preflight: {self.obligation_problem(preflight)}")
         self.assertIn("validate-tracking-binding", preflight,
                       "runtime Preflight must require the deterministic Gate check")
+        # The owner widened the mandatory set to four long-running workflows, but
+        # Preflight speaks only for the two whose binding Gate is the Environment
+        # Gate. A generalized "workflows that declare the obligation" would map all
+        # four onto the Environment Gate; the fast-track pair binds at Intake.
+        self.assertRegex(
+            preflight, r"以 Environment Gate 为绑定 Gate",
+            "Preflight must scope the obligation to the Environment-Gate pair")
+        self.assertRegex(
+            preflight, r"Intake Gate",
+            "Preflight must say where the other two workflows bind instead")
 
     def test_t08_preflight_keeps_the_owner_link(self):
         self.assertIn("references/task-tracking.md", self._runtime_preflight(),

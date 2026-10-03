@@ -188,7 +188,7 @@ feature-fast-track / bug-fast-track（判定范围，但入口不由本 Feature 
 | `dd-feature-development-workflow/SKILL.md` | 红线 → 阶段纪律 | 新增一条：未完成绑定尝试并通过判定就过 Environment Gate |
 | `dd-bug-fix-workflow/SKILL.md` | Stage 路由 → Environment 段 | 段内补义务句与判定要求（该文件用分段而非表格） |
 | `dd-bug-fix-workflow/SKILL.md` | 红线 | 同上 |
-| `dd-workflow-runtime/SKILL.md` | Preflight | 新增一条：声明该义务的工作流在 Environment Gate 前必须完成尝试 |
+| `dd-workflow-runtime/SKILL.md` | Preflight | 新增一条：以 Environment Gate 为绑定 Gate 的 Feature/Bug 两类工作流在 Environment Gate 前必须完成尝试。两个速通工作流的绑定 Gate 是 Intake Gate，由其自身 Skill 在 Intake 提供调用点，本条不代为声明 |
 | `dd-workflow-runtime/SKILL.md` | 调用契约字段说明 | 明确 `tracking` 字段语义为"尝试结果"，非仅"已绑定时用于定位" |
 
 **为什么写两处（Stage 行 + 红线）**：Stage 行保证"做什么"可见，红线保证"跳过会被判违规"。只有 Stage 行，Agent 可能读作建议；只有红线，Agent 不知道该做什么。

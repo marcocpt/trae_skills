@@ -3,7 +3,7 @@
 - Feature: tracking-binding-reachability
 - Workflow ID: feature-development-20261003T053419Z-ee41fa8
 - Stage: Test Matrix（验证合同）
-- 基线 Requirements: v3 (`sha256:dceaecc699c94daf72393f0adb6a50300cd9bb91e777c9deec02f68943fbd08c`)｜Design: v4 (`sha256:fa02d9b5d4a1e21de67eb5ce080f7228425e9aba73b165a47bfaa733a8b0e249`)
+- 基线 Requirements: v3 (`sha256:dceaecc699c94daf72393f0adb6a50300cd9bb91e777c9deec02f68943fbd08c`)｜Design: v4 (`sha256:e09f81c17510eb19d9e21675efe371cf9718e2f8ff41090f7148de4ec54b1217`)
 - 版本: v4 — 绑定 Requirements v3 / Design v4；纳入四类长流程工作流的判定覆盖（T-78~T-81）
 - 日期: 2026-10-03
 
@@ -32,7 +32,7 @@
 | T-04 | AC-02 | Environment 段义务句直接出现创建 Issue 的动作指称，不只是指向 owner 合同 | `dd-bug-fix-workflow/SKILL.md` |
 | T-05 | AC-04 | 红线含对应条目 | 同上 |
 | T-06 | AC-02 | 义务表述**不在** `## Bug State` 节内（该节被既有测试逐字锁定且禁创建动词） | 同上 |
-| T-07 | AC-05 | Preflight 含一条要求声明该义务的工作流在 Environment Gate 前完成尝试 | `dd-workflow-runtime/SKILL.md` |
+| T-07 | AC-05 | Preflight 含一条要求**以 Environment Gate 为绑定 Gate 的 Feature/Bug 两类工作流**在 Environment Gate 前完成尝试的条目。写成泛化的「声明该义务的工作流」会再次把四类强制工作流错误映射到 Environment Gate | `dd-workflow-runtime/SKILL.md` |
 | T-08 | AC-05 | Preflight 新增条目不替换既有 `references/task-tracking.md` 链接 | 同上（既有 `test_task_tracking_linked_from_runtime_skill` 的邻接保护） |
 | T-09 | AC-06 | 通用字段表示的 JSON 示例含 `"tracking"` 键 | `dd-workflow-runtime/references/state.md` |
 | T-10 | AC-06 | `state.md` 不含 owner 嵌套字段名（交由既有 `test_tracking_nested_schema_single_owner` 守护，T-10 只加正向断言） | 同上 |
