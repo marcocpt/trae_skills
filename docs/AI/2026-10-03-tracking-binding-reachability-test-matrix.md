@@ -60,8 +60,10 @@
 | T-28 | `schema_version` ∈ {`"2"`, `"1"`, `True`, `False`, `2.5`, `[]`, `{}`} + `tracking=null` | exit 2（非整数是残缺状态，不得当作 legacy 放行，也不得当作未尝试判 1） |
 | T-29 | `workflow_type` ∈ {缺失, `""`, `"feature"`, `"Feature-Development"`, `7`} | 非 exit 0（未识别类型不得 fail-open） |
 | T-62 | `(sync, sync_reason)` 为 §4 未定义的交叉组合：`not-authorized`+`issue-missing`、`not-synced`+`user-declined`、`not-authorized`+`binding-ambiguous`、`not-synced`+`no-policy`、`disabled`+`issue-missing`、`synced`+`no-policy` | exit 1（词表合法但配对非法） |
-| T-63 | `tracking.provider` / `sync` / `sync_reason` 为 `[]`、`{}`、`7`、`[1,2]` | 无 Traceback，且退出码 ∈ {1, 2}（unhashable 不得崩成 exit 1） |
+| T-63 | `tracking.provider` / `sync` / `sync_reason` 为 `[]`、`{}`、`7`、`[1,2]` | **exit 2 且 stderr 无 Traceback**。未捕获异常写 stderr 且退出码为 1（与 Gate FAIL 同码），只查 stdout 或只要求非 0 会让真实 crash 通过 |
 | T-64 | state 文件为非法 UTF-8 字节 | exit 2，无 Traceback |
+| T-65 | `workflow_type=project-bootstrap` + `schema_version` ∈ {`"2"`, `-1`, `True`, `[]`, `{}`} | exit 0。豁免是无条件 scope 豁免，不得被文件中其他位置的畸形 schema 否决（校验顺序：先身份后豁免） |
+| T-66 | `tracking={"sync":"synced","sync_reason":null}` 且**无** `issue_number` | exit 0，且输出含 `without a reason`。T-30 会因 `issue_number` 提前返回，缺此例则自记录配对分支从无行为覆盖 |
 
 ### 3.2 应判 PASS —— 有效绑定（AC-07）
 
@@ -111,7 +113,7 @@
 |---|---|
 | T-70 | 判定器内置 `SYNC_VALUES` == owner 合同 §2 表 `sync` 行取出的全部取值，双向相等 |
 | T-71 | 判定器内置 `SYNC_REASONS` ⊇ owner 合同 §4 表 `sync_reason` 列取出的全部取值（owner 新增原因 → 测试失败） |
-| T-72 | 判定器内置 `SYNC_REASONS` ⊆ owner 合同 §4 表 + §2 的 `user-declined`／`disabled` 允许集（判定器不得发明词表外取值） |
+| T-72 | 判定器内置 `SYNC_REASONS` ⊆ owner 合同 §4 表的 `sync_reason` 列（判定器不得发明词表外取值）。注意 `disabled` 是 `sync` 取值而非 `sync_reason` 取值，不属本词表 |
 | T-73 | 判定器引用的 `tracking` 子字段名 ⊆ owner 合同 §2 schema 块声明的字段名 |
 | T-74 | 判定器 `RECORDED_OUTCOMES`（`(sync, sync_reason)` 配对集）== §4 表逐行抽出的配对集，双向相等 |
 | T-75 | 判定器 `SUPPORTED_PROVIDERS` == §2 登记的 provider |
@@ -163,9 +165,10 @@ T-70~T-75 从 `task-tracking.md` 用正则抽取词表/配对，与判定器常�
 | AC-07 | T-20~T-29（FAIL/usage）, T-30~T-31（PASS） | L2 |
 | AC-08 | T-40~T-49（逐类 10 例）, T-62（反向非法配对） | L2 |
 | AC-09 | T-50~T-54 | L2 |
-| AC-10 | T-55, T-56, T-57, T-63, T-64 | L2 |
+| AC-10 | T-55, T-56, T-57, T-63, T-64, T-65, T-66 | L2 |
 | AC-11 | T-70~T-75, M1~M7 | L3 |
-| AC-12 | T-11, T-14 | L1 |
+| AC-12 | T-11, T-14, T-15 | L1 |
+| AC-13 | 全量既有测试模块 | L4 |
 | AC-14 | `git diff --name-only` 不含 `task-tracking.md` | L4 |
 
 AC-01~AC-14 全部有覆盖，无孤立 AC。

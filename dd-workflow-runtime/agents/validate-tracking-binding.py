@@ -90,8 +90,13 @@ MANDATORY_WORKFLOW_TYPES = frozenset({"feature-development", "bug-fix"})
 # state, and must not pass open.
 EXEMPT_WORKFLOW_TYPES = frozenset({"project-bootstrap"})
 
+# task-tracking §3.2: the schema versions the legacy exemption covers, spelled out
+# rather than expressed as `< 2` — a negative version would otherwise read as
+# legacy and let a never-attempted state pass.
+LEGACY_SCHEMA_VERSIONS = frozenset({0, 1})
+
 # task-tracking §2/§3.2: schema_version at or above this narrows a null tracking
-# to "never attempted". Below it, a null is historically unclassified.
+# to "never attempted".
 CURRENT_SCHEMA_VERSION = 2
 
 EXIT_PASS, EXIT_FAIL, EXIT_USAGE = 0, 1, 2
@@ -108,16 +113,23 @@ def _load(path: Path) -> dict:
 def _judge_schema_version(state: dict):
     """Return (is_legacy, raw) for schema_version, rejecting non-integers.
 
-    bool is an int subclass in Python, and a hand-written "2" is a common slip.
-    Either would let a never-attempted state be read as legacy and pass, so both
-    are malformed input rather than a version.
+    task-tracking §3.2 scopes the legacy exemption to exactly "missing, 0 or 1".
+    Anything else is either the current schema or malformed — in particular a
+    negative int must not read as legacy, or a never-attempted state would pass.
+    bool is an int subclass in Python and a hand-written "2" is a common slip, so
+    both are malformed input rather than a version.
     """
     raw = state.get("schema_version")
     if raw is None:
         return True, raw
     if isinstance(raw, bool) or not isinstance(raw, int):
         raise MalformedState(f"schema_version={raw!r} is not an integer")
-    return raw < CURRENT_SCHEMA_VERSION, raw
+    if raw in LEGACY_SCHEMA_VERSIONS:
+        return True, raw
+    if raw < 0:
+        raise MalformedState(f"schema_version={raw!r} is negative; "
+                             f"legacy covers {sorted(LEGACY_SCHEMA_VERSIONS)} only")
+    return False, raw
 
 
 def _issue_number_of(tracking: dict):
@@ -153,12 +165,14 @@ def evaluate(state: dict) -> tuple[int, str]:
 
     Mirrors Design §3.2 dispatch order:
       1. workflow type unrecognized            -> MalformedState (never passes open)
-      2. schema_version non-integer            -> MalformedState
-      3. workflow type explicitly exempt       -> pass
+      2. workflow type explicitly exempt       -> pass (unconditional scope exemption,
+                                                so a malformed schema elsewhere in the
+                                                file must not deny it)
+      3. schema_version malformed              -> MalformedState
       4. legacy schema with no tracking        -> pass (never force-attempt)
       5. tracking not an object               -> fail
       6. provider well-formedness             -> fail
-      7. the owner's four recorded shapes      -> pass
+      7. the owner's recorded outcome pairs    -> pass
       8. otherwise                            -> fail
     """
     wf_type = state.get("workflow_type")
@@ -168,10 +182,10 @@ def evaluate(state: dict) -> tuple[int, str]:
         raise MalformedState(
             f"workflow_type={wf_type!r} is neither mandatory nor a registered exempt "
             "type (task-tracking §2/§12)")
-
-    legacy, _ = _judge_schema_version(state)
     if wf_type in EXEMPT_WORKFLOW_TYPES:
         return EXIT_PASS, f"workflow_type={wf_type!r} is exempt (task-tracking §12)"
+
+    legacy, _ = _judge_schema_version(state)
 
     tracking = state.get("tracking")
     if legacy and tracking is None:

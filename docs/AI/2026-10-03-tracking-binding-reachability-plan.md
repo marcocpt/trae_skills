@@ -17,20 +17,20 @@ source_manifest:
   SPEC-REQ:
     stable_id: SPEC-REQ
     path: docs/AI/2026-10-03-tracking-binding-reachability-requirements.md
-    version: v1
-    digest: sha256:cf02335951f58a5c393294cc24cb56ce1ce2307c5645dcf8c552c3c06f1a7323
+    version: v2
+    digest: sha256:0d5f2239d9b6d7908e8c3c6cca492fdf316e137beae5954bcd77ad37525d4e6e
     approval: {status: approved, authority: user, decided_at: 2026-10-03, evidence_ref: intake-confirm}
   SPEC-DES:
     stable_id: SPEC-DES
     path: docs/AI/2026-10-03-tracking-binding-reachability-design.md
-    version: v2
-    digest: sha256:a952f8ec425be39cb6d612d30ddca51d2c14ed28ebe5d1fc461432b17b3779b6
+    version: v3
+    digest: sha256:203bf57653677f96595ef4901b96a7cf80334f43b0d3fdbb9797be58714d9aa3
     approval: {status: approved, authority: user, decided_at: 2026-10-03, evidence_ref: design-confirm}
   SPEC-TM:
     stable_id: SPEC-TM
     path: docs/AI/2026-10-03-tracking-binding-reachability-test-matrix.md
-    version: v1
-    digest: sha256:c4278fd9fc20450b0fd8ebebad23c1df18dcddedb1d692f99b658e1d4b32b26c
+    version: v2
+    digest: sha256:2886d810d841656c94713910b6dff95a00f6fe793be5449737659efff7e9bfd7
     approval: {status: approved, authority: user, decided_at: 2026-10-03, evidence_ref: tm-confirm}
   OWNER-TT:
     stable_id: OWNER-TT
@@ -43,7 +43,7 @@ source_manifest:
     stable_id: BASE-STATE
     path: dd-workflow-runtime/references/state.md
     version: current
-    digest: sha256:9c196d16c4533143f5920b59b8f68eda54fe959d355ab940ebcf6416c22e111d
+    digest: sha256:b1ebe0c2706b803b5977ac00db7495cb8d3cd12f5b7b7e628c648c11a0d5c2e6
     approval: {status: baseline, authority: repository, decided_at: 2026-10-03, evidence_ref: commit-ee41fa8}
 ```
 

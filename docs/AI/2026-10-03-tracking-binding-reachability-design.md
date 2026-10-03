@@ -3,7 +3,8 @@
 - Feature: tracking-binding-reachability
 - Workflow ID: feature-development-20261003T053419Z-ee41fa8
 - Stage: Design（WHO／结构）
-- 基线 Requirements: v1 (`cf02335951f58a5c`)
+- 基线 Requirements: v2
+- 版本: v3 — §3.2 判定算法同步实现（外部强审 H-02：canonical Design 与代码分叉）
 - 日期: 2026-10-03
 
 ## 1. 架构定位
@@ -66,30 +67,30 @@
 按 `schema_version` 与 `tracking` 形态分派：
 
 ```text
-读取 state，失败 → exit 2
+读取 state，失败或非 dict → exit 2
 
-若 workflow_type 不在 {feature-development, bug-fix} → PASS
-    （owner 合同 §12 明确 bootstrap 不适用该强制约束）
-
-若 schema_version 缺失或 < 2 且 tracking 缺失或为 null
-    → PASS
-    （本次改动之前的历史状态，FR-7；不得据其触发创建）
-
-若 tracking 为对象：
-    ├ provider 非 null 且不在已登记 provider 集 → FAIL   （§2 well-formedness 前置检查）
-    ├ ① issue_number 非 null                          → PASS  已绑定
-    ├ ② sync ∈ {synced, disabled}                     → PASS  §4 中这两行本就不带原因值
-    ├ ③ sync ∈ {not-synced, not-authorized}
-    │     且 sync_reason ∈ §4 词表                     → PASS  已记录原因
-    └ ④ 其余                                            → FAIL  尝试未记录
-
-否则（tracking 缺失或为 null，schema_version >= 2）
-    → FAIL
+① workflow_type 缺失／非字符串／既非强制类型也非豁免类型 → exit 2（MalformedState）
+② workflow_type ∈ 豁免集（project-bootstrap）              → exit 0
+     豁免是无条件 scope 豁免：文件中其他位置 schema_version 畸形不得否决它
+③ schema_version 非整数（含 bool）、或为负数                → exit 2（MalformedState）
+④ schema_version 缺失 / 0 / 1 且 tracking 缺失或为 null     → exit 0
+     §3.2 的 legacy 集精确为 {缺失, 0, 1}；写成 `< 2` 会把负整数也读成 legacy
+⑤ tracking 不是对象                                          → exit 1
+⑥ provider 非 null 且不在已登记 provider 集                  → exit 1
+⑦ issue_number 为「非 bool 的正整数」                        → exit 0（已绑定）
+⑧ (sync, sync_reason) ∈ §4 逐行定义的配对集                  → exit 0（已记录）
+     含 ("synced", None) 与 ("disabled", None) 两行：§4 该两行 sync_reason 为 `—`，
+     要求它们带原因值会否决合同明确允许的状态
+⑨ sync 非 null 且不在 §2 词表                                → exit 1
+⑩ sync_reason 非 null 且不在 §4 词表                          → exit 1
+⑪ 其余                                                        → exit 1（尝试未记录）
 ```
 
-**为什么是四条 PASS 分支而不是一条**：owner 合同 §4 的 11 行里，`绑定有效→synced` 与 `用户明确禁用→disabled` 两行的 `sync_reason` 列本就允许为空；其余 9 行都带具体原因。若要求"任何 PASS 都必须有原因值"，这两行会被误判成未尝试，等于用判定器把合同明确允许的状态拦死——直接违反 FR-6。反之若只认 `issue_number`，则 10 类失败/拒绝全被误判，同样违反 FR-6。
+**为什么按配对而不是两个独立词表**：§4 为每个 `sync` 值配定了**特定**原因值。分别校验两个词表会放过 `not-authorized` + `issue-missing` 这类合同从未定义的组合，等于判定器在组合语义上成为第二事实源。
 
-**不通过条件的唯一形态**：`schema_version >= 2`、`workflow_type` 属强制范围、`tracking` 不通过 ①~③ 中任一分支、且未触发 legacy 或 bootstrap 豁免。这精确对应 owner 合同 §2 的"未尝试且未记录就通过 Gate 属违规"，不宽不窄。
+**为什么不写成 `< 2`**：负整数会被读成 legacy，`{"schema_version": -1, "tracking": null}` 就能让"从未尝试"的状态 PASS。
+
+**唯一的 FAIL 形态**：强制工作流类型下，schema 为当前版本，且 ⑦⑧ 均不成立、⑤⑥⑨⑩ 也都不适用。这精确对应 owner 合同 §2 的"未尝试且未记录就通过 Gate 属违规"，不宽不窄。exit 2 是输入错误，既不是通过也不是 Gate 失败。
 
 ### 3.3 为什么不做远端对账
 
@@ -116,6 +117,14 @@ owner 合同 §3.1 的对账与创建需要网络与凭据。判定层若做对�
 漂移方向都被捕获：判定层加了词表外的值 → 测试失败；owner 合同加了新原因 → 测试失败（双向断言）。
 
 **不采用**运行时解析 `task-tracking.md` 提取枚举：那会让规范 Markdown 成为可执行依赖，规范一改行为就变，且解析器本身成为新的失败面。
+
+### 3.5 版本沿革
+
+| 版本 | 变更 | 触发 |
+|---|---|---|
+| v1 | 初版四条 PASS 分支 + provider 前置检查 | 用户批准 |
+| v2 | 细化 PASS 分支（synced/disabled 免原因值） | Test Matrix 自检发现 v1 与 §4 冲突 |
+| v3 | 配对化判定、legacy 集精确为 {缺失,0,1}、豁免前置、issue_number 收为正整数、非整数 schema 与未识别 workflow_type 判 exit 2 | 外部强审两轮 FINDINGS（H-01/H-02/H-03、M-01） |
 
 ## 4. 数据流
 
@@ -185,7 +194,7 @@ Agent 读入口 SKILL.md
 | FR-3 | §6 `dd-workflow-runtime/SKILL.md` Preflight + 字段语义 |
 | FR-4 | §5 `state.md` 预留位 |
 | FR-5 | §3.1 判定层 CLI |
-| FR-6 | §3.2 判定算法 + §3.3 不做对账 |
+| FR-6 | §3.2 判定算法（配对化 + legacy 精确集）+ §3.3 不做对账 |
 | FR-7 | §3.2 第二分支（legacy 直接 PASS） |
 | FR-8 | §3.4 双向漂移断言 |
 | FR-9 | §6 两入口对称改动 |
