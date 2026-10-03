@@ -17,34 +17,34 @@ source_manifest:
   SPEC-REQ:
     stable_id: SPEC-REQ
     path: docs/AI/2026-10-03-tracking-binding-reachability-requirements.md
-    version: v32
-    digest: sha256:b2320ef0bab51cf9f5b218d5e427fe78130a7cb67cac7840e1093c2f47396225
+    version: v3
+    digest: sha256:dceaecc699c94daf72393f0adb6a50300cd9bb91e777c9deec02f68943fbd08c
     approval: {status: approved, authority: user, decided_at: 2026-10-03, evidence_ref: intake-confirm}
   SPEC-DES:
     stable_id: SPEC-DES
     path: docs/AI/2026-10-03-tracking-binding-reachability-design.md
-    version: v43
-    digest: sha256:0e273803293bf67d4933ee8b8c60c7a5ac30c51c455a9cd8c4febbf5fd6551c7
+    version: v4
+    digest: sha256:fa02d9b5d4a1e21de67eb5ce080f7228425e9aba73b165a47bfaa733a8b0e249
     approval: {status: approved, authority: user, decided_at: 2026-10-03, evidence_ref: design-confirm}
   SPEC-TM:
     stable_id: SPEC-TM
     path: docs/AI/2026-10-03-tracking-binding-reachability-test-matrix.md
-    version: v43
-    digest: sha256:931fec2b0f4c9086042d8ed8bd8933af06751f5f7baed6a05b891b3ca4ee9334
+    version: v4
+    digest: sha256:878e2aa70ce94a58a23cd6b638ad0336e07e0b4b1a184982ff987e9df18d6765
     approval: {status: approved, authority: user, decided_at: 2026-10-03, evidence_ref: tm-confirm}
   OWNER-TT:
     stable_id: OWNER-TT
     path: dd-workflow-runtime/references/task-tracking.md
     version: current
     digest: sha256:833004169350ced186f585c7e6730f5566252eb9a7635f67fb4c6284c5589f07
-    approval: {status: frozen-owner, authority: repository, decided_at: 2026-10-02, evidence_ref: commit-903a96e}
+    approval: {status: frozen-owner, authority: repository, decided_at: 2026-10-02, evidence_ref: origin/develop@94dcc9a (fast-track 纳入 tracking 合同)}
     note: 语义属主，本计划只读，零改动
   BASE-STATE:
     stable_id: BASE-STATE
     path: dd-workflow-runtime/references/state.md
     version: current
     digest: sha256:0c29a143f46df7b26574d509002f2ed010df6f4665ce1d979769d2f68f383b87
-    approval: {status: baseline, authority: repository, decided_at: 2026-10-03, evidence_ref: commit-ee41fa8}
+    approval: {status: baseline, authority: repository, decided_at: 2026-10-03, evidence_ref: origin/develop@94dcc9a (合并基线)}
 ```
 
 **Phase 划分（`split_mode: simple`，Phase ≤ 2）：**
@@ -329,12 +329,17 @@ write_scope:
 - [ ] **步骤 1：全量回归**
 
   `verification:` `for f in dd-*/tests/test_*.py; do m="${f%.py}"; m="${m//\//.}"; python3 -m unittest "$m"; done`
-  预期：全部 OK（既有 11 模块 + 新增判定层模块）。
+  预期：全部 OK（合并上游后共 14 个测试模块：本 Feature 新增 1 个判定层模块，其余 13 个为既有模块，含上游随 fast-track 新增的 3 个）。
 
 - [ ] **步骤 2：验证 AC-14**
 
-  `verification:` `git diff --name-only ee41fa8` 与 `git status --porcelain`
+  `verification:` `git diff --name-only origin/develop...HEAD` 与 `git status --porcelain`
   预期：变更集合不含 `dd-workflow-runtime/references/task-tracking.md`。
+
+  oracle 基线是**当前 PR 基线** `origin/develop`，不是本 Feature 的起点 `ee41fa8`：
+  合并 fast-track 上游 commit 后，`ee41fa8..HEAD` 本身包含上游对 owner 合同的合法
+  修改，用它做 diff 会把上游变更误判为越界。AC-14 的真实命题是"我的净改动为零"，
+  即本分支与 origin/develop 的 owner 文件逐字节相同。
 
 - [ ] **步骤 3：验证 AC-12 端到端**
 
@@ -358,13 +363,13 @@ delivery_authorization: {status: not-required, actions: [], scope: none, authori
 | AC-05 | 5 | T-07, T-08 |
 | AC-06 | 5 | T-09, T-10 |
 | AC-07 | 1, 2 | T-20~T-29, T-30~T-31, T-78~T-79, T-81 |
-| AC-08 | 2 | T-40~T-49, T-62, T-80 |
+| AC-08 | 2 | T-40~T-49, T-62, T-80, T-80b |
 | AC-09 | 2 | T-50~T-54, T-67 |
 | AC-10 | 2 | T-55, T-56, T-57, T-63, T-64, T-65, T-66, T-68, T-69 |
 | AC-11 | 0, 3 | T-70~T-77, M1~M11 |
 | AC-12 | 4, 6 | T-11, T-14, T-15 |
 | AC-13 | 6 | 全量既有测试模块 |
-| AC-14 | 6 | `git diff --name-only` |
+| AC-14 | 6 | `git diff --name-only origin/develop...HEAD` |
 
 AC-01~AC-14 全部有 Task 与 Test，无孤立项。
 

@@ -3,7 +3,7 @@
 - Feature: tracking-binding-reachability
 - Workflow ID: feature-development-20261003T053419Z-ee41fa8
 - Stage: Design（WHO／结构）
-- 基线 Requirements: v2
+- 基线 Requirements: v3 (`sha256:dceaecc699c94daf72393f0adb6a50300cd9bb91e777c9deec02f68943fbd08c`)
 - 版本: v4 — §3.2 判定算法同步实现；强制工作流类型集按 owner §2 扩为四类长流程工作流
   （2026-10-03 合并 origin/develop 的 fast-track 工作流后修订）
 - 日期: 2026-10-03
@@ -146,12 +146,18 @@ owner 合同 §3.1 的对账与创建需要网络与凭据。判定层若做对�
 ## 4. 数据流
 
 ```text
+Feature / Bug（入口与 runtime Preflight 的责任范围）
 Agent 读入口 SKILL.md
   → 得知 Environment Gate 前须完成绑定尝试（FR-1/FR-02）
   → 打开 owner 合同 §3/§3.1/§8.1 执行尝试（语义仍唯一属主）
   → 写 state.tracking
   → Environment Gate 前运行 validate-tracking-binding.py --state <path>
   → exit 0 才允许过 Gate（FR-10）
+
+feature-fast-track / bug-fast-track（判定范围，但入口不由本 Feature 改写）
+速通 Skill 自带的 Intake 调用点执行同一次尝试并落盘
+  → Intake Gate 前运行 validate-tracking-binding.py --state <path>
+  → 判定逻辑与上面完全相同；只有调用时机与绑定 Gate 位置不同
 ```
 
 失败分支：

@@ -69,7 +69,7 @@ Stage 创建或消费规范文档、人审视图、弱模型执行包或验证�
 7. 生成 `blocking_gaps`、`deferred_gaps` 和下一 Stage；
 8. 只询问无法由状态、仓库或已批准文档回答的 blocker；
 9. 首次写文件前确定并持久化工作环境，并按 [state](references/state.md) 的写入租约取得跨宿主唯一写者租约；取不到时保持只读或停止，不得静默并行写入；
-10. 对声明了外部任务绑定义务的工作流（`workflow_type` 为 `feature-development` 或 `bug-fix`），在 Environment Stage 完成执行环境识别、worktree 与分支确定之后、该 Stage 的 Gate 之前，必须完成一次绑定尝试：按 [task-tracking](references/task-tracking.md) §3 执行（需要建立首张绑定时包含创建并绑定一张 GitHub Issue，复用还是创建由 §3 唯一规定），并把结果落盘；随后运行 `agents/validate-tracking-binding.py --state <state_file>`，非零退出即不得通过该 Stage 的 Gate。
+10. 对以 Environment Gate 为绑定 Gate 的长流程工作流（`workflow_type` 为 `feature-development` 或 `bug-fix`），在 Environment Stage 完成执行环境识别、worktree 与分支确定之后、该 Stage 的 Gate 之前，必须完成一次绑定尝试：按 [task-tracking](references/task-tracking.md) §3 执行（需要建立首张绑定时包含创建并绑定一张 GitHub Issue，复用还是创建由 §3 唯一规定），并把结果落盘；随后运行 `agents/validate-tracking-binding.py --state <state_file>`，非零退出即不得通过该 Stage 的 Gate。本条的适用范围就是这两类：另两个长流程工作流（`feature-fast-track`／`bug-fast-track`）的绑定 Gate 是 Intake Gate，由各自的 Skill 在 Intake 提供调用点，本条不代为声明；判定器本身对四类一视同仁。
 
 纯查询或只读审查不创建工作流状态，也不询问 worktree。
 

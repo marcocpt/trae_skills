@@ -12,6 +12,7 @@ test_task_tracking.py::TestVocabularyDrift.
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -423,16 +424,45 @@ class TestFastTrackWorkflowsAreCovered(unittest.TestCase):
                 assert_clean_run(self, code, out, err)
                 self.assertEqual(code, EXIT_PASS)
 
+    @staticmethod
+    def _gate_association_ok(message: str) -> bool:
+        """True when the message binds each Gate to the right workflow class."""
+        return bool(re.search(r"Environment Gate for Feature/Bug", message)) and \
+            bool(re.search(r"Intake Gate for\s+the two fast-track", message))
+
+    def _fail_message_for(self, workflow_type: str) -> str:
+        _, _, err = run_validator(make_state(workflow_type=workflow_type,
+                                              schema_version=2, tracking=None))
+        return err
+
     def test_t80_fail_message_names_the_binding_gate_not_the_environment_gate(self):
         # The owner distinguishes Environment Gate (Feature/Bug) from Intake Gate
-        # (fast-track). A diagnostic that always says "Environment Gate" would
-        # point a fast-track Agent at the wrong boundary.
-        _, out, err = run_validator(make_state(workflow_type="bug-fast-track",
-                                               schema_version=2, tracking=None))
-        combined = out + err
-        self.assertIn("Intake Gate", combined)
-        self.assertIn("Environment Gate", combined,
-                      "the message should still name the Feature/Bug gate for contrast")
+        # (fast-track). A diagnostic that always says "Environment Gate" would point
+        # a fast-track Agent at the wrong boundary. Asserting only that both names
+        # appear would still pass if the two were swapped, so the association with
+        # each workflow class is checked through _gate_association_ok.
+        for workflow_type in ("bug-fast-track", "feature-development"):
+            with self.subTest(workflow_type=workflow_type):
+                message = self._fail_message_for(workflow_type)
+                self.assertIn("Intake Gate", message)
+                self.assertIn("Environment Gate", message)
+                self.assertTrue(
+                    self._gate_association_ok(message),
+                    f"{workflow_type}: diagnostic must bind Environment Gate to "
+                    f"Feature/Bug and Intake Gate to the fast-track pair; got: {message!r}")
+
+    def test_t80b_gate_association_check_rejects_a_swap(self):
+        """Proves the association check discriminates: a swapped message must fail it."""
+        real = self._fail_message_for("bug-fast-track")
+        self.assertTrue(self._gate_association_ok(real))
+
+        swapped = real.replace("Environment Gate for Feature/Bug", "@A@").replace(
+            "Intake Gate for the two fast-track", "Environment Gate for Feature/Bug"
+        ).replace("@A@", "Intake Gate for Feature/Bug")
+        self.assertNotEqual(swapped, real, "the swap must actually change the text")
+        self.assertFalse(
+            self._gate_association_ok(swapped),
+            "a message that binds Intake Gate to Feature/Bug must not pass the check")
 
     def test_t81_fast_track_legacy_state_passes(self):
         for wf_type in self.TYPES:

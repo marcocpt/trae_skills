@@ -3,7 +3,7 @@
 - Feature: tracking-binding-reachability
 - Workflow ID: feature-development-20261003T053419Z-ee41fa8
 - Stage: Test Matrix（验证合同）
-- 基线 Requirements: v3 (`sha256:b2320ef0bab51cf9f5b218d5e427fe78130a7cb67cac7840e1093c2f47396225`)｜Design: v4 (`sha256:0e273803293bf67d4933ee8b8c60c7a5ac30c51c455a9cd8c4febbf5fd6551c7`)
+- 基线 Requirements: v3 (`sha256:dceaecc699c94daf72393f0adb6a50300cd9bb91e777c9deec02f68943fbd08c`)｜Design: v4 (`sha256:fa02d9b5d4a1e21de67eb5ce080f7228425e9aba73b165a47bfaa733a8b0e249`)
 - 版本: v4 — 绑定 Requirements v3 / Design v4；纳入四类长流程工作流的判定覆盖（T-78~T-81）
 - 日期: 2026-10-03
 
@@ -16,7 +16,7 @@
 | L1 文档结构断言 | `dd-workflow-runtime/tests/test_task_tracking.py` 增补 | AC-01~AC-06, AC-12 | 本地 unittest |
 | L2 判定层单测 | `dd-workflow-runtime/tests/test_validate_tracking_binding.py`（新增） | AC-07~AC-10 | 本地 unittest |
 | L3 漂移一致性断言 | `test_task_tracking.py` 双向枚举比对 | AC-11 | 本地 unittest |
-| L4 既有合同回归 | 全量 11 个既有测试模块 | AC-13, AC-14 | 本地 unittest |
+| L4 既有合同回归 | 全量测试模块（合并上游后 14 个：本 Feature 新增判定层模块 1 个 + 既有 13 个，含上游 fast-track 带来的 3 个） | AC-13, AC-14 | 本地 unittest |
 
 无远端执行位置：判定器不触网（AC-10），入口层改动是纯文档。
 
@@ -65,7 +65,8 @@
 | T-69 | `{"sync":null,"sync_reason":词表外}`、`{"sync_reason":词表外}`、`{"sync":"synced","sync_reason":词表外}`、`{"sync":"not-a-real-value"}` | exit 1 且输出含 `outside the task-tracking`。Design §3.2 ⑩ 对两个词表各自独立判定——若给 reason 检查加上多余的 `sync is not None` 前置，这四种会落到 ⑪ 兜底，退出码虽同，编号映射即失效 |
 | T-78 | `workflow_type` = `feature-fast-track`／`bug-fast-track`，当前 schema + `tracking: null` | exit 1。owner §2 已把两个速通工作流纳入强制约束；原实现会判「未识别类型」而 exit 2，等于拒掉合同要求的两类工作流 |
 | T-79 | 同上但已绑定一张 Issue | exit 0 |
-| T-80 | FAIL 诊断文本 | 同时出现 `Intake Gate` 与 `Environment Gate`。速通的绑定 Gate 是 Intake，一律输出 "Environment Gate" 会把速通执行者指向错误边界 |
+| T-80 | FAIL 诊断文本（对 `bug-fast-track` 与 `feature-development` 各取一次） | 同时出现 `Intake Gate` 与 `Environment Gate`，**且关联方向正确**：`Environment Gate for Feature/Bug` 与 `Intake Gate for the two fast-track`。仅断言两个名字都出现，在两者被写反时仍会绿 |
+| T-80b | 关联判定函数的区分力 | 真实文案使判定为真；把两个 Gate 与工作流类别互换后的文案必须使判定为假。证明该断言确实具备区分力 |
 | T-81 | `workflow_type` = 两个速通类型 + legacy schema（1）+ `tracking: null` | exit 0（legacy 豁免对四类一致） |
 | T-68 | **有效 `issue_number=8` + 非字符串 `provider`／`sync`／`sync_reason`**（各 ∈ `[]`、`{}`、`7`） | 精确 exit 2 且 stderr 无 Traceback。Design §3.2 ⑥ 必须先于 ⑧ 绑定检查：有效绑定与畸形 sync 并存的状态自相矛盾，不得凭绑定放行 |
 | T-65 | `workflow_type=project-bootstrap` + `schema_version` ∈ {`"2"`, `-1`, `True`, `[]`, `{}`} | exit 0。豁免是无条件 scope 豁免，不得被文件中其他位置的畸形 schema 否决（校验顺序：先身份后豁免） |
@@ -178,7 +179,7 @@ T-70~T-75 从 `task-tracking.md` 用正则抽取词表/配对，与判定器常�
 | `(sync, sync_reason)` 配对 | 11（= §4 全部数据行） | T-74 双向覆盖；T-62 反向覆盖 6 组非法交叉配对 |
 | `provider` 取值 | 1（`github`） | T-75 双向覆盖 |
 | 入口层义务表述 | 3（Feature／Bug／runtime Preflight） | T-01／T-04／T-07／T-12 |
-| 改动文件 | 4 源文件 + 1 新脚本 + 2 测试文件 + 6 规格/证据文档 | 见 §6 覆盖矩阵 |
+| 改动文件 | 4 源文件 + 1 新脚本 + 2 测试文件 + 6 规格/证据文档（相对 origin/develop 的净改动 13 个） | 见 §6 覆盖矩阵 |
 
 **完备性要求**：`sync` 取值、`sync_reason` 词表、`(sync, sync_reason)` 配对、`provider` 取值四者都必须双向覆盖。任何一侧新增而另一侧未更新 → L3 失败。
 
@@ -193,13 +194,13 @@ T-70~T-75 从 `task-tracking.md` 用正则抽取词表/配对，与判定器常�
 | AC-05 | T-07, T-08 | L1 |
 | AC-06 | T-09, T-10 | L1 |
 | AC-07 | T-20~T-29（FAIL/usage）, T-30~T-31（PASS）, T-78~T-79（速通）, T-81 | L2 |
-| AC-08 | T-40~T-49（逐类 10 例）, T-62（反向非法配对）, T-80（诊断文本） | L2 |
+| AC-08 | T-40~T-49（逐类 10 例）, T-62（反向非法配对）, T-80, T-80b（诊断文本与关联方向） | L2 |
 | AC-09 | T-50~T-54, T-67 | L2 |
 | AC-10 | T-55, T-56, T-57, T-63, T-64, T-65, T-66, T-68, T-69 | L2 |
 | AC-11 | T-70~T-77, M1~M11 | L3 |
 | AC-12 | T-11, T-14, T-15 | L1 |
 | AC-13 | 全量既有测试模块 | L4 |
-| AC-14 | `git diff --name-only` 不含 `task-tracking.md` | L4 |
+| AC-14 | `git diff --name-only origin/develop...HEAD` 不含 `task-tracking.md`（oracle 基线是 PR 基线，不是 Feature 起点 `ee41fa8`——后者含上游对 owner 的合法修改） | L4 |
 
 AC-01~AC-14 全部有覆盖，无孤立 AC。
 
