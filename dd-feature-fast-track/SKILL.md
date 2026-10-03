@@ -46,7 +46,7 @@ delivery_policy: project-rules
 ## 工作流怎么运行
 
 1. **复述需求并取得确认**——唯一一次询问，说清要解决什么问题、范围边界、怎样算能用；复述未确认就重问，不得默认通过；
-2. **按推荐项直接落地**——默认新建隔离 worktree（不询问），按推荐方案一口气实现完，中途不打断、不复核、不派审查，所有自主选择记入 `decisions`；
+2. **按推荐项直接落地**——先新建隔离 worktree（强制，不询问；例外只有恢复复用已有 worktree 与用户明确要求在当前工作区），按推荐方案一口气实现完，中途不打断、不复核、不派审查，所有自主选择记入 `decisions`；
 3. **冒烟自证并交付可用产物**——真实构建／启动跑通主路径，UI 变化用真实路径证据，告诉用户怎么立刻用起来；
 4. **进入补齐**——补测试与确定性验证、补规格、补 CI 与审查、补文档，逐条关闭欠账并附证据；
 5. **收尾或交接**——欠账全清则写 Completion Receipt 并 Host Close；命中正式流程升级触发器则交接 `dd-feature-development-workflow` 收尾，不在速通里降级。
@@ -54,12 +54,13 @@ delivery_policy: project-rules
 ## 核心不变量
 
 1. 全程只询问一次（需求复述对齐），其余按推荐执行并记录；
-2. 速通阶段省掉的每一项都进欠账台账；
-3. 冒烟必须真实跑通，UI 必须真实路径证据；
-4. 补齐以已确认需求为基准，不以实现现状为基准；
-5. 速通通过 ≠ 验收通过；
-6. 内容完成不等于 Git 或外部动作授权；
-7. 命中正式流程升级触发器时交接，不降级收尾。
+2. 首次建立执行环境必须新建隔离 worktree，且在修改项目产物之前完成；例外只有恢复任务复用已提供 worktree（仅验证不重建）和用户明确要求在当前工作区（须记 `reason`）；
+3. 速通阶段省掉的每一项都进欠账台账；
+4. 冒烟必须真实跑通，UI 必须真实路径证据；
+5. 补齐以已确认需求为基准，不以实现现状为基准；
+6. 速通通过 ≠ 验收通过；
+7. 内容完成不等于 Git 或外部动作授权；
+8. 命中正式流程升级触发器时交接，不降级收尾。
 
 ## Stage 路由
 
@@ -71,7 +72,7 @@ intake → fast-implementation → smoke → backfill → closure
 
 | Stage | 实际要做什么 | 完成标志 | 详细规则 |
 |---|---|---|---|
-| Intake | 用通俗语言复述需求（问题、范围边界、验收口径）并取得确认；同时确定并持久化工作环境（默认按推荐新建隔离 worktree），并在本 Stage Gate 前完成一次 tracking 绑定尝试 | 需求复述已获用户确认，工作环境已持久化，tracking 绑定结果已按 owner 合同落盘（绑定失败不阻塞本 Stage） | [fast-track.md](references/fast-track.md) |
+| Intake | 用通俗语言复述需求（问题、范围边界、验收口径）并取得确认；同时确定并持久化工作环境——新建隔离 worktree，且在修改任何项目产物之前完成（仅恢复任务复用已有 worktree、或用户明确要求在当前工作区时才例外，后者须记 `reason`）；并在本 Stage Gate 前完成一次 tracking 绑定尝试 | 需求复述已获用户确认，隔离 worktree 已新建或已复用并验证且已持久化，tracking 绑定结果已按 owner 合同落盘（绑定失败不阻塞本 Stage） | [fast-track.md](references/fast-track.md) |
 | Fast Implementation | 按推荐方案一次实现完，不做阶段复核与独立审查，自主选择记入 `decisions`；只在命中询问例外时才停 | 实现完成，构建可过，`decisions` 已记录 | [fast-track.md](references/fast-track.md) |
 | Smoke | 真实构建／启动并跑通主路径；UI 变化取真实路径证据；把「怎么立刻用起来」交给用户 | 主路径真实跑通，UI 证据有效，欠账台账已写入并持久化 | [fast-track.md](references/fast-track.md) |
 | Backfill | 补测试与确定性验证 → 补规格 → 补 CI 与审查 → 补文档，逐条关闭欠账并附证据 | 所有 `open` 欠账为 `closed` 或经用户确认 `waived`，验证绑定同一最终 SHA | [backfill.md](references/backfill.md) |
@@ -98,6 +99,12 @@ intake → fast-implementation → smoke → backfill → closure
 - 复述未获确认（含 null、取消）就往下走；
 - 速通阶段除 fast-track-contract §3.2 四种例外外再次询问或插入复核；
 - 用"用户说越快越好"推断出免检或免补。
+
+### 工作环境纪律
+
+- 未新建隔离 worktree 就修改项目产物（恢复任务复用已提供 worktree、用户明确要求在当前工作区的例外除外）；
+- 用当前工作区却不把原因写入 `reason`；
+- 中途切换 worktree，或在隔离 worktree 之外修改交付范围内文件。
 
 ### 欠账纪律
 

@@ -107,6 +107,41 @@ class TestMinimalFix(unittest.TestCase):
         self.assertIn("decisions", text)
 
 
+class TestEnvironmentIsMandatory(unittest.TestCase):
+    """A new isolated fix worktree is mandatory, not a default to decline."""
+
+    def test_new_isolated_fix_worktree_is_mandatory(self):
+        text = read(FAST_TRACK)
+        self.assertIn("必须新建隔离 fix worktree", text,
+                      "environment must be a new isolated fix worktree, not a default")
+        self.assertIn("在修改任何项目产物", text,
+                      "the worktree must exist before any project artifact is modified")
+        self.assertIn("不询问", text, "environment must not add an ask")
+
+    def test_only_two_exceptions(self):
+        text = read(FAST_TRACK)
+        self.assertIn("复用并验证，不重新创建", text,
+                      "a provided fix worktree must be reused and verified, not rebuilt")
+        self.assertIn("用户明确要求在当前工作区", text,
+                      "current workspace is only allowed on explicit user request")
+
+    def test_current_workspace_records_reason(self):
+        text = read(FAST_TRACK)
+        self.assertIn("reason", text, "the current-workspace exception must record a reason")
+
+    def test_no_creation_failure_escape_hatch(self):
+        text = read(FAST_TRACK)
+        self.assertNotIn("无法创建", text,
+                         "fast track must not self-exempt from the worktree requirement")
+
+    def test_skill_states_invariant_and_red_line(self):
+        skill = read(SKILL)
+        self.assertIn("首次建立执行环境必须新建隔离 fix worktree", skill,
+                      "SKILL.md must state the mandatory worktree invariant")
+        self.assertIn("未新建隔离 fix worktree 就修改项目产物", skill,
+                      "modifying artifacts without a new worktree must be a red line")
+
+
 class TestSmokeIsReal(unittest.TestCase):
     """Smoke must really run; user-visible bugs need real-path evidence."""
 

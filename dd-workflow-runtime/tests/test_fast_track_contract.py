@@ -117,6 +117,37 @@ class TestLedgerSchema(unittest.TestCase):
                       "ledger must be persisted with state, not session-only")
 
 
+class TestMandatoryWorktree(unittest.TestCase):
+    """The isolated worktree is a hard requirement, shared with the formal workflows."""
+
+    def test_contract_makes_the_worktree_mandatory(self):
+        text = read(CONTRACT)
+        self.assertIn("**必须新建隔离 worktree**", text,
+                      "contract must require a new isolated worktree, not default to one")
+        self.assertIn("在修改任何项目产物之前完成", text,
+                      "the worktree must be created before any artifact is modified")
+        self.assertIn("只复用并验证，不重新创建", text,
+                      "a provided worktree is reused and verified, never rebuilt")
+        self.assertIn("只有用户明确要求时才允许在当前工作区", text,
+                      "current workspace requires an explicit user request")
+
+    def test_no_creation_failure_escape_hatch(self):
+        text = read(CONTRACT)
+        self.assertNotIn("无法创建时才用当前工作区", text,
+                         "fast track must not self-exempt from the worktree requirement")
+
+    def test_both_domain_skills_state_the_mandatory_worktree(self):
+        for path, name in ((FEATURE_SKILL, "dd-feature-fast-track"),
+                           (BUG_SKILL, "dd-bug-fast-track")):
+            self.assertIn("必须新建隔离", read(path),
+                          f"{name} must state the mandatory isolated worktree")
+
+    def test_uncreated_worktree_is_a_red_line(self):
+        text = read(CONTRACT)
+        self.assertIn("未新建隔离 worktree 就修改项目产物", text,
+                      "modifying artifacts without a new worktree must be a red line")
+
+
 class TestBackfillOrderAndBaseline(unittest.TestCase):
     """Backfill order is fixed; baseline is the confirmed requirement."""
 
