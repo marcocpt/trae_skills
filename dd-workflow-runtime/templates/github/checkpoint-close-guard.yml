@@ -48,11 +48,11 @@ jobs:
           # 缺失（合同前旧卡）→ fail-safe 跳过，不做跨 workflow 判定
           issue_json=$(gh api "repos/$REPO/issues/$ISSUE")
           wf_id=$(printf '%s' "$issue_json" | python3 -c "
-import json, sys
-body = (json.load(sys.stdin).get('body') or '')
-hits = [l.split(':', 1)[1].strip() for l in body.splitlines() if l.startswith('Workflow ID:')]
-print(hits[0] if hits else '')
-")
+          import json, sys
+          body = (json.load(sys.stdin).get('body') or '')
+          hits = [l.split(':', 1)[1].strip() for l in body.splitlines() if l.startswith('Workflow ID:')]
+          print(hits[0] if hits else '')
+          ")
           if [ -z "$wf_id" ]; then
             echo "issue body lacks Workflow ID (pre-contract card); cannot determine binding — fail-safe skip"
             exit 0
@@ -79,32 +79,32 @@ print(hits[0] if hits else '')
           # 未经合法入口关闭 → reopen；评论去重：dd-close-guard 已新于所选 checkpoint 时不重复
           gh issue reopen "$ISSUE" --repo "$REPO"
           last_guard_id=$(printf '%s' "$comments_json" | python3 -c "
-import json, sys
-decoder = json.JSONDecoder()
-text, idx, n, last = sys.stdin.read(), 0, 0, 0
-while idx < len(text):
-    while idx < len(text) and text[idx] in ' \t\r\n':
-        idx += 1
-    if idx >= len(text):
-        break
-    obj, idx = decoder.raw_decode(text, idx)
-    for c in (obj if isinstance(obj, list) else [obj]):
-        if isinstance(c, dict) and isinstance(c.get('body'), str) and c['body'].startswith('<!-- dd-close-guard:v1 -->'):
-            last = max(last, c['id'])
-print(last)
-")
+          import json, sys
+          decoder = json.JSONDecoder()
+          text, idx, n, last = sys.stdin.read(), 0, 0, 0
+          while idx < len(text):
+              while idx < len(text) and text[idx] in ' \t\r\n':
+                  idx += 1
+              if idx >= len(text):
+                  break
+              obj, idx = decoder.raw_decode(text, idx)
+              for c in (obj if isinstance(obj, list) else [obj]):
+                  if isinstance(c, dict) and isinstance(c.get('body'), str) and c['body'].startswith('<!-- dd-close-guard:v1 -->'):
+                      last = max(last, c['id'])
+          print(last)
+          ")
           if [ -z "$last_guard_id" ] || [ "$last_guard_id" -lt "$selected_id" ]; then
             gh issue comment "$ISSUE" --repo "$REPO" --body "$(cat <<MSG
-<!-- dd-close-guard:v1 -->
+          <!-- dd-close-guard:v1 -->
 
-本 Issue 已由 dd-checkpoint 关闭防线（task-tracking §6.5）重新打开：最后一条 checkpoint 的 \`state_status\` 为 **${selected_state:-缺失}**，不是 completed / abandoned——关闭未经合法入口。
+          本 Issue 已由 dd-checkpoint 关闭防线（task-tracking §6.5）重新打开：最后一条 checkpoint 的 \`state_status\` 为 **${selected_state:-缺失}**，不是 completed / abandoned——关闭未经合法入口。
 
-处理方式二选一：
+          处理方式二选一：
 
-1. 继续推进工作流，收口时按 §6.5 写最终 checkpoint → 同步看板「完成」→ close；
-2. 确认放弃任务：写 \`state_status=abandoned\` checkpoint → 把卡片从看板移出（archive）→ close。
-MSG
-)"
+          1. 继续推进工作流，收口时按 §6.5 写最终 checkpoint → 同步看板「完成」→ close；
+          2. 确认放弃任务：写 \`state_status=abandoned\` checkpoint → 把卡片从看板移出（archive）→ close。
+          MSG
+          )"
           else
             echo "guard comment already newer than selected checkpoint; reopen only, no duplicate comment"
           fi
