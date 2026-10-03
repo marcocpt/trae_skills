@@ -64,33 +64,41 @@
 
 ### 3.2 判定算法
 
-按 `schema_version` 与 `tracking` 形态分派：
+按 `workflow_type`、`schema_version` 与 `tracking` 形态分派。编号与
+`validate-tracking-binding.py::evaluate()` 的 docstring 一一对应：
 
 ```text
-读取 state，失败或非 dict → exit 2
+读取 state 失败 / 非法 UTF-8 / 非 dict 对象            → exit 2
 
 ① workflow_type 缺失／非字符串／既非强制类型也非豁免类型 → exit 2（MalformedState）
-② workflow_type ∈ 豁免集（project-bootstrap）              → exit 0
+② workflow_type ∈ 豁免集（project-bootstrap）           → exit 0
      豁免是无条件 scope 豁免：文件中其他位置 schema_version 畸形不得否决它
-③ schema_version 非整数（含 bool）、或为负数                → exit 2（MalformedState）
-④ schema_version 缺失 / 0 / 1 且 tracking 缺失或为 null     → exit 0
-     §3.2 的 legacy 集精确为 {缺失, 0, 1}；写成 `< 2` 会把负整数也读成 legacy
-⑤ tracking 不是对象                                          → exit 1
-⑥ provider 非 null 且不在已登记 provider 集                  → exit 1
-⑦ issue_number 为「非 bool 的正整数」                        → exit 0（已绑定）
-⑧ (sync, sync_reason) ∈ §4 逐行定义的配对集                  → exit 0（已记录）
+③ schema_version 非整数（含 bool）或为负数               → exit 2（MalformedState）
+④ schema_version ∈ legacy 集 {缺失, 0, 1}               → exit 0
+     无条件豁免，**不论 tracking 内容**：旧状态可能已带部分 tracking 对象，
+     对其判不通过等于用新合同阻塞历史（FR-7）
+⑤ tracking 不是对象（当前 schema 下缺失或为 null）        → exit 1
+⑥ provider / sync / sync_reason 非 null 且非字符串       → exit 2（MalformedState）
+     显式类型前置：否则不可 hash 的值会触发 TypeError，未捕获异常退出码为 1，
+     与 Gate FAIL 同码，调用方无法区分崩溃与判决
+⑦ provider 非 null 且不在已登记 provider 集              → exit 1
+⑧ issue_number 为「非 bool 的正整数」                    → exit 0（已绑定）
+⑨ (sync, sync_reason) ∈ §4 逐行定义的配对集              → exit 0（已记录）
      含 ("synced", None) 与 ("disabled", None) 两行：§4 该两行 sync_reason 为 `—`，
      要求它们带原因值会否决合同明确允许的状态
-⑨ sync 非 null 且不在 §2 词表                                → exit 1
-⑩ sync_reason 非 null 且不在 §4 词表                          → exit 1
-⑪ 其余                                                        → exit 1（尝试未记录）
+⑩ sync 非 null 且不在 §2 词表 / sync_reason 非 null 且不在 §4 词表 → exit 1
+⑪ 其余                                                    → exit 1（尝试未记录）
 ```
 
 **为什么按配对而不是两个独立词表**：§4 为每个 `sync` 值配定了**特定**原因值。分别校验两个词表会放过 `not-authorized` + `issue-missing` 这类合同从未定义的组合，等于判定器在组合语义上成为第二事实源。
 
-**为什么不写成 `< 2`**：负整数会被读成 legacy，`{"schema_version": -1, "tracking": null}` 就能让"从未尝试"的状态 PASS。
+**为什么 legacy 写成集合而不是 `< 2`**：owner §3.2 字面写 `< 2`，但负整数会被读成 legacy，`{"schema_version": -1, "tracking": null}` 就能让"从未尝试"的状态 PASS。判定器收窄为 `{0, 1}` 并显式拒绝负数——这是对 owner 字面文本的**有意收窄**，由 T-77 以关系式断言锁定（不是与字面相等）。
 
-**唯一的 FAIL 形态**：强制工作流类型下，schema 为当前版本，且 ⑦⑧ 均不成立、⑤⑥⑨⑩ 也都不适用。这精确对应 owner 合同 §2 的"未尝试且未记录就通过 Gate 属违规"，不宽不窄。exit 2 是输入错误，既不是通过也不是 Gate 失败。
+**`issue_number` 的 provenance**：⑧ 是 GitHub Issue number 的**本地结构有效性检查**（非 bool 的正整数），属于判定器自有的输入 well-formedness 规则。它不新增绑定结果或 `sync` 语义，不属于 owner 词表，因此不参与 vocabulary drift lock——把它锁进 owner 需要修订 owner 合同，而本 Feature 要求 owner 零改动。若项目治理要求连标量类型也必须 owner-owned，应另开一次 owner 修订。
+
+**唯一的 FAIL 形态**：强制工作流类型、schema 为当前版本、且 ⑤⑦⑩⑪ 之一成立而 ⑧⑨ 均不成立。这精确对应 owner §2 的"未尝试且未记录就通过 Gate 属违规"，不宽不窄。exit 2 是输入错误，既不是通过也不是 Gate 失败。
+
+**判定器不是防篡改证明器**：它只检查可信状态上的形状。伪造 `schema_version: 1`、伪造 `sync: disabled`、伪造一个不存在的正整数 Issue 号都能通过。这个信任模型的归属方是 owner 合同与状态完整性，不在本 Feature 内追加 provenance／时间戳／Git 历史等新判据——那会违反"owner 唯一拥有绑定语义"。
 
 ### 3.3 为什么不做远端对账
 

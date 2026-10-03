@@ -1567,15 +1567,15 @@ class TestVocabularyDrift(unittest.TestCase):
         lock blind to exactly the change it exists to catch.
         """
         tt = read(TASK_TRACKING)
-        anchor = re.search(r"对\s*`([^`]+)`\s*与\s*`([^`]+)`\s*工作流", tt)
+        sec2 = _slice_section(tt, 2, "2. 状态字段")
+        anchor = re.search(r"对\s*`([^`]+)`\s*与\s*`([^`]+)`\s*工作流", sec2)
         self.assertIsNotNone(anchor,
                              "could not locate §2's enumeration of mandatory workflow "
                              "types — guard must FAIL")
         # Bound the span at 工作流: the same sentence continues with sync/sync_reason
         # and the bootstrap carve-out, which are not workflow types.
-        end = tt.index("工作流", anchor.start())
-        span = tt[anchor.start():end]
-        types = set(re.findall(r"`([a-z][a-z0-9-]+)`", span))
+        end = sec2.index("工作流", anchor.start())
+        types = set(re.findall(r"`([a-z][a-z0-9-]+)`", sec2[anchor.start():end]))
         self.assertTrue(types, "could not extract mandatory workflow types — guard must FAIL")
         return types
 
@@ -1591,14 +1591,14 @@ class TestVocabularyDrift(unittest.TestCase):
         self.assertTrue(exempt, "could not extract the exempt workflow — guard must FAIL")
         return exempt
 
-    def owner_legacy_boundary_expression(self) -> str:
-        """How §3.2 spells the legacy boundary."""
+    def owner_legacy_boundary_expression(self) -> tuple[str, int]:
+        """How §3.2 spells the legacy boundary, with its threshold."""
         tt = read(TASK_TRACKING)
         m = re.search(r"`< (\d+)`", tt)
         self.assertIsNotNone(m,
                              "could not locate §3.2's legacy boundary expression — "
                              "guard must FAIL")
-        return m.group(0)
+        return m.group(0), int(m.group(1))
 
     def test_t77_legacy_schema_boundary_is_owned(self):
         """§3.2 writes the boundary as `< 2`. The validator keeps every non-negative
@@ -1606,15 +1606,19 @@ class TestVocabularyDrift(unittest.TestCase):
         deliberate narrowing: a negative schema version is meaningless, and reading
         it as legacy let a never-attempted state pass (external review round 3).
 
-        This is therefore a relation, not an equality with the literal `< 2`.
+        The threshold is compared against the owner's, not a literal `2`, so moving
+        both the owner's boundary and the validator's constants together still has
+        to be justified by the owner text rather than passing on a stale constant.
         """
-        self.assertEqual(self.owner_legacy_boundary_expression(), "`< 2`",
-                         "task-tracking §3.2's legacy boundary expression changed")
+        expression, owner_current = self.owner_legacy_boundary_expression()
         legacy = set(self.mod.LEGACY_SCHEMA_VERSIONS)
-        current = self.mod.CURRENT_SCHEMA_VERSION
-        self.assertEqual(legacy, set(range(current)),
-                         "every non-negative schema version below the current one is "
-                         "legacy, and none at or above it")
+
+        self.assertEqual(self.mod.CURRENT_SCHEMA_VERSION, owner_current,
+                         f"owner §3.2 boundary is {expression}; the validator's current "
+                         f"schema is {self.mod.CURRENT_SCHEMA_VERSION}")
+        self.assertEqual(legacy, set(range(owner_current)),
+                         "every non-negative schema version below the owner's boundary "
+                         "is legacy, and none at or above it")
         for negative in (-1, -2, -100):
             self.assertNotIn(negative, legacy,
                              "negatives must be rejected, never treated as legacy")
@@ -1760,6 +1764,14 @@ class TestVocabularyDriftMutations(unittest.TestCase):
         self.assertNotEqual(mutated, self.v_src, "mutation target must exist")
         self.assertTrue(self._guard_fails(mutated, self.tt_src, ("test_t77",)),
                         "M10 not caught — swallowing the current schema as legacy")
+    def test_m11_validator_moves_the_boundary_without_the_owner(self):
+        mutated = (self.v_src.replace("CURRENT_SCHEMA_VERSION = 2",
+                                      "CURRENT_SCHEMA_VERSION = 3")
+                          .replace("LEGACY_SCHEMA_VERSIONS = frozenset({0, 1})",
+                                   "LEGACY_SCHEMA_VERSIONS = frozenset({0, 1, 2})"))
+        self.assertNotEqual(mutated, self.v_src, "mutation target must exist")
+        self.assertTrue(self._guard_fails(mutated, self.tt_src, ("test_t77",)),
+                        "M11 not caught — current/legacy must track the owner's threshold")
 
 
 class TestEntrypointReachability(unittest.TestCase):

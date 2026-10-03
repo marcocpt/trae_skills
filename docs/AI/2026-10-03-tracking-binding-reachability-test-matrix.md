@@ -3,11 +3,11 @@
 - Feature: tracking-binding-reachability
 - Workflow ID: feature-development-20261003T053419Z-ee41fa8
 - Stage: Test Matrix（验证合同）
-- 基线 Requirements: v2 (`cf02335951f58a5c` 正文未变，FR-3 时序表述已修正)｜Design: v2 (`a952f8ec425be39c`)
-- 版本: v2 — 同步 Design v1→v2 判定算法修订，并纳入 Final Candidate 强审发现的反例
+- 基线 Requirements: v2 (`sha256:8c3bf1988ab692afc8f2e70d21e1f64d559427f77493f1d58a08e31516aa726a`)｜Design: v3 (`sha256:73509bb09d663d960db37648d743e0231ba744cc09de0ea223308b5f2b9a6b05`)
+- 版本: v3 — 绑定 Requirements v2 / Design v3；同步 §3.2 的 ①~⑪、豁免前置、无条件 legacy 豁免与非字符串 well-formedness 分支，并纳入四轮外部强审新增的全部反例
 - 日期: 2026-10-03
 
-> **v1→v2 变更原因**：v1 头部绑定 Design v1，与已批准的 Design v2 不一致；v1 的 T-24 与 Design v2 明确冲突；v1 把 `sync_reason` 词表记为 10 个，而 Phase 0 tracer 实测 §4 只有 9 个带原因取值。外部强审（F 方向）判定 v1 不能作为当前实现的可靠 oracle。本版逐项修正，并把强审新增反例固化为 T-27~T-29、T-62~T-64、T-74~T-75。
+> **版本沿革**：v1 绑定 Design v1（与已批准的 v2 冲突，T-24 与 §4 冲突，原因数写 10）；v2 同步 Design v2 并纳入第一轮强审反例；**v3 绑定 Requirements v2 / Design v3**，同步 §3.2 全部分派（含豁免前置、无条件 legacy 豁免、非字符串 well-formedness）、修正 T-63 oracle 与 T-72 描述、补 AC-13 行，并纳入第二至四轮强审新增的 T-27~T-29、T-62~T-67、T-74~T-77、M8~M10、T-14/T-15。当前版本即下述基线，历史版本不再是有效 oracle。
 
 ## 1. 验证分层
 

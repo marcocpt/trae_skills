@@ -24,13 +24,13 @@ source_manifest:
     stable_id: SPEC-DES
     path: docs/AI/2026-10-03-tracking-binding-reachability-design.md
     version: v3
-    digest: sha256:203bf57653677f96595ef4901b96a7cf80334f43b0d3fdbb9797be58714d9aa3
+    digest: sha256:73509bb09d663d960db37648d743e0231ba744cc09de0ea223308b5f2b9a6b05
     approval: {status: approved, authority: user, decided_at: 2026-10-03, evidence_ref: design-confirm}
   SPEC-TM:
     stable_id: SPEC-TM
     path: docs/AI/2026-10-03-tracking-binding-reachability-test-matrix.md
     version: v2
-    digest: sha256:8756991d57c86d13e396ae04243f0137ed306ea9fc7b26ce2494ddda9b3ac3d0
+    digest: sha256:6976983aa5b71ed7c51779757a85a08150d9b52f7a55d8b1fa12d8956acef3df
     approval: {status: approved, authority: user, decided_at: 2026-10-03, evidence_ref: tm-confirm}
   OWNER-TT:
     stable_id: OWNER-TT
@@ -127,7 +127,7 @@ write_scope:
 
 - [ ] **步骤 3：编写最少实现**
 
-  实现 Design §3.2 的 ①~⑪ 分派：`workflow_type` 身份 → **豁免前置** → schema 判定（legacy 精确集 {缺失,0,1}；非整数与负数判 exit 2）→ tracking 形状 → provider/sync/sync_reason 字符串 well-formedness → provider 未登记 → 正整数 `issue_number` → `RECORDED_OUTCOMES` 配对 → FAIL 兜底。只实现 T-20~T-29/T-55 所需分支。禁止 `socket`/`urllib`/`http`/`requests`/`gh`/`subprocess`。
+  实现 Design §3.2 的 ①~⑪ 分派（编号与 evaluate() docstring 一一对应）：`workflow_type` 身份 → **豁免前置** → schema 判定（legacy 精确集 {缺失,0,1}；非整数与负数判 exit 2）→ tracking 形状 → provider/sync/sync_reason 字符串 well-formedness → provider 未登记 → 正整数 `issue_number` → `RECORDED_OUTCOMES` 配对 → FAIL 兜底。只实现 T-20~T-29/T-55 所需分支。禁止 `socket`/`urllib`/`http`/`requests`/`gh`/`subprocess`。
 
 - [ ] **步骤 4：运行测试验证通过**
 
@@ -168,7 +168,7 @@ write_scope:
 
 - [ ] **步骤 3：补最少实现**
 
-  按 Design §3.2 分支 ②③ 补 `sync`/`sync_reason` 判定；`disabled` 允许 `sync_reason` 为 `null`。
+  补 Design §3.2 ⑨⑩⑪：按 `RECORDED_OUTCOMES` 配对判定 `sync`/`sync_reason`；`("synced", None)` 与 `("disabled", None)` 两行不要求原因值；配对之外的组合与词表外取值判 exit 1。另补 ⑥ 的非字符串类型前置，使不可 hash 的嵌套值成为 exit 2 而非未捕获异常。
 
 - [ ] **步骤 4：运行测试验证通过**
 
