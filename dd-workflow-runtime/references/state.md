@@ -60,7 +60,7 @@
 
 `status` 原样消费 [runtime-contract.md](runtime-contract.md) §3 的 canonical 状态值（含 abandoned），不得自行缩减词表。已有调用方未写入 `schema_version` 或 `status` 时，恢复逻辑按 schema 0 / active 兼容读取，不得直接判为损坏。
 
-`schema_version: 2` 只变更一件事，且**只对 `workflow_type` 为 `feature-development` 或 `bug-fix` 的 state 生效**：它们的 `tracking` 为 `null` 时表示"从未尝试"（[task-tracking.md](task-tracking.md) §2）；`schema_version` 缺失、`0` 或 `1` 时同样的 `null` 含义未分类，必须按 §3.2 迁移——**不得反向解释成从未尝试**，因为旧 schema 无法表达"当年未强制／未授权／用户拒绝"。`project-bootstrap` 不在 §3.2 范围内（见 §12），其 `null` 仍按未绑定读取；它**可以继续写 `schema_version: 1`**，本次升版不要求 bootstrap 同步。
+`schema_version: 2` 只变更一件事，且**只对 `workflow_type` 为 `feature-development`、`feature-fast-track`、`bug-fix` 或 `bug-fast-track` 的 state 生效**（四类长流程工作流，见 [task-tracking.md](task-tracking.md) §2）：它们的 `tracking` 为 `null` 时表示"从未尝试"（[task-tracking.md](task-tracking.md) §2）；`schema_version` 缺失、`0` 或 `1` 时同样的 `null` 含义未分类，必须按 §3.2 迁移——**不得反向解释成从未尝试**，因为旧 schema 无法表达"当年未强制／未授权／用户拒绝"。`project-bootstrap` 不在 §3.2 范围内（见 §12），其 `null` 仍按未绑定读取；它**可以继续写 `schema_version: 1`**，本次升版不要求 bootstrap 同步。
 
 `owner` 记录**人类负责人（裁决者）身份**：状态里大量出现「owner 裁决」这类角色标签，但角色不等于人；不记名字时每个新会话都要从 handoff 文本、git 作者或 remote 属主反推，而同一台机器上的并行会话常共用同一 git 身份——容易把「并行提交者」误判成另一个人。
 `name` / `email` 缺省取 `git config user.name` / `git config user.email`；`delegated_to` 记录**本轮执行权**归属：owner 明确把决策与实施交给本地 agent 时填 `local-agent`，并在 `evidence` 留一句授权原话或来源（例如「用户：你就是 owner，你直接做」）。字段缺失时按「owner 自执」兼容读取，不得判为损坏。

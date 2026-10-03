@@ -63,7 +63,7 @@ Codex 的 `native-agent` 还必须在派生前通过从 Skill 实际根目录调
 
 ## 3. State Schema
 
-**对 `workflow_type` 为 `feature-development` 或 `bug-fix` 的 state**：`schema_version: 2` 起 `tracking` 为 `null` 的含义收窄为"从未尝试"（合同见 [task-tracking.md](task-tracking.md) §2/§3.2），`schema_version` 缺失或 `< 2` 时按 §3.2 迁移、不得当作从未尝试。`project-bootstrap` 不使用该语义：其 `null` 仍按未绑定读取，也不适用 §3.2 迁移。
+**对 `workflow_type` 为 `feature-development`、`feature-fast-track`、`bug-fix` 或 `bug-fast-track` 的 state**（四类长流程工作流，见 [task-tracking.md](task-tracking.md) §2）：`schema_version: 2` 起 `tracking` 为 `null` 的含义收窄为"从未尝试"（合同见 [task-tracking.md](task-tracking.md) §2/§3.2），`schema_version` 缺失或 `< 2` 时按 §3.2 迁移、不得当作从未尝试。`project-bootstrap` 不使用该语义：其 `null` 仍按未绑定读取，也不适用 §3.2 迁移。
 
 ```yaml
 schema_version: 2
