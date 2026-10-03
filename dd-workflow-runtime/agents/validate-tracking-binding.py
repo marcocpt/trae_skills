@@ -225,7 +225,7 @@ def evaluate(state: dict) -> tuple[int, str]:
         return EXIT_PASS, f"sync={sync!r} with sync_reason={reason!r}"
     if sync is not None and sync not in SYNC_VALUES:
         return EXIT_FAIL, f"sync={sync!r} is outside the task-tracking §2 vocabulary"
-    if sync is not None and reason is not None and reason not in SYNC_REASONS:
+    if reason is not None and reason not in SYNC_REASONS:
         return EXIT_FAIL, f"sync_reason={reason!r} is outside the task-tracking §4 vocabulary"
 
     return EXIT_FAIL, "neither a bound issue nor a recorded sync outcome"

@@ -226,6 +226,22 @@ class TestMustAttemptFails(unittest.TestCase):
                                      f"valid binding + malformed tracking.{field} is a "
                                      "malformed state, not a pass")
 
+    def test_t69_out_of_vocabulary_reason_is_caught_without_a_sync(self):
+        # Design §3.2 step 10 checks each vocabulary on its own. An earlier version
+        # gated the reason check on `sync is not None`, so a stray reason alongside a
+        # null sync fell through to the generic fallback instead — same exit code,
+        # but step 10 would no longer map to the implementation item for item.
+        for payload in ({"sync": None, "sync_reason": "not-a-real-code"},
+                        {"sync_reason": "not-a-real-code"},
+                        {"sync": "synced", "sync_reason": "not-a-real-code"},
+                        {"sync": "not-a-real-value"}):
+            with self.subTest(payload=payload):
+                code, out, err = run_validator(tracked(payload))
+                assert_clean_run(self, code, out, err)
+                self.assertEqual(code, EXIT_FAIL)
+                self.assertIn("outside the task-tracking", out,
+                              "step 10 must name the offending vocabulary")
+
     def test_t64_invalid_utf8_is_a_usage_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "state.json"
