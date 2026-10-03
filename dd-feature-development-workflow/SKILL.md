@@ -107,7 +107,7 @@ intake → environment → specification → planning → implementation
 | Stage | 实际要做什么 | 完成标志 | 详细规则 |
 |---|---|---|---|
 | Intake | **新任务首次进入时先用通俗语言复述需求并取得用户确认**（恢复任务状态已含有效确认则复用，不重复 ASK），再确认 Feature 的目标、范围、成功标准、失败路径、兼容性及可验证 AC，只补尚未解决的 blocker；同时判定 `change_tier`，`small` 档需逐条写下准入理由 | 需求复述已获用户确认，档位与理由已持久化 | [intake-and-environment.md](references/intake-and-environment.md)／[small-change-track.md](references/small-change-track.md) |
-| Environment | **首次建立执行环境时默认新建隔离 worktree，且在修改项目产物之前完成**；恢复任务、有效 Handoff 或父工作流已提供的 worktree 必须复用并验证；仅用户明确要求时才允许在当前工作区并记录原因。验证基线和并发状态 | worktree 已新建或已复用并验证，工作环境与状态一致，可安全进入规格阶段 | [intake-and-environment.md](references/intake-and-environment.md) |
+| Environment | **首次建立执行环境时默认新建隔离 worktree，且在修改项目产物之前完成**；恢复任务、有效 Handoff 或父工作流已提供的 worktree 必须复用并验证；仅用户明确要求时才允许在当前工作区并记录原因。验证基线和并发状态。**worktree 与分支确定后、Environment Gate 前，必须按 [task-tracking](../dd-workflow-runtime/references/task-tracking.md) §3 为本工作流创建并绑定一张外部任务 Issue——没有既有绑定时默认新建；并在该 Gate 前运行 `dd-workflow-runtime/agents/validate-tracking-binding.py --state <state_file>` 通过** | worktree 已新建或已复用并验证，工作环境与状态一致，绑定尝试结果已按 owner 合同记录且判定器通过，可安全进入规格阶段 | [intake-and-environment.md](references/intake-and-environment.md) |
 | Specification | `full` 档调用 `dd-writing-specs` 生成并批准 Requirements、Design、Test Matrix，UI 功能按需生成 Visual；`small` 档只产出 1 份 mini-spec（AC 清单、IN/OUT、验证命令与预期、影响面） | canonical spec 已批准，并有当前内容指纹和批准依据（`small` 档即 mini-spec） | [specification.md](references/specification.md)／[small-change-track.md](references/small-change-track.md) |
 | Planning | 从已批准规格生成 Phase 和可执行 Task 包，建立 AC → Task → Test/Evidence 映射，并判定 tracer（required/skipped）；`small` 档只产出单 Phase 执行清单，不做拆分 | 所有 Phase/Task 输入输出、写入范围、验证方式和停止条件都明确，tracer 决策已记录 | [planning-stage.md](references/planning-stage.md)／[small-change-track.md](references/small-change-track.md) |
 | Implementation | 按当前 Task 的 `anchors`、全局约束、Out of Scope、失败路径及必要集成输入选择性读取规格（不完整重读）；按 Phase 执行 Task 并采用 TDD；每个 Phase 通过 Local Gate 并完成按风险路由的紧凑 Phase 复核（命中风险触发器时升级独立强审）；高风险 UI 按风险触发远程 Smoke CI；Local Gate 未通过不得进入下一 Phase | 全部 Phase 已验证，无未解释的当前 Phase 缺口 | [implementation.md](references/implementation.md) |
@@ -156,6 +156,7 @@ intake → environment → specification → planning → implementation
 
 - 新任务未向用户复述需求并取得确认就开始收集规格或修改项目产物（恢复任务状态已含有效确认的除外）；
 - 首次建立执行环境时未新建 worktree 就修改项目产物（恢复/Handoff/用户明确要求的例外除外）；
+- Environment Gate 前未按 [task-tracking](../dd-workflow-runtime/references/task-tracking.md) §3 完成外部任务 Issue 的绑定尝试并把结果落盘，或未让 `validate-tracking-binding.py` 通过就推进——只登记调用点不执行，等同未尝试；
 - 未通过 Phase Local Gate 就进入下一 Phase；
 - Phase ≥ 3 时只用一个总计划文件包含所有 Phase，或使用 planning reference 不传 `split_mode` 与 `phase_list`；
 - 完整 CI 没有验证最终候选 SHA 就推进 develop；

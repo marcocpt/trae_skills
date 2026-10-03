@@ -108,7 +108,7 @@ Bug 工作流与 Feature 对等：在 Environment（worktree 与分支确定后�
 
 读取 [diagnosis-and-verification.md](references/diagnosis-and-verification.md) 的 Environment。
 
-**首次建立执行环境时默认新建隔离 fix worktree，且必须在修改任何项目产物（代码、测试、规格、项目文档等交付范围内文件）之前完成**；恢复任务、有效 Handoff 或父工作流已提供的 worktree 必须复用并验证，不重新创建。仅当用户明确要求在当前工作区修改时才例外，且必须把例外原因写入状态。runtime 状态文件与工作流内部证据文件按 runtime 合同处理，不属于项目产物修改。Gate：worktree 已新建或已复用并验证、路径固定、无并发工作流、工作区与基线证据有效、Bug state 已原子写入。
+**首次建立执行环境时默认新建隔离 fix worktree，且必须在修改任何项目产物（代码、测试、规格、项目文档等交付范围内文件）之前完成**；恢复任务、有效 Handoff 或父工作流已提供的 worktree 必须复用并验证，不重新创建。仅当用户明确要求在当前工作区修改时才例外，并把例外原因写入状态；不允许默认就在当前工作区改代码。runtime 状态文件与工作流内部证据文件按 runtime 合同处理，不属于项目产物修改。**worktree 与分支确定后、Environment Gate 前，必须按 [task-tracking](../dd-workflow-runtime/references/task-tracking.md) §3 为本工作流创建并绑定一张外部任务 Issue——没有既有绑定时默认新建——并在该 Gate 前运行 `dd-workflow-runtime/agents/validate-tracking-binding.py --state <state_file>` 通过。** Gate：worktree 已新建或已复用并验证、路径固定、无并发工作流、工作区与基线证据有效、Bug state 已原子写入、绑定尝试结果已按 owner 合同记录且判定器通过。
 
 ### Diagnosis and Repair
 
@@ -165,6 +165,7 @@ Bug 工作流与 Feature 对等：在 Environment（worktree 与分支确定后�
 
 - 新任务未向用户复述症状与期望并取得确认就开始诊断或修复（恢复任务状态已含有效确认的除外）；
 - 首次建立执行环境时未新建 worktree 就修改项目产物（恢复/Handoff/用户明确要求的例外除外）；
+- Environment Gate 前未按 [task-tracking](../dd-workflow-runtime/references/task-tracking.md) §3 完成外部任务 Issue 的绑定尝试并把结果落盘，或未让 `validate-tracking-binding.py` 通过就推进；
 - 未稳定复现或定义失败证据就写修复；
 - 未完成根因调查就提出确定性修复；
 - 一次修改多个变量后宣称根因已证明；
