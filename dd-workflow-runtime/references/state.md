@@ -97,9 +97,9 @@
 }
 ```
 
-> `candidate_review.level` 的取值语义由 [review-gate](review-gate.md) 拥有，本文件只记录字段形状；feature-development 按 `change_tier` 选择 `low`（`small` 档且未命中风险触发器）或 `standard`，判定规则见该工作流的 `small-change-track.md`，不在此复制。
+> `candidate_review.level` 的取值语义由 [review-gate](review-gate.md) 拥有，本文件只记录字段形状；feature-development 按该合同的**风险触发器**路由——未命中为 `low`（主 Agent A/B/C 自检），命中按该合同升到 `standard`／`high`，**不由 `change_tier` 直接决定**；判定规则见该工作流的 `small-change-track.md`，不在此复制。
 
-> **三层增量验证约束**：feature-development 工作流采用三层验证。`completed_phases` 记录已通过本地快速验证的 phase 列表，`smoke_ci_phases` 记录触发过远程 UI Smoke CI 的 phase 列表；`final_candidate_branch`、`candidate_sha`、`candidate_review`、`full_spec_gap`、`full_ci_run` 跟踪最终合并候选，且 `candidate_review.sha == full_spec_gap.sha == full_ci_run.head_sha == candidate_sha`（exact-SHA 不变量）；`full_ci_run.conclusion` 终态均落盘，`PASS` 仅当 `conclusion==success` 且 `head_sha==candidate_sha`。
+> **三层增量验证约束**：feature-development 工作流采用三层验证。`completed_phases` 记录已通过本地快速验证的 phase 列表，`smoke_ci_phases` 记录触发过远程 UI Smoke CI 的 phase 列表；`final_candidate_branch`、`candidate_sha`、`candidate_review`、`full_spec_gap`、`full_ci_run` 跟踪最终合并候选，对有提交且项目要求CI的路径，`candidate_review.sha == full_spec_gap.sha == full_ci_run.head_sha == candidate_sha`（exact-SHA 不变量）；`full_ci_run.conclusion` 终态均落盘，`PASS` 仅当 `conclusion==success` 且 `head_sha==candidate_sha`。
 
 ### project-bootstrap 特有字段
 
@@ -162,7 +162,7 @@ Bootstrap 没有状态文件时，先从仓库中的 `docs.md`、Roadmap、Archi
 - **更新 `completed_phases`**（仅 feature-development）：每完成一个 phase 的本地验证，追加当前 phase 编号到此数组
 - **更新 `smoke_ci_phases`**（仅 feature-development）：每触发一次远程 UI Smoke CI，追加当前 phase 编号到此数组
 - **更新 `final_candidate_branch`**（仅 feature-development）：创建最终合并候选分支时记录
-- **更新候选 exact-SHA 字段**（仅 feature-development）：冻结候选时写 `candidate_sha`、`candidate_review`、`full_spec_gap`；完整远程 CI 终态（`success|failure|cancelled|timed_out|…`）后即写 `full_ci_run={run_id,url,head_sha,conclusion}`（无论成功失败），`PASS` 仅当 `conclusion==success && head_sha==candidate_sha`，`null` 表示未有终态
+- **更新候选 exact-SHA 字段**（仅 feature-development）：冻结候选时写 `candidate_sha`、`candidate_review`、`full_spec_gap`；完整远程 CI 终态（`success|failure|cancelled|timed_out|…`）后即写 `full_ci_run={run_id,url,head_sha,conclusion}`（无论成功失败），`PASS` 仅当 `conclusion==success && head_sha==candidate_sha`，`null` 表示未有终态。**未提交或有相关 dirty／未跟踪输入时 `candidate_sha` 为空**，被验证版本由 `verification_evidence.result.bindings.implementation_digest` 绑定真实工作树内容，不得把内容摘要写入 `candidate_sha` 冒充 Git 提交；项目不要求远端 CI 时 `full_ci_run` 保持 `null` 并在 Gate 结论记 `not-required` 与依据
 - **更新 `owner.delegated_to`**：owner 明确把决策/实施权委托给本地 agent 时写 `local-agent`（授权原话记入 `owner.evidence`），收回时写回 `owner`；状态缺失时按「owner 自执」读取
 - **更新 `in_progress`**：merge/push/cleanup 等不可瞬时动作执行前写 `in_progress: {operation, target, source, started_at}`（见 runtime-contract §4），动作成功后写完成证据再清除；**不另设布尔兼容字段**
 - **写 checkpoint**：绑定 `tracking` 后按 [task-tracking.md](task-tracking.md) 的六个写回时机追加 Issue checkpoint；字段形状、写回顺序、crash-safe 防重与 Issue 关闭规则以该文件为准，本文件不复制
@@ -325,3 +325,11 @@ fi
 ## 被其他 skill 引用方式
 
 各 dd 工作流技能在“上下文恢复机制”章节引用本技能，替换重复的状态文件规则。调用方声明 `WORKFLOW_TYPE`，并使用对应的 `current_step` 或 `current_node` 进度字段。
+
+## 持久任务入口
+
+每个任务使用一个项目内持久、离线可读的入口：child复用父入口，standalone先复用项目位置，无现成位置才创建任务专属路径docs/agent-tasks/<task-slug>/entry.md。同仓任务不互相覆盖。入口包含人话看板（任务/状态/实际结果/阻塞）与最小交接（目标/边界、代码及工作树、关键决定、有效批准范围、验证命令和证据、下一安全动作、授权边界）。私有状态与远端tracking仍由各自属主管理，入口保存可恢复链接及必要摘要，不建立第二套状态schema或只依赖联网/聊天记忆。恢复先核对代码、dirty diff与证据版本；代码说明实现事实，不自动改写目标或批准约束。已完成材料无需追更，唯一证据须保全。
+
+任务状态与批准边界：在已有授权写入范围内，根据新验证证据纠正看板或更新接手摘要不属于新需求/行为决定，无需重复请求内容批准。原入口只读时，在允许位置写接手摘要并明确原入口未更新，不把事实记录转成新的用户批准阻塞；扩大写入范围仍须授权。缺失的代码、状态、批准或验证材料不得自行补造为真实依据；演示fixture必须由测试控制方预先提供，不能代替真实任务的批准证据。
+
+Feature恢复的条件分支：上述exact-SHA不变量用于有提交且项目要求CI的交付路径。未提交的局部验证以现有verification_evidence中的implementation_digest绑定实际内容，SHA字段不接收内容摘要；项目不要求CI时full_ci_run为null并附not-required依据不构成失效，必需CI缺失仍不得放行。根据当前任务范围及证据判定，不用空字段相等冒充已验证。

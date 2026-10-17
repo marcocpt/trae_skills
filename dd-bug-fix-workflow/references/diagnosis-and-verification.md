@@ -15,13 +15,15 @@
 
 ## 1. Intake
 
-**新任务首次进入 Intake 时，先向用户复述，再扫描日志。** 用通俗语言（不堆术语、不甩 finding 编号）复述三件事，并取得用户确认：
+**症状、期望行为与修复范围不清楚或相互冲突时，先向用户复述，再扫描日志。** 用通俗语言（不堆术语、不甩 finding 编号）复述三件事，并取得用户确认：
 
 1. 我理解的症状是什么；
 2. 期望的正确行为是什么；
 3. 打算在什么范围内修、不碰什么。
 
-复述与用户描述不一致时以用户为准修正后再确认；未获确认不得进入 Environment。这是防跑偏的强制闸口。**恢复任务若状态已含有效需求确认（`requirement_confirmed` 或等价字段），则复用确认结果，不重复 ASK。**
+复述与用户描述不一致时以用户为准修正后再确认；未获确认不得进入 Environment。三件事已清楚（用户请求已写明，或状态/Handoff 已载明）且无未解决产品决定时，**不机械复述再等一次确认**：记录确认依据（来源、复述要点、确认方式）后直接扫描日志与收集剩余事实。机械整理与无新增语义的同步不反复 ASK；模糊、冲突、行为变更或高风险决策仍澄清。
+
+**恢复任务若状态已含有效需求确认（`requirement_confirmed` 或等价字段），则复用确认结果，不重复 ASK。**
 
 确认后再从当前 worktree 和约定的测试 worktree 扫描最新日志候选，只列文件名、来源和时间，不预加载所有日志。
 
@@ -40,7 +42,7 @@
 
 Gate：
 
-- 需求复述已获用户确认（新任务）或状态已含有效确认（恢复任务）；
+- 症状/期望/范围已确认，或确认依据已记录；
 - 症状与期望无歧义；
 - 至少有日志/复现路径/明确无日志结论之一；
 - 修复授权边界明确；
@@ -150,18 +152,17 @@ Gate：Bug state 原子写入，tracking 绑定尝试的结果已按 owner 合�
 
 ## 7. Sync and CI
 
-1. fetch 明确的 base；
-2. 比较本地/远端 base；
-3. 需要同步时按 `dd-git-workflow/merge` 使用 merge-only；
-4. 冲突在 fix 分支解决并验证；
-5. 精确检查 diff 和状态；
-6. 按逻辑暂存，生成 Conventional Commit；
-7. 提交修复、测试、必要文档和证据；
-8. push fix 分支；
-9. 对该 SHA 执行完整回归 CI；
-10. 记录 run ID/URL、SHA 和结果。
+**先在当前允许范围完成可本地执行的真实复验，再按项目规则与已有动作级授权做同步、提交与 CI**：
 
-不得用旧 CI、不同 SHA 或本地 UI 结果替代要求的远程回归。
+1. **可本地执行的复验不受 push 前置约束**：在 fix worktree 重跑复现红灯／绿灯、受影响旧行为的定向回归与必要的真实路径证据（§3 复现、§4 根因、§5 最小修复、红绿回归、§8 真实路径证据不因精简而删减）；**不要求必须先 push 才能做这些复验**；
+2. 项目/集成需要且已有远端访问/同步授权时，fetch明确base并比较本地/远端；不把fetch作为本地复验前提；需要同步时按 `dd-git-workflow/merge` 使用 merge-only；
+3. 冲突在 fix 分支解决并重新验证；
+4. 精确检查 diff 和状态，按逻辑暂存，生成 Conventional Commit，提交修复、测试、必要文档和证据——**未获 commit 授权时不提交**，此时用 `verification_evidence.result.bindings.implementation_digest` 绑定真实工作树内容（含相关 dirty／未跟踪输入）作为被验证版本，**不得用内容摘要冒充提交 SHA**；
+5. push fix 分支：按已有动作级授权执行；未授权停在动作边界并记录 `not-authorized`，不因此判定本地复验无效；
+6. **CI 是否必需、范围与执行位置由项目规则决定**（[test-location](../../dd-workflow-runtime/references/test-location.md)、[ci](../../dd-workflow-runtime/references/ci.md)）：必需时严格绑定被交付版本（提交级远程CI使用真实提交SHA；未提交的本地验证另用implementation_digest，不把工作树摘要当远程CI的head_sha），仍有效的同版本结果复用；未执行、未绑定或未经授权／无法执行时记为明确缺口，**不得改成本地通过、不得自行豁免、不得留空冒充**；
+7. 记录 run ID/URL、被交付版本和结果。
+
+不得用旧 CI、不同版本或本地 UI 结果替代项目要求的远程回归。
 
 AI-test 同步前先检查目标 worktree 是否 dirty。只有 clean 才允许执行精确 reset 脚本；dirty、脚本失败或目标不明确时 ASK，不得直接 `reset --hard`。
 
@@ -175,6 +176,8 @@ ci_runs:
     result: passed
 current_stage: user-verification
 ```
+
+未提交时 `fix_commits` 为空，并把 `not-required`／`not-authorized` 原因与 `implementation_digest` 绑定写入状态；CI 未运行不得写 `result: passed`，已提交但 CI 未运行或未绑定被交付版本时不得给出"已通过"结论。
 
 ## 8. Real-path Verification
 

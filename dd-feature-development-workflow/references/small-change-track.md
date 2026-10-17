@@ -15,8 +15,8 @@
 change_tier: small | full
 ```
 
-- `full`：现行完整流程（规格套件、Phase 拆分、独立强审、full-spec gap）；
-- `small`：本文件定义的快速通道。
+- `full`：完整质量控制（Phase 拆分、独立强审、完整规格缺口检查），**不等于必须写完整规格套件**；两档均默认复用持久任务入口承载最小任务包。
+- `small`：本文件定义的快速通道（压缩文档组织与缺口覆盖范围；**审查等级不由档位决定**，仍按 review-gate 风险触发器路由）。
 
 **默认 `full`。** 只有 §3 全部准入条件都能逐条证成时才可判 `small`；不能证成即 `full`。不得先按 `small` 开工、遇事再补材料。
 
@@ -42,31 +42,31 @@ change_tier: small | full
 - 关键用户路径 UI 变更无法用真实路径验证；
 - 命中 review-gate 风险触发器（此时审查等级按 review-gate 升级，不受 small 档降级约束）。
 
-升级处理：把 `change_tier` 改为 `full`，已产出材料按 `full` 补齐——mini-spec 升级为规格套件需重新走批准；**禁止"边走边升"**，即不允许继续按 small 收尾、事后再补材料。
+升级处理：把 `change_tier` 改为 `full`，先补齐对应审查、验证与计划依赖；文档仍按实际消费者选择，不自动将最小任务包改成四件套。出现新的实质行为决定才请求对应内容确认；**禁止"边走边升"**，即不允许继续按 small 收尾、事后再补材料。
 
 ## 5. small 档各 Stage 做什么
 
 | Stage | small 档做法 | 与 `full` 的差异 |
 |---|---|---|
-| Intake | 复述确认（保留），同时判定档位并写 `tier_rationale` | 仅多一步档位判定 |
+| Intake | 复用已明确的需求和授权，未决冲突才确认；判定档位并写 `tier_rationale` | 仅多一步档位判定 |
 | Environment | 不变 | — |
-| Specification | 只产出 **1 份 mini-spec**：可验证 AC 清单、IN／OUT、验证命令与预期、影响面（调用方、文档、测试）。记录路径与内容指纹，批准依据按 artifact-source-and-packet 的最小要求 | 不生成 Requirements／Design／Visual／Test Matrix 四件套 |
+| Specification | 只产出 **1 份 mini-spec**：可验证 AC 清单、IN／OUT、验证命令与预期、影响面（调用方、文档、测试）。记录路径与内容指纹，批准依据按 artifact-source-and-packet 的最小要求 | 两档都不默认生成四件套；明确要求完整套件或独立消费者确有需要时按需编写 |
 | Planning | 不做拆分档位判定与独立执行包派生；产出单 Phase 执行清单（Goal、改动文件、验证命令与预期、回滚点、AC → 测试映射）；`tracer.decision=skipped` + `reason` | 不产出 Phase 子计划文件与 `phase_plan_paths` |
 | Implementation | 单 Phase，TDD 红绿必须实际运行并绑定 digest，Local Gate 全项不减 | 只少 Phase 循环 |
 | Documentation | 不变，按影响判定 lifecycle 结论 | — |
-| Final Candidate | **仍冻结 `candidate_sha` 并跑同 SHA 完整 CI**；`candidate_review.level=low`（review-gate 默认档，主 Agent A／B／C 自检，零独立强审）；`full_spec_gap` 缩为 **AC → 测试／证据逐项核对表**（逐项记 coverage、disposition 与 ref） | 不派独立强审，不做覆盖全部 normative anchors 的 gap table；SHA 绑定与完整 CI 不变 |
+| Final Candidate | 审查按 [review-gate](../../dd-workflow-runtime/references/review-gate.md) 风险路由：未命中风险触发器 → `candidate_review.level=low`（主 Agent A／B／C 自检，零独立强审），命中 → 按该合同升级到 `standard`／`high` 并覆盖全局不变量／负向要求／迁移兼容；`full_spec_gap` 缩为 **AC → 测试／证据逐项核对表**（逐项记 coverage、disposition 与 ref，可紧凑记入验证证据，不机械生成独立大表）；**仍绑定唯一被验证版本**（已提交且干净 → `candidate_sha`；未提交 → `implementation_digest`，含相关 dirty／未跟踪输入）并跑项目要求的同版本 CI | 档位不再决定审查等级；版本绑定与项目要求的 CI 不变 |
 | Confirmation／Delivery／Closure | 不变 | — |
 
 命中 review-gate 风险触发器时，`candidate_review.level` 按其规则升级到 `standard` 或 `high`，small 档不覆盖该升级。
 
 ## 6. small 档不可省清单（写死）
 
-1. Intake 需求复述确认（防跑偏闸口）；
-2. mini-spec 的用户确认——mini-spec 就是本档的"已批准规格"，没有它同样不得修改生产代码；
+1. Intake目标/边界/授权明确，未决冲突先澄清；有效确认不重复询问；
+2. 目标、验收条件与实质决定有有效批准依据；已在用户执行指令中明确且未变化的内容可复用，不因整理成文件再请求同义确认；
 3. TDD 红绿**实际运行**并绑定 `implementation_digest`；
 4. Local Gate 全项；
 5. 用户可见 UI 的真实路径证据；
-6. 冻结 `candidate_sha` 与同 SHA 完整 CI；
+6. 绑定唯一被验证版本（`candidate_sha` 或 `implementation_digest`）与项目要求的同版本 CI；
 7. Documentation 按需同步与 lifecycle 结论；
 8. 动作授权边界（内容批准不等于 Git 授权）；
 9. Host Close。
@@ -94,3 +94,7 @@ tier_rationale: <small 时必填，逐条对应 §3 准入条件>
 - 未写 `tier_rationale` 就判 `small`；
 - 以"改动很小"为由跳过规格批准或用户确认；
 - 在本文件复制 review-gate 的等级语义、tracer-contract 的风险清单或 runtime 的状态字段定义。
+
+## 10. 文档组织独立于风险档
+
+默认在项目既有任务专属入口组织目标/边界、必要决定、验收条件和任务；入口选择规则见共享runtime state的“持久任务入口”。独立消费方只补其需要的合同；完整套件仅在用户或项目明确要求、或各篇均有实际独立用途时编写。高风险、Phase数量或跨模块本身不决定文件数量。旧记录原样保留，历史套件不强制改写为最小包。

@@ -48,7 +48,7 @@ gates:
 - 修复实现偏差且合同未变：Requirements / Design = `no-update`，回归测试和新证据 = `updated`；
 - 修复暴露合同歧义或行为变化：先更新 Requirements，再重审 Design / Test Policy；
 - 纯重构：Requirements = `no-update`；职责、依赖或数据流改变时 Design = `updated`；
-- 增加等价测试样本：Test Policy / Verification Population = `updated`，Requirements = `no-update`；
+- 增加等价测试样本：样本登记或可执行测试证据 = `updated`；仅当策略或Population约定实际变化才更新对应属主，不强制双写；Requirements = `no-update`；
 - Acceptance Contract 改变：Requirements = `updated`，旧证据 = `stale`。
 
 证据保留不能只按文件名判断。`retention` 记录（见 3.5）与 `ledger` 共同决定去留。

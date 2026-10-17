@@ -28,13 +28,13 @@ Requirements 是整个 AI Coding 项目的"产品合同"与"唯一真实需求�
 
 ## 何时使用
 
-- 新功能、重大重构、API 迁移前，先写 Requirements
+- 产出独立 Requirements 文档时（Full 模式 Stage 2、单文档模式，或从 Lite 任务包拆出单篇时）
+- Lite 模式下写任务包的"目标/范围/验证条件"时：本文件的 WHAT/HOW 分层、P0 禁令和 Rewrite Strategy 同样适用，只是事实承载于持久任务入口（任务专属路径，选择规则见 [SKILL.md](../SKILL.md) 持久任务入口节），不强制 12 章节
 - 用户提到"需求文档"、"Requirements"、"01_Requirements"、"写需求"、"产品合同"
-- dd-writing-specs 工作流中"写需求文档"环节（步骤 2）
 - 团队把含代码的设计文档当 Requirements 用
 - 用户问"设计文档要不要写代码"
 
-**不适用：** bug 修复（用 dd-bug-fix-workflow）、独立写设计文档（用 dd-writing-specs/design-writer）、完整规格文档套件工作流（用 dd-writing-specs）、实现指南、纯文档修改
+**不适用：** bug 修复（用 dd-bug-fix-workflow）、独立写设计文档（用 dd-writing-specs/design-writer）、完整规格文档套件工作流编排（用 dd-writing-specs）、实现指南、纯文档修改
 
 ## 项目规则优先（强制首步）
 
@@ -126,7 +126,7 @@ Requirements 文档中**绝不**出现以下内容：
 
 ## 必须包含的 12 章节
 
-按项目模板优先；无模板时使用以下默认 12 章节。**每章都不可跳过**。
+**仅在产出独立 Requirements 文档时适用**（Full 模式或单文档模式；Lite 模式的等价事实承载于任务包，不强制章节齐全）。按项目模板优先；无模板时使用以下默认 12 章节。
 
 1. **Background（背景）**：为什么做。只描述事实与业务上下文，不提方案
 2. **Problem Statement（问题定义）**：现状哪里不好。每条可验证，不写"代码太乱"
@@ -382,6 +382,8 @@ digraph doc_layers {
 - **Code**：完整实现，明确标注"推荐实现，非约束"
 
 ## 输出要求（P2）
+
+以下要求仅在产出独立 Requirements 文档时适用；Lite 任务包按入口文件格式记录。
 
 - 文件名：`01_Requirements.md`
 - 格式：Markdown，层级标题

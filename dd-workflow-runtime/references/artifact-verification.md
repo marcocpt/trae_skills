@@ -36,9 +36,13 @@ verification:
 | `result.coverage` | 指定来源版本的 AC／路径覆盖 | 本次运行通过 |
 | `result.runs` | 本次命令／步骤、`PASS | FAIL | NOT_RUN`、证据位置 | 后续版本仍有效 |
 | `result.bindings` | source_manifest_digest、implementation_digest、environment | — |
+
+`implementation_digest` 可以是 Git 提交 SHA，也可以是真实工作树内容指纹（含相关 dirty／未跟踪输入）；**`candidate_sha` 只记真实 Git 提交，不得以内容摘要冒充**。
 | `result.validity` | `valid | stale | unreadable | unverified` | 未运行也可 PASS |
 
 Gate 规则：必需 coverage 无 `partial|missing|unverified`；必需 run 全部 `PASS`；bindings 与当前输入一致；`validity` 必须为 `valid`。非 `valid` 时才追加 `validity_exception`，但 exception 不能替代 validity 检查——即使 run 全 PASS、无 exception，只要 candidate SHA 与 evidence binding 不一致，也必须判 `stale`。
+
+先判影响再复用：绑定身份／范围／环境失配（含**仅 HEAD 相同但 dirty／未跟踪输入已变化**）即 `stale` 并重验，不得让 HEAD 相同掩盖 dirty 变化；未受影响且身份／范围／环境仍有效的结果直接复用，不无条件全量重跑。
 
 `coverage` 只取 `covered`（完整）、`partial`（部分）、`missing`（缺失）、`deferred`（已批准延后，含负责人／触发条件）、`unverified`（无法核对，设 blocker）。测试存在或 `covered` 都不等于运行通过。只有必需 `run=PASS`、`validity=valid`、AC／失败路径无缺口且 blocker 为零，Gate 才能 `PASS`。
 

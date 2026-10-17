@@ -7,7 +7,7 @@ description: 当修复需要证据驱动根因调查、隔离环境、TDD、回�
 
 ## 目标
 
-把明确的 Bug 症状推进到根因已证明、修复已验证、文档已同步、交付已完成的可恢复状态。主文件只保留编排、状态和 Gate；诊断、验证、交付与清理细节按当前 Stage 读取 references。
+把明确的 Bug 症状推进到根因已证明、修复已验证、受影响文档已按需处理、交付已完成的可恢复状态。主文件只保留编排、状态和 Gate；诊断、验证、交付与清理细节按当前 Stage 读取 references。
 
 ## 不适用
 
@@ -44,14 +44,16 @@ delivery_policy: project-rules
 
 ## 核心原则
 
-1. 先复述确切症状与期望行为；
+1. 症状、期望行为与修复范围不清楚、相互冲突，或涉及行为变更与高风险决策时，先复述确切症状与期望行为并取得确认；已清楚且有用户执行指令时不机械复述等待；
 2. 没有根因证据，不提出修复方案；
 3. 先复现，再修复；
 4. 一次只验证一个假设、一个变量；
 5. 未经批准不改变既有行为；
 6. 用户可见修复必须有真实路径证据；
 7. 每次外部转换前先持久化状态；
-8. Trae 完成前必须做最终 ASK。
+8. **可本地执行的真实复验不以先 push 为前提**；同步 base、commit、push 与 CI 按项目规则与已有动作级授权执行，未获授权就停在动作边界并记录缺口，不伪造 CI／merge 完成；未提交或有相关 dirty／未跟踪输入时，用 `implementation_digest` 绑定真实工作树内容作为被验证版本，不为拿 SHA 强制提交，也不用内容摘要冒充提交 SHA；
+9. 修复效果的用户复验与 Git 交付批准是两个授权，互不替代；行为变化仍先裁决；
+10. Trae 完成前必须做最终 ASK。
 
 ## Stage Graph
 
@@ -81,12 +83,12 @@ User Verification
 
 | Stage | Requires | Produces | Next | Recovery evidence |
 |---|---|---|---|---|
-| Intake | 用户问题、可用历史 | 症状、期望、日志与授权边界 | Environment | decisions、日志路径 |
+| Intake | 用户问题、可用历史 | 症状、期望、日志与授权边界；持久任务入口已建立或复用 | Environment | decisions、日志路径 |
 | Environment | Intake Gate | 固定 worktree、初始 state | Diagnosis and Repair | Git 路径、基线结果 |
 | Diagnosis and Repair | 可复现问题 | 失败证据、根因、最小修复 | Sync and CI | debug log、测试、diff |
-| Sync and CI | Repair Gate | fix commits、同 SHA CI | User Verification | commits、CI run、同步结果 |
+| Sync and CI | Repair Gate | 已绑定的被验证版本与复验证据；获授权时的 fix commits 与同版本 CI（未授权/未运行记明确缺口） | User Verification | 绑定指纹、commits、CI run、同步结果 |
 | User Verification | 可操作真实产物 | 用户已修复或回退决策 | Documentation / rollback | 启动结果、decision |
-| Documentation | 用户确认修复 | 同步文档和影响结论 | Delivery | 文档版本、提交 |
+| Documentation | 用户确认修复 | 受影响合同按需处理结论（含可验证的无需修改结论），或行为变化的决策/范围裁决 | Delivery | 文档版本、结论、提交 |
 | Delivery | Documentation Gate | lint/push/CI/同步证据 | Integration and Closure | SHA、CI run、远端状态 |
 | Integration and Closure | 所有修复 Gate | merge SHA、post-merge CI、Receipt 或 paused state | Host Close / resume | merge、run、Receipt、状态 |
 
@@ -96,13 +98,17 @@ User Verification
 
 Bug 工作流与 Feature 对等：在 Environment（worktree 与分支确定后、Environment Gate 前）执行 [task-tracking](../dd-workflow-runtime/references/task-tracking.md) §3 定义的 tracking 绑定尝试并按该合同持久化结果，**不阻塞本 Stage**；`bug_id` 不重载为 Issue 号，跨设备任务索引用共享 `tracking` 字段承载。
 
+## 看板与接手入口
+
+遵循 [共享持久任务入口约定](../dd-workflow-runtime/references/state.md#持久任务入口)：复用同一任务专属入口，不给每个skill另建看板。下文的入口均指该既有入口。
+
 ## Stage 路由
 
 ### Intake
 
 读取 [diagnosis-and-verification.md](references/diagnosis-and-verification.md) 的 Intake。
 
-**新任务首次进入 Intake 时，必须先用通俗语言向用户复述三件事：症状是什么、期望行为是什么、准备在什么范围内修**，取得用户确认后才算 Intake 通过——这是防跑偏的唯一闸口，不得跳过或推迟到诊断中段；恢复任务若状态已含有效需求确认，则复用确认结果，不重复 ASK。随后扫描可用日志但不猜测来源，只询问仍缺失的 blocker。Gate：需求复述已获用户确认（新任务）或状态已含有效确认（恢复任务）、问题边界确认、日志选择记录、工作环境决策已取得或可从状态恢复。
+**新任务首次进入 Intake 时，若症状、期望行为与修复范围不清楚或相互冲突，必须先用通俗语言向用户复述三件事：症状是什么、期望行为是什么、准备在什么范围内修**，取得用户确认后才算 Intake 通过——这是防跑偏的闸口；三件事已清楚（用户请求已写明，或状态/Handoff 已载明）且无未解决决定时，不机械复述再等一次确认，记录确认依据后直接扫描日志与收集剩余事实。模糊、冲突、行为变更或高风险决策仍 ASK。恢复任务若状态已含有效需求确认，则复用确认结果，不重复 ASK。Intake 同时建立或复用持久任务入口（见[看板与接手入口](#看板与接手入口)）。随后扫描可用日志但不猜测来源，只询问仍缺失的 blocker。Gate：症状/期望/范围已确认或确认依据已记录、问题边界确认、日志选择记录、工作环境决策已取得或可从状态恢复、持久任务入口已建立或复用。
 
 ### Environment
 
@@ -122,7 +128,15 @@ Bug 工作流与 Feature 对等：在 Environment（worktree 与分支确定后�
 
 读取 [diagnosis-and-verification.md](references/diagnosis-and-verification.md) 的 Sync and CI。
 
-按 merge-only 项目规则同步 base，提交修复，对提交 SHA 执行完整回归 CI，并按需安全同步 AI-test。Gate：提交、CI 与同步证据准确，`current_stage=user-verification`。
+**先在当前允许范围完成可本地执行的真实复验，再按项目规则与已有动作级授权做同步、提交与 CI**：
+
+1. 可本地执行的复验不受 push 前置约束：在 fix worktree 重跑复现红灯／绿灯、受影响旧行为的定向回归与必要的真实路径证据（复现、根因、最小修复、红绿回归、真实路径证据不因精简而删减）；**不要求必须先 push 才能做这些复验**；
+2. 按 merge-only 项目规则 fetch 并比较 base，需要同步时按 `dd-git-workflow/merge` 同步，冲突在 fix 分支解决并重新验证；
+3. 按逻辑暂存生成 Conventional Commit 并提交修复、测试、必要文档和证据——**未获 commit 授权时不提交**，此时用 `verification_evidence.result.bindings.implementation_digest` 绑定真实工作树内容（含相关 dirty／未跟踪输入）作为被验证版本，不得用内容摘要冒充提交 SHA；
+4. push fix 分支与回归 CI 按项目规则与已有动作级授权执行；项目要求 CI 时严格绑定被交付版本，仍有效的同版本结果复用；**未运行、未绑定或未经授权／无法执行时记为明确缺口，不得改成本地通过、不得自行豁免、不得留空冒充**；
+5. 按需安全同步 AI-test。
+
+Gate：被验证版本绑定、提交、CI 与同步证据准确（或缺口如实记录），`current_stage=user-verification`。
 
 ### User Verification
 
@@ -134,13 +148,13 @@ Bug 工作流与 Feature 对等：在 Environment（worktree 与分支确定后�
 
 读取 [delivery-and-closure.md](references/delivery-and-closure.md) 的 Documentation。
 
-按调用关系、数据流、共享模型和用户流程检查 Requirements、Design、Test Cases 与代码测试。Gate：文档与实际修复一致，版本/证据已更新或有明确无需更新结论。
+**纯恢复既定行为（不改变约定行为）时，不默认补齐 Requirements／Design／Test Matrix**：只处理受影响的当前合同与使用说明（按需），可以给出可验证的"无需修改合同"结论；**修复实际上改变约定行为时，必须标出决策/范围变化并请求用户裁决**，不得当成普通修 bug 直接放行。Gate：文档与修复一致，版本/证据已更新或有明确无需更新结论；行为变化已裁决。
 
 ### Delivery
 
 读取 [delivery-and-closure.md](references/delivery-and-closure.md) 的 Delivery。
 
-完成 lint、必要验证、commit、push、同 SHA CI 和允许的 AI-test 同步。Gate：必需 Delivery 动作有证据，失败项已解决或由用户明确处置。
+**复用已有动作级授权**完成 lint、必要验证、commit、push、同版本 CI 和允许的 AI-test 同步；只有缺少必要授权或出现新决定才 ASK。未要求的动作记 `not-required`，未获授权的动作记 `not-authorized` 并停在该动作边界；conditional／no-op 阶段写清实际结论，不伪造 CI／merge 完成。用户已确认"修复效果"不等于 Git 交付批准，反之亦然。Gate：必需 Delivery 动作有证据，失败项已解决或由用户明确处置。
 
 ### Integration and Closure
 
@@ -163,15 +177,18 @@ Bug 工作流与 Feature 对等：在 Environment（worktree 与分支确定后�
 
 ## 红线
 
-- 新任务未向用户复述症状与期望并取得确认就开始诊断或修复（恢复任务状态已含有效确认的除外）；
+- 症状/期望/范围不清楚、存在冲突或涉及行为变更/高风险决策时未澄清确认就开始诊断或修复（已清楚且有执行指令时不机械复述等待，但确认依据必须记录；恢复任务状态已含有效确认的除外）；
 - 首次建立执行环境时未新建 worktree 就修改项目产物（恢复/Handoff/用户明确要求的例外除外）；
 - Environment Gate 前未按 [task-tracking](../dd-workflow-runtime/references/task-tracking.md) §3 完成外部任务 Issue 的绑定尝试并把结果落盘，或未让 `validate-tracking-binding.py` 通过就推进；
 - 未稳定复现或定义失败证据就写修复；
 - 未完成根因调查就提出确定性修复；
 - 一次修改多个变量后宣称根因已证明；
 - 未经确认改变既有需求或回归预期；
+- 修复实际上改变约定行为，却未标出决策/范围变化并请求用户裁决就当成普通修 bug 放行；
 - 未执行真实路径却宣称 UI Bug 已修复；
-- CI 结果与修复 SHA 不一致；
+- CI 结果与被交付版本不一致；或项目要求 CI 但未执行、未绑定被交付版本、未经授权即宣称通过，或用本地结果冒充、自行豁免；
+- 以"必须先 push"为由跳过或推迟可本地执行的真实修复复验，或为拿到 SHA 强制提交／用内容摘要冒充提交 SHA；
+- 把用户已确认修复效果当成 Git 交付批准，或反过来用 Git 授权替代必要的人工复验；
 - 状态缺失就默认从 Intake 重启；
 - 状态未持久化就跨 Stage；
 - merge、push、cleanup 成功前删除唯一状态；

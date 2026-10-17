@@ -96,9 +96,14 @@ UI AC 需要截图、可访问性断言、E2E/XCUITest/Playwright 或明确人�
 
 ## 同步规则
 
-- Goals/Scope/FR/AC 变化 → Design、Visual、Test Matrix 重审；
-- 模块/数据流/状态变化 → Visual、Test Matrix 重审；
-- UI 状态变化 → Visual、UI cases 重审；
-- 只有格式／错别字且不改变语义时可缩小 review，但仍记录版本、内容指纹和适用的 Delivery 证据。
+同步由**实际语义变化**驱动，不按文件数量机械同步：
+
+- Goals/Scope/FR/AC 变化 → 重审**事实受影响的**下游文档（Design、Visual、Test Matrix 中被引用事实改变的部分），未受影响的下游不因上游变化自动重审重写；
+- 模块/数据流/状态变化 → 重审 Visual、Test Matrix 中受影响的对应内容；
+- UI 状态变化 → 重审 Visual、UI cases 中受影响的对应内容；
+- 只有格式／错别字且不改变语义时可缩小 review，但仍记录版本、内容指纹和适用的 Delivery 证据；
+- 不默认维护镜像索引或逐份同步台账；关系在唯一入口紧凑表达（Lite 为任务包的 AC↔任务映射，Full 为 Requirements 编号引用）。
+
+Lite 模式未拆独立文档时不存在跨文档同步：任务包是唯一事实入口，更新任务包即为同步，拆出单篇后才按上述规则处理该篇。
 
 下游产物若基于未确认上游，标记 `stale`；不得直接确认或提交为最终。

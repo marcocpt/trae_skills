@@ -39,13 +39,13 @@ Design 是整个 AI Coding 项目的"架构契约"。它回答五个问题：有
 
 ## 何时使用
 
-- 新功能、重大重构、API 迁移前，Requirements 完成后写 Design
+- 产出独立 Design 文档时（Full 模式 Stage 3、单文档模式，或从 Lite 任务包拆出单篇时）
+- Lite 模式下写任务包的"必要设计决定"时：本文件的 WHO/HOW 分层和 P0 禁令同样适用，只记影响正确性或后续执行的决策，不强制 10 章节
 - 用户提到"设计文档"、"Design"、"02_Design"、"写设计"、"架构契约"
-- dd-writing-specs 工作流中"写设计文档"环节（步骤 5a）
 - Design 中混入类名/协议名/方法签名等 Implementation 细节
 - 团队把含完整代码的设计文档当 Design 用
 
-**不适用：** Requirements 文档（用 dd-writing-specs/requirements-writer）、完整规格文档套件工作流（用 dd-writing-specs）、Implementation Plan（写接口/类/目录）、Code 实现、bug 修复
+**不适用：** Requirements 文档（用 dd-writing-specs/requirements-writer）、完整规格文档套件工作流编排（用 dd-writing-specs）、Implementation Plan（写接口/类/目录）、Code 实现、bug 修复
 
 ## 项目规则优先（强制首步）
 
@@ -131,7 +131,7 @@ Design 文档中**绝不**出现以下内容（属于 Implementation Plan / Code
 
 ## 必须包含的章节
 
-按项目模板优先；无模板时使用以下默认 10 章节：
+**仅在产出独立 Design 文档时适用**（Full 模式或单文档模式；Lite 模式的"必要设计决定"承载于任务包，不强制章节齐全）。按项目模板优先；无模板时使用以下默认 10 章节：
 
 1. **文档定位**：声明 Design 是架构契约，以 Requirements 为唯一需求来源，采用编号引用而非复制
 2. **模块划分**：用中文业务术语命名模块，含模块结构图（mermaid graph）
@@ -348,9 +348,11 @@ digraph doc_layers {
 - **Implementation Plan**：允许接口签名、类定义、目录结构、迁移方案
 - **Code**：完整实现
 
-**与 dd-writing-specs 的关系：** dd-writing-specs 是编写整套规格文档套件（需求文档+设计文档+视觉原型+测试用例表）的完整工作流，本 reference 只负责“如何写 Design 内容”。dd-writing-specs 负责输入检查、审查、确认与按授权执行 Delivery；独立写 Design 时可直接进入对应单文档模式。
+**与 dd-writing-specs 的关系：** dd-writing-specs 是规格工作流（默认 Lite 最小任务包；用户或项目明确要求时按 Full 产出需求文档+设计文档+视觉原型+测试用例表套件），本 reference 只负责"如何写 Design 内容"（独立文档时）或任务包中的设计决定（Lite 时）。输入检查、审查、确认与按授权执行 Delivery 由 dd-writing-specs 负责；独立写 Design 时可直接进入对应单文档模式。
 
 ## 输出要求（P2）
+
+以下要求仅在产出独立 Design 文档时适用；Lite 任务包按入口文件格式记录。
 
 - 文件名：`02_Design.md`
 - 格式：Markdown，层级标题

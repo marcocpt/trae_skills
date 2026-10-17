@@ -6,13 +6,13 @@
 
 ### 1.1 exact-SHA invariant
 
-Delivery 只推进同一个 `candidate_sha`。先检查 confirmation、action-specific `delivery_authorization`，并验证：
+Delivery 只推进同一个被验证版本。先复用 Confirmation 已有的 action-specific `delivery_authorization`（无新决定不再泛问"继续交付还是回退"），并对有提交且项目要求CI的交付路径验证：
 
 ```text
 review_sha == gap_sha == ci_sha == candidate_sha
 ```
 
-四个 SHA 任一不等即 `BLOCKED`，不得 promote/push/merge。候选后任何内容变化返回 Documentation/Final Candidate 重新冻结（AC-09）。内容批准、测试 PASS、Reviewer PASS 均不授权 Git 或外部动作。
+上式只适用于有提交且CI为必需项的路径。项目不要求CI时略去ci_sha比较，仍核对实际适用的提交/审查/缺口身份；未提交的局部验证保持candidate_sha及当前SHA字段为空，通过既有verification_evidence.result.bindings.implementation_digest绑定真实内容（含相关dirty/未跟踪输入），不将摘要塞进SHA字段，也不以空值相等当通过。需要commit/push/merge时只执行已有授权动作；工作树指纹与提交产物须有可核对的内容对应关系，不同内容不得直接继承验证。项目要求的提交级CI仍必须在该真实SHA上满足。内容变化先判影响，只重做失配证据。内容批准、测试PASS、Reviewer PASS均不授权Git或外部动作。
 
 ### 1.2 动作
 
@@ -28,6 +28,8 @@ review_sha == gap_sha == ci_sha == candidate_sha
 
 不得 force push、推错 main/master、暂存无关脏文件或提交秘密。AI-test 同步前先检查目标 worktree 是否有未提交变更；dirty 或同步失败才 ASK。
 
+项目要求 CI 但未运行、未绑定被交付版本或未经授权时保持 `BLOCKED`，不得用本地结果放行，也不自行改成本地通过或豁免。
+
 每个外部动作前写 `in_progress: {operation, target, source, started_at}`，完成后记录 SHA、run 和远端状态。未要求的动作记 `not-required`，明确禁止的动作记 `not-authorized`；后续 Gate 依赖被禁止动作时保持 `BLOCKED`，不得假装完成。Gate：项目要求且获准的 Delivery 动作全部有证据，`current_stage=closure`。
 
 ## 2. Closure
@@ -35,8 +37,8 @@ review_sha == gap_sha == ci_sha == candidate_sha
 清理前验证（对齐 exact-SHA 语义）：
 
 - `completed_phases` 数量等于 `total_phases`；
-- `candidate_sha` 与 `full_ci_run.head_sha` 相同，且 `full_ci_run.conclusion==success && head_sha==candidate_sha`，`full_ci_run` 终态均落盘（`success|failure|cancelled|…`），`null` 表示未有终态；
-- develop/目标分支包含该 `candidate_sha`；
+- 对本任务要求的验证核对当前内容身份；有提交且项目要求CI时，`candidate_sha`与`full_ci_run.head_sha`相同，且`full_ci_run.conclusion==success && head_sha==candidate_sha`。项目不要求CI时full_ci_run合法保持null并记not-required依据，不因该null阻塞局部收尾；必需CI未执行/未绑定/非success不得放行要求的交付。未提交路径核对implementation_digest及对应审查、回归和缺口证据，不使用空SHA相等冒充；
+- 仅在要求的交付动作包含 merge 时校验 develop/目标分支包含该被验证版本；**未要求 merge 的已授权局部任务按实际范围收尾**，不因目标分支未含候选而阻塞（也据此不宣称已合并／已发布）；
 - Documentation 与 Delivery Gate 已通过；
 - 工作区无未解释变更。
 
