@@ -1,0 +1,51 @@
+# codex-cli read-only capability re-certification for codex-cli 0.163.0
+#
+# Trigger: FR-MB-012 capability invalidation — codex-cli was upgraded from
+# 0.157.0 to 0.163.0 (owner decision 2026-10-19: update codex to latest so the
+# requested reviewer model gpt-6.1-sol becomes usable; it returned HTTP 400
+# "not supported when using Codex with a ChatGPT account" on 0.157.0). Per
+# gpt-grilling-review transport contract, version change invalidates the old
+# backend-bound proof; this file re-captures both invocation forms on 0.163.0
+# before any authoritative review turn uses them. Method and grading follow the
+# 0.157.0 precedent (codex-readonly-evidence-01570.yaml).
+schema: dd-backend-readonly-evidence/1
+captured_at: 2026-10-19
+backend: codex-cli
+codex_version: codex-cli 0.163.0
+invocation_forms:
+  - form: initial
+    command: "codex exec --sandbox read-only --json (prompt via stdin)"
+    probe: codex-probe-initial-0163.json
+    probe_repo: /tmp/codex-ro-probe-0163 (isolated temp git repo, discarded)
+    thread_id: 01a15101-9f4d-74f1-b02c-324e5ff80bf4
+    assertions:
+      - "write to protected.txt denied: exit 1, zsh:1: operation not permitted: protected.txt"
+      - "create probe-a-created.txt denied: exit 1, zsh:1: operation not permitted: probe-a-created.txt"
+      - "positive read control: cat protected.txt returned PROTECTED-ORIGINAL-0163 exactly (exit 0)"
+      - "parent verification: protected.txt sha256 unchanged (0515077dedf761e57424666fc1a8e4f1035eb559f32c2fa95102738b1a5fa71a), no created file, git status clean"
+    verified: true
+  - form: resume
+    command: "codex exec resume <thread_id> --json (prompt via stdin)"
+    probe: codex-probe-resume-0163.json
+    thread_id: 01a15101-9f4d-74f1-b02c-324e5ff80bf4
+    assertions:
+      - "thread.started carries the same thread_id as the initial probe (session identity continuity, event-backed)"
+      - "resume write to protected.txt denied: exit 1, operation not permitted"
+      - "resume create probe-b-created.txt denied: exit 1, operation not permitted"
+      - "parent verification: protected.txt sha256 unchanged, no created file, git status clean (sandbox policy inherited from read-only initial thread)"
+    verified: true
+reviewer_model_check:
+  requested_model: gpt-6.1-sol
+  result: "serves on 0.163.0 (trivial read-only probe exit 0, agent_message OK); the same ID returned HTTP 400 invalid_request_error on 0.157.0 with this account"
+  probing_note: "model check done with the exact production invocation form (codex exec --sandbox read-only --json, prompt via stdin, ambient config model); a non-fatal stderr warning 'failed to refresh available models: request timed out' was observed and did not affect execution"
+conclusion: >
+  Both invocation forms are read-only and functional on codex-cli 0.163.0, and
+  the owner-requested reviewer model gpt-6.1-sol serves on this version.
+  Evidence is bounded to backend=codex-cli, codex-cli=0.163.0, and the two
+  invocation forms above; it does not extrapolate to other versions or forms.
+  Supersedes the 0.157.0 evidence for this version only; older evidence files
+  remain historical fact.
+limitations:
+  - "Write-denial on both forms is agent-reported plus parent-filesystem-verified (no OS denial event in the JSONL); the positive read control and the identical filesystem state after both probes carry the inference"
+  - "Evidence does not cover other invocation forms (--last resume, interactive, --ephemeral) or other models"
+  - "The resume context-recall question in probe B was not answerable by the agent; continuity rests on the event-backed identical thread_id"

@@ -52,7 +52,7 @@ python3 "$RUNTIME_SKILL_ROOT/agents/check-review-route.py" \
 
 - 确定性验证通过后才可发起独立强审（FR-007）；
 - 默认实现执行者是唯一写入者；默认强审者只读（FR-008）；显式协作分支的临时写入与关闭依据仅按上方协作合同，不从旧只读豁免推导；
-- Reviewer 的只读边界无法被当前执行环境强制时，该 `native-agent` 能力检查视为失败；禁止派生后以提示词自律代替隔离，必须转已授权的强审路径或 `BLOCKED`。**唯一例外**（FR-MB-004 修订，2026-09-23）：registry 中以 `readonly_mode: none` + `readonly_exception` 决策记录显式豁免的非只读后端（当前仅 external `opencode-cli`），其轮次可用于 finding 发现与复审参考，但不得作为 finding CLOSED 依据，恢复条件见 `docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md`；
+- Reviewer 的只读边界无法被当前执行环境强制时，该 `native-agent` 能力检查视为失败；禁止派生后以提示词自律代替隔离，必须转已授权的强审路径或 `BLOCKED`。**例外**（FR-MB-004 修订）：registry 中以 `readonly_mode: none` + `readonly_exception` 决策记录显式豁免的非只读后端（当前为 external `opencode-cli` 与 `codex-cli`），其轮次可用于 finding 发现与复审参考，但不得作为 finding CLOSED 依据；豁免后端的补偿控制是每轮基线复验（内容被改动即整轮作废）。恢复条件见 `docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md` 与 `docs/AI/later/LATER-20261019-codex-cli-nonreadonly-reviewer.md`；
 - 强审绑定冻结基线，基线变化即结论失效，须重验重审（FR-009）；
 - Reviewer 只返回三态 PASS / FINDINGS / BLOCKED，并说明已审与未读范围（FR-010）；"等待授权"由主调度者的编排状态承载，不是 Reviewer 返回值；
 - 返工上限默认 2 轮（`max_rework_cycles`），超限停止并报告阻塞（FR-012）；
@@ -65,7 +65,7 @@ python3 "$RUNTIME_SKILL_ROOT/agents/check-review-route.py" \
 
 | 宿主 | 原生角色绑定 | 日常路径 | 外部强审 |
 |---|---|---|---|
-| Codex | 支持（独立模型、推理强度、只读 Agent）；`config_file` 必须直连 canonical 普通文件 | 已证明 read-only 父：原生 reviewer；其他父模式：派生前守卫禁止直接 Reviewer Gate，改用单独 read-only 父、已授权 external 或 BLOCKED | chatgpt-review MCP |
+| Codex | 支持（独立模型、推理强度、只读 Agent）；`config_file` 必须直连 canonical 普通文件 | 已证明 read-only 父：原生 reviewer；其他父模式：派生前守卫禁止直接 Reviewer Gate，改用单独 read-only 父、已授权 external 或 BLOCKED。external `codex-cli` 自 2026-10-19 起豁免证据化只读（保留 `--sandbox read-only` 与轮后基线复验），其轮次不得作为 finding CLOSED 依据（LATER-20261019） | chatgpt-review MCP |
 | OpenCode | 支持（agent 配置 + 权限白名单）；worker=主 session、reviewer=subagent，具体模型由 `model-bindings.yaml` 声明；同模型独立审查的隔离靠角色、只读权限与冻结基线，非模型能力差异。**注（2026-09-23）**：OpenCode Zen 免费档拒绝一切能力受限 agent；`opencode-native` 只读路径因此在该套餐下不可用，external `opencode-cli` 已按 FR-MB-004 修订降级为非只读（不得 CLOSED） | 原生 | chatgpt-review MCP |
 | Qoder | 支持（frontmatter model/effort、worktree 隔离） | 原生 | chatgpt-review MCP |
 | ZCode | 支持（Beta；subagent 不能继续派生）；已绑套餐内最强 GLM-5.3 + 强制 high 思考档（主会话同为 5.3 时为同模型独立审查，单供应商上限） | 主 Agent 编排原生角色（高风险走 external） | chatgpt-review MCP |
@@ -83,6 +83,7 @@ python3 "$RUNTIME_SKILL_ROOT/agents/check-review-route.py" \
 - 该约束针对配置中声明的 OpenCode 角色，不要求从 CodeBuddy 等其他宿主调用 `opencode-cli` 的执行者与审查者同模型，也不能据此改写正在运行的主会话身份。
 - 用户仅指定本次审核模型，不等于授权持久修改共享绑定。先核实显示名对应的完整模型 ID，再比较当前绑定；当前 adapter 没有单次模型覆盖通道。需要持久改绑时先明确授权范围，按上文同步 canonical 与相关原生/CLI 产物并运行校验器；不得绕过 adapter 临时拼接模型参数。
 - 绑定校验通过仅证明配置一致，不证明模型可用或后端具备资格。改绑后的只读取证与会话连续性按 [transport.md](../../gpt-grilling-review/references/transport.md) 执行；不得改写旧证据的版本号冒充重新取证。adapter 结果中的 `reviewer` 模型段来自 canonical 声明，不是供应商实际模型的运行时证明；安装配置仍须与 canonical 核对。
+- 改绑助手：`python3 dd-workflow-runtime/agents/rebind-model.py <opencode|codex> <model-id>` 按宿主与角色精确修改共享默认绑定，产物路径取自该绑定。OpenCode 同步 worker/reviewer 和三个审查者配置；Codex 只改 reviewer 与 advisory 配置，不改 worker，也不改推理强度。候选先在临时副本运行 `validate-bindings.py` 与 `validate-review-routing.py`，通过后才发布；校验失败不写源文件，发布失败回滚已替换文件，发现并发修改则保留并报告，不能把它称为跨文件系统事务。`--dry-run` 同样验证候选但不发布；`--check-models` 对 `opencode models` 核实列表，Codex 无列表命令时明确记录供应商可用性未验证。脚本不 commit、不碰证据文件、不调用模型生成；改绑后仍须核对可用性与资格。
 
 ### 单次模型覆盖（per-call model pin）
 

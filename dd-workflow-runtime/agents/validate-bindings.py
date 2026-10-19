@@ -87,6 +87,8 @@ def check_native(bindings: dict) -> list[str]:
                     errors.append(f"{host}/{role}: {ek} 漂移 {data.get(ek)!r} != {spec['effort']!r}")
                 if "sandbox" in spec and data.get("sandbox_mode") != spec["sandbox"]:
                     errors.append(f"{host}/{role}: sandbox_mode 漂移")
+                # canonical 一致性仍由此检查；证据化只读豁免后保留的
+                # Codex 审查者只读要素另由 check_codex_readonly_elements 检查。
                 # LATER-20260907: advisory profile 产物与契约一致性（codex 侧）。
                 # advisory_agent_file 声明即要求产物存在且为单模 advisory 契约。
                 advisory_file = spec.get("advisory_agent_file")
@@ -440,6 +442,75 @@ def check_codex_install(bindings: dict, config_path: Path) -> list[str]:
     return errors
 
 
+def check_codex_readonly_elements(bindings: dict, agents_dir: Path = AGENTS_DIR) -> list[str]:
+    """codex 只读合同要素化校验（2026-10-19 豁免证据化只读后）。
+
+    codex-cli 的 `readonly_required` / 证据链已豁免（registry `readonly_mode:
+    none` + `readonly_exception` 决策记录），但两条纵深防御要素必须保留，
+    否则一次静默放开会同时失去 OS 级只读与探源门禁的输入保证：
+
+    1. registry 的 codex-cli 若未豁免，必须仍是 `readonly_required: true`
+       （豁免形态由 dispatch-review 的成对校验负责，这里只防"省略字段"）；
+    2. codex reviewer 产物（含 advisory）必须声明 `sandbox_mode = "read-only"`。
+    """
+    errors: list[str] = []
+    codex = bindings.get("codex")
+    if not isinstance(codex, dict):
+        errors.append("codex: canonical 缺少该宿主")
+        return errors
+    registry = Path(agents_dir) / "review-backends.yaml"
+    if registry.is_file():
+        current: str | None = None
+        codex_spec: dict = {}
+        for raw in registry.read_text().splitlines():
+            stripped = raw.strip()
+            if re.fullmatch(r"[a-zA-Z][\w-]*:", stripped) and not raw.startswith(" "):
+                current = None
+                continue
+            match = re.match(r"^  ([\w-]+):", raw)
+            if match:
+                current = match.group(1)
+                continue
+            if current == "codex-cli":
+                req = re.match(r"^\s*readonly_required:\s*(true|false)\s*(#.*)?$", raw, re.I)
+                if req:
+                    codex_spec["readonly_required"] = req.group(1).lower() == "true"
+                mode = re.match(r"^\s*readonly_mode:\s*(\S+)\s*(#.*)?$", raw)
+                if mode:
+                    codex_spec["readonly_mode"] = mode.group(1)
+        if codex_spec and codex_spec.get("readonly_required") is False and codex_spec.get("readonly_mode") == "none":
+            pass  # 显式豁免：只保留要素与决策记录（记录存在性由 dispatch-review 校验）
+        elif codex_spec.get("readonly_required") is not True:
+            errors.append(
+                "codex-cli: registry 必须显式声明 readonly_required: true，"
+                "或声明 readonly_mode: none 豁免（成对出现，不得省略）"
+            )
+    else:
+        errors.append("registry: 缺少 review-backends.yaml")
+    # 只约束审查者：worker（implementation-worker）必须有写权限，不适用
+    # sandbox_mode = read-only 要素。
+    for role, spec in sorted(codex.items()):
+        if role != "reviewer" or not isinstance(spec, dict) or "file" not in spec:
+            continue
+        files = [spec["file"]]
+        if spec.get("advisory_agent_file"):
+            files.append(spec["advisory_agent_file"])
+        for rel in files:
+            fpath = Path(agents_dir) / rel
+            if not fpath.is_file():
+                continue  # 缺产物由 check_native 报错，避免重复
+            try:
+                data = tomllib.loads(fpath.read_text())
+            except tomllib.TOMLDecodeError:
+                continue  # 解析错误由 check_native 报错
+            if data.get("sandbox_mode") != "read-only":
+                errors.append(
+                    f"codex/{role}: {rel} 必须保留 sandbox_mode = 'read-only'"
+                    "（豁免的是证据链，不是纵深防御）"
+                )
+    return errors
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -462,6 +533,7 @@ def main() -> int:
     errors = check_native(bindings)
     errors.extend(check_opencode_same_model(bindings))
     errors.extend(check_opencode_cli_agent(bindings))
+    errors.extend(check_codex_readonly_elements(bindings))
     if args.check_codex_install:
         errors.extend(check_codex_install(bindings, args.codex_config))
     if errors:

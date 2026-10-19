@@ -645,10 +645,13 @@ def validate_registry_policy(registry: Dict[str, Any], policy: Dict[str, Any]) -
 
 
 def _verify_waiver_decision_records(registry: Dict[str, Any], registry_path: Path) -> List[str]:
-    """每个 none 豁免必须指向真实存在的决策记录（FR-MB-004 修订，2026-09-23）。
+    """每个 none 豁免必须指向真实存在且位于仓库内的决策记录（FR-MB-004 修订）。
 
     只在加载层校验：`readonly_exception` 约定为相对仓库根（registry 的祖父目录）
-    的路径；悬空路径意味着一次静默放开，必须 fail-closed（RV-003）。
+    的路径；悬空路径意味着一次静默放开，必须 fail-closed（RV-003）。绝对路径
+    或含 `..` 的相对路径可指向仓库外文件，因此同时做仓库根 containment 校验
+    （LATER-20260923-waiver-record-path-containment）：解析后的记录必须仍在
+    仓库根之内，否则拒绝加载。
     """
     errors: List[str] = []
     backends = registry.get("backends")
@@ -661,7 +664,22 @@ def _verify_waiver_decision_records(registry: Dict[str, Any], registry_path: Pat
         record = spec.get("readonly_exception")
         if not isinstance(record, str) or not record:
             continue  # 缺字段由 validate_registry_policy 报错，避免重复
-        if not (repo_root / record).is_file():
+        if Path(record).is_absolute() or '..' in Path(record).parts or '\\' in record:
+            errors.append(
+                f"backends.{backend_id}.readonly_exception: decision record must be "
+                f"repository-relative and must stay inside the repository root: {record!r}"
+            )
+            continue
+        resolved = (repo_root / record).resolve()
+        try:
+            resolved.relative_to(repo_root)
+        except ValueError:
+            errors.append(
+                f"backends.{backend_id}.readonly_exception: decision record must stay "
+                f"inside the repository root: {record!r}"
+            )
+            continue
+        if not resolved.is_file():
             errors.append(
                 f"backends.{backend_id}.readonly_exception: decision record not found: {record!r}"
             )

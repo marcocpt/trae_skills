@@ -65,8 +65,21 @@ backends:
     # profile's developer_instructions into the prompt.
     capabilities: [strong-review, advisory]
     advisory_result_schema: dd-advisory-result/1
-    readonly_required: true
-    readonly_mode: codex-read-only-transport
+    # FR-MB-004 amendment (2026-10-19 user decision): readonly evidence for this
+    # backend is waived -- the L6 proofs must no longer be re-collected on every
+    # CLI version bump or model change (the friction was the evidence chain, not
+    # the sandbox).  The OS-level `--sandbox read-only` invocation and the
+    # read-only thread provenance gate stay in place, and the adapter verifies
+    # the frozen baseline at admission AND after every round (including before a
+    # timeout fallback): a round that mutates the repository voids itself as
+    # baseline_mismatch (fail-closed).  Accepted results carry the non-readonly
+    # marker and MUST NEVER back a finding CLOSED (gpt-grilling-review
+    # transport).  Historical evidence retained for the restore path:
+    # tests/evidence/codex-cli-l6-evidence.yaml,
+    # tests/evidence/codex-resume-readonly-evidence.yaml.
+    readonly_required: false
+    readonly_mode: none
+    readonly_exception: docs/AI/later/LATER-20261019-codex-cli-nonreadonly-reviewer.md
     # FR-MB-015 / FR-MB-016: continuation forms and the structured session
     # identity contract.  codex-review maps a `resume` continuation onto
     # `codex exec resume <handle>` and reports the engine-minted thread id
@@ -76,9 +89,6 @@ backends:
     session_identity:
       field: session
       owner: codex-review
-    # FR-MB-004.3 / FR-MB-012: continuation-form readonly evidence captured
-    # (tests/evidence/codex-resume-readonly-evidence.yaml, 2026-09-07).
-    continuation_readonly_evidence: true
     availability_exit_codes: [69]
     transient_exit_codes: [75]
     result_schema: dd-review-result/1

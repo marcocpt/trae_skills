@@ -34,11 +34,13 @@ roles:
 # contract lives in gpt-grilling-review/references/transport.md and is
 # deliberately not registered here — not a pending decision).
 # codex-cli qualifies (2026-09-07, supersedes the 2026-09-03 fail-closed user
-# decision after the user ordered the forensic run): the adapter now maps
-# resume onto `codex exec resume <thread_id> --json`, reports the engine-minted
-# thread id under the canonical `session` field, and both invocation forms
-# have backend-bound readonly evidence (codex-cli-l6-evidence.yaml re-captured
-# for 0.153.4; codex-resume-readonly-evidence.yaml for the resume form).
+# decision after the user ordered the forensic run): the adapter maps resume
+# onto `codex exec resume <thread_id> --json` and reports the engine-minted
+# thread id under the canonical `session` field.  Its L6 proofs
+# (codex-cli-l6-evidence.yaml, codex-resume-readonly-evidence.yaml) are
+# historical since the 2026-10-19 user decision waives evidence-backed
+# read-only for this backend (readonly_required: false / readonly_mode: none /
+# readonly_exception; the OS-level sandbox and thread-provenance gate stay).
 # Candidate order within the sequence: opencode-cli first, codex-cli second.
 # gpt-grilling-review MUST treat an empty order as backend_unavailable instead
 # of self-ordering (FR-MB-018.4).

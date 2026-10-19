@@ -914,9 +914,10 @@ class RoutingConfigTests(unittest.TestCase):
     def test_checked_in_registry_includes_grilling_backend_and_stateful_order(self) -> None:
         # MB-GRILL-021 / MB-GRILL-020：chatgpt-tunnel 入 registry 并作为默认
         # grilling 后端；routing-policy 提供 stateful 候选序列骨架。序列成员
-        # 须满足 FR-MB-001 三项资格（resume 形态 + 会话标识 + 续接只读取证）。
-        # opencode-cli 2026-09-03 合格；codex-cli 2026-09-07 合格（adapter
-        # resume 形态 + thread 身份 + 0.153.4 两形态只读取证）。
+        # 须满足 FR-MB-001 三项资格（resume 形态 + 会话标识 + 续接只读取证，
+        # 或被裁决豁免——见下）。opencode-cli 2026-09-03 合格；codex-cli
+        # 2026-09-07 合格（adapter resume 形态 + thread 身份），其证据化只读
+        # 于 2026-10-19 豁免。
         registry, policy = ROUTER.load_configuration(
             AGENTS_DIR / "review-backends.yaml",
             AGENTS_DIR / "routing-policy.yaml",
@@ -934,14 +935,16 @@ class RoutingConfigTests(unittest.TestCase):
             spec = registry["backends"][backend_id]
             self.assertIn("resume", spec["invocation_forms"])
             self.assertIsInstance(spec["session_identity"], dict)
-        # FR-MB-004 修订（2026-09-23 用户裁决）：opencode-cli 豁免只读后不再
-        # 持有续接只读取证，但豁免必须是显式声明（none + 决策记录）而非省略；
-        # codex-cli 仍走原只读合同。
-        self.assertIs(registry["backends"]["codex-cli"]["continuation_readonly_evidence"], True)
-        waived = registry["backends"]["opencode-cli"]
-        self.assertIs(waived["readonly_required"], False)
-        self.assertEqual(waived["readonly_mode"], ROUTER.NONE_READONLY_MODE)
-        self.assertTrue(waived.get("readonly_exception"))
+        # FR-MB-004 修订：两个 stateful CLI 后端均为显式豁免的非只读后端
+        # （2026-09-23 opencode-cli、2026-10-19 codex-cli），豁免必须成对声明
+        # （readonly_required: false + readonly_mode: none + 决策记录）而非省略；
+        # 豁免后不再持有续接只读取证，其轮次也不得作为 finding CLOSED 依据。
+        for backend_id in ("opencode-cli", "codex-cli"):
+            waived = registry["backends"][backend_id]
+            self.assertIs(waived["readonly_required"], False)
+            self.assertEqual(waived["readonly_mode"], ROUTER.NONE_READONLY_MODE)
+            self.assertTrue(waived.get("readonly_exception"))
+            self.assertNotIn("continuation_readonly_evidence", waived)
 
     def test_stateful_roles_accept_empty_order_as_transitional_state(self) -> None:
         registry, policy = _configuration()
@@ -1017,6 +1020,26 @@ class RoutingConfigTests(unittest.TestCase):
         errors = ROUTER._verify_waiver_decision_records(registry, registry_path)
         self.assertTrue(any("decision record not found" in error for error in errors), errors)
 
+    def test_waiver_decision_record_absolute_path_is_rejected(self) -> None:
+        # LATER-20260923-waiver-record-path-containment：绝对路径可指向仓库外
+        # 文件而通过"存在性"校验（fail-open 倾向），必须做仓库根 containment。
+        registry, _ = _configuration()
+        spec = registry["backends"]["opencode-cli"]
+        spec["readonly_required"] = False
+        spec["readonly_mode"] = ROUTER.NONE_READONLY_MODE
+        spec["readonly_exception"] = "/etc/hosts"
+        errors = ROUTER._verify_waiver_decision_records(registry, AGENTS_DIR / "review-backends.yaml")
+        self.assertTrue(any("must stay inside the repository root" in error for error in errors), errors)
+
+    def test_waiver_decision_record_dotdot_escape_is_rejected(self) -> None:
+        registry, _ = _configuration()
+        spec = registry["backends"]["opencode-cli"]
+        spec["readonly_required"] = False
+        spec["readonly_mode"] = ROUTER.NONE_READONLY_MODE
+        spec["readonly_exception"] = "../README.md"
+        errors = ROUTER._verify_waiver_decision_records(registry, AGENTS_DIR / "review-backends.yaml")
+        self.assertTrue(any("must stay inside the repository root" in error for error in errors), errors)
+
     def test_waiver_loader_check_ignores_readonly_backends(self) -> None:
         # 加载层检查只针对 none 豁免：只读后端不要求 readonly_exception。
         registry, _ = _configuration()
@@ -1025,6 +1048,22 @@ class RoutingConfigTests(unittest.TestCase):
             ROUTER._verify_waiver_decision_records(registry, AGENTS_DIR / "review-backends.yaml"),
             [],
         )
+
+    def test_absolute_waiver_path_inside_repo_is_still_rejected(self) -> None:
+        registry, _ = _configuration()
+        spec = registry['backends']['opencode-cli']
+        spec.update(readonly_required=False, readonly_mode=ROUTER.NONE_READONLY_MODE)
+        spec['readonly_exception'] = str((AGENTS_DIR.parents[1] / 'docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md').resolve())
+        errors = ROUTER._verify_waiver_decision_records(registry, AGENTS_DIR / 'review-backends.yaml')
+        self.assertTrue(any('repository-relative' in error for error in errors), errors)
+
+    def test_normalizing_dotdot_inside_repo_does_not_bypass_relative_contract(self) -> None:
+        registry, _ = _configuration()
+        spec = registry['backends']['opencode-cli']
+        spec.update(readonly_required=False, readonly_mode=ROUTER.NONE_READONLY_MODE)
+        spec['readonly_exception'] = 'docs/AI/later/../later/LATER-20260923-opencode-nonreadonly-reviewer.md'
+        errors = ROUTER._verify_waiver_decision_records(registry, AGENTS_DIR / 'review-backends.yaml')
+        self.assertTrue(any('repository-relative' in error for error in errors), errors)
 
     def test_none_readonly_mode_cannot_keep_readonly_required(self) -> None:
         registry, policy = _configuration()
@@ -1541,8 +1580,9 @@ class AdvisoryDispatchTests(unittest.TestCase):
         # the advisory capability bound to its wire contract (forensically
         # proven: opencode-advisory-readonly-evidence.yaml /
         # codex-advisory-readonly-evidence.yaml) and carry the stateful
-        # qualification (resume + session identity + continuation readonly
-        # evidence).
+        # qualification (resume + session identity).  The fixture keeps the
+        # strict read-only form for these roles; the checked-in registry uses
+        # the decision-recorded waiver for both (2026-09-23 / 2026-10-19).
         for backend_id in ("opencode-cli", "codex-cli"):
             self.registry["backends"][backend_id]["capabilities"] = ["strong-review", "advisory"]
             self.registry["backends"][backend_id]["advisory_result_schema"] = ROUTER.ADVISORY_RESULT_SCHEMA
