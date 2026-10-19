@@ -4,6 +4,8 @@
 
 ## 角色
 
+下表描述默认审查角色。用户明确选择 [同一会话强弱协作](../../gpt-grilling-review/references/strong-weak-collaboration.md) 时，使用 [协作调用合同](strong-collaboration.md)：当前弱模型仍是主执行者，CLI 强模型可以技术拆单和批量验收，并在限定的小修复例外中成为临时写入者。父会话交出写入权后才调用；其他 native-agent 和旧 review adapter 不获得此例外。
+
 | 角色 | 职责 | 禁止 |
 |---|---|---|
 | 实现执行者（implementation-worker） | 实现、运行确定性验证、按 finding 返工 | 不得自宣 Gate PASS；不得自行关闭外部强审的生产代码或测试语义 finding |
@@ -49,13 +51,13 @@ python3 "$RUNTIME_SKILL_ROOT/agents/check-review-route.py" \
 ## 硬约束
 
 - 确定性验证通过后才可发起独立强审（FR-007）；
-- 实现执行者是唯一写入者；强审者只读（FR-008）；
+- 默认实现执行者是唯一写入者；默认强审者只读（FR-008）；显式协作分支的临时写入与关闭依据仅按上方协作合同，不从旧只读豁免推导；
 - Reviewer 的只读边界无法被当前执行环境强制时，该 `native-agent` 能力检查视为失败；禁止派生后以提示词自律代替隔离，必须转已授权的强审路径或 `BLOCKED`。**唯一例外**（FR-MB-004 修订，2026-09-23）：registry 中以 `readonly_mode: none` + `readonly_exception` 决策记录显式豁免的非只读后端（当前仅 external `opencode-cli`），其轮次可用于 finding 发现与复审参考，但不得作为 finding CLOSED 依据，恢复条件见 `docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md`；
 - 强审绑定冻结基线，基线变化即结论失效，须重验重审（FR-009）；
 - Reviewer 只返回三态 PASS / FINDINGS / BLOCKED，并说明已审与未读范围（FR-010）；"等待授权"由主调度者的编排状态承载，不是 Reviewer 返回值；
 - 返工上限默认 2 轮（`max_rework_cycles`），超限停止并报告阻塞（FR-012）；
 - 外部 finding 字段沿用 gpt-grilling-review 的 SEVERITY / CLASSIFICATION / CHANGE_RISK，不另造 schema（CON-002）；
-- 低风险任务独立强模型调用次数为零（NFR-002）；不得为省 Token 删除确定性验证（NFR-001）。
+- 普通低风险任务不新增独立强模型调用（NFR-002）；用户指定强审或已进入批次时按协作合同处理，不能把此成本目标解释为禁止必要验收。不得为省 Token 删除确定性验证（NFR-001）。
 
 ## 宿主能力矩阵
 

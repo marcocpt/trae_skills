@@ -67,7 +67,11 @@ swiftlint lint --strict
 # 用法：输出 PreMergeChecklist JSON
 bash scripts/pre-merge-check.sh
 # all_pass=false 时禁止合并
+# 本地合入 develop 时，显式检查实际目标，避免把远端尚无的 develop 历史计入本分支
+bash scripts/pre-merge-check.sh develop
 ```
+
+可选基线参数只改变本轮对比目标，默认仍为 `origin/develop`；显式本地目标不执行远端 fetch。运行环境须满足脚本要求的 Git 版本，不能把不支持 `merge-tree` 参数造成的失败当作无冲突。
 
 ## 推荐 CI
 

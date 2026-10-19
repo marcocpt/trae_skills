@@ -2,16 +2,19 @@
 set -euo pipefail
 
 # 全局技能 dd-git-workflow/scripts 配套脚本
-# 用法: ./pre-merge-check.sh
+# 用法: ./pre-merge-check.sh [base-ref]（默认 origin/develop）
 # 输出 PreMergeChecklist JSON 到 stdout
 # 依赖: git 2.55+（支持 merge-tree --write-tree --name-only）, swiftlint（可选）
 
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-BASE="origin/develop"
+BASE="${1:-origin/develop}"
 CHECKS_OK=true
 RESULTS=()
 
-git fetch origin develop:refs/remotes/origin/develop 2>/dev/null || true
+if [ "$BASE" = "origin/develop" ]; then
+  git fetch origin develop:refs/remotes/origin/develop 2>/dev/null || true
+fi
+git rev-parse --verify "${BASE}^{commit}" >/dev/null
 
 # 1. 未提交文件检查
 UNSTAGED=$(git status --porcelain | wc -l | tr -d ' ')

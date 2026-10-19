@@ -1,11 +1,13 @@
 ---
 name: gpt-grilling-review
-description: Use when 用户要求外部强审者审核指定文件/指定仓库、让强审者自行读取本地代码找问题并给修改意见、弱模型按意见修改后需要送回复审、需要用 ChatGPT 之外的复审后端（如 opencode、codex）做强审、对审核发现做裁决处置，或带一组开放决策点求外部建议后再自行裁决。触发词：ChatGPT 文件审核、指定文件审核、gpt grilling、修改后复审、裁决、外部强审、强审者复审、多后端强审、opencode 复审、codex 复审、开放问题外审、决策点求建议。
+description: Use when 用户要求外部强审、修改后复审、技术裁决、开放问题建议，或弱模型在当前会话调用 Codex/OpenCode 强模型安排任务、批量验收和直接小修复，需要减少强模型调用并保持代码质量。
 ---
 
 # 强审 Grilling 审核
 
 > 本 skill 支持多个强审后端可选（`chatgpt-tunnel` 默认、`opencode-cli`、`codex-cli`）。闭环语义（finding 生命周期、三字段、CLOSED 判据、关闭权）对所有后端一致；后端差异只在 [transport.md](references/transport.md) 的对应分节。
+
+**先执行「意图路由」。** 下文目标、角色与主流程描述默认问题闭环；显式同一会话协作分支的调用、写入和小修复自验例外由对应 reference 拥有，其他共享判据保持。
 
 ## 目标
 
@@ -25,6 +27,7 @@ description: Use when 用户要求外部强审者审核指定文件/指定仓库
 
 进入任何流程前，先判断用户要强审者做什么：
 
+- **同一会话强弱协作**：弱模型通过 CLI 调用指定强模型安排任务、技术裁决、批量验收或直接小修复 → 读取 [strong-weak-collaboration.md](references/strong-weak-collaboration.md)。该分支复用本文件的三个字段、风险下限、问题生命周期、F/V/H、争议复核和 CLOSED 四项判据；调用、轮次及限定小修复自验例外按该 reference 执行，不套用下面默认主流程的只读角色、默认后端或先 commit 要求。ChatGPT 仍只读。
 - **问题闭环审查（finding review，默认）**：审核代码/文档找问题、修改后复审、按意见闭环 → 按本文件主流程执行；审查中发现正确行为未定义 → 仍按主流程归入 HUMAN_DECISION_REQUIRED，不切换模式；
 - **决策建议审查（advisory review）**：用户带着一组已知的开放决策点（规格没有答案、需要人选的设计/参数/策略问题）求外部建议后再自行裁决，或要求"先列全貌再逐项裁决" → 按 [advisory-review.md](references/advisory-review.md) 执行，不进入 finding 生命周期。
 
