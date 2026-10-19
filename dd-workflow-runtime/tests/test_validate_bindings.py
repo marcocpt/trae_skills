@@ -275,5 +275,84 @@ class CheckOpenCodeCliAgentTests(unittest.TestCase):
         self.assertTrue(any("缺少 --agent" in e for e in errors))
 
 
+CODEX_TOML_TEMPLATE = """name = "strong-reviewer"
+description = "fixture reviewer"
+model = "gpt-5.6-sol"
+{sandbox}sandbox_mode = "read-only"
+developer_instructions = "fixture"
+"""
+
+CODEX_BINDINGS = {
+    "codex": {
+        "reviewer": {
+            "file": "codex/strong-reviewer.toml",
+            "model": "gpt-5.6-sol",
+            "effort_key": "model_reasoning_effort",
+            "effort": "high",
+            "sandbox": "read-only",
+        },
+    }
+}
+
+CODEX_REGISTRY = "backends:\n  codex-cli:\n    readonly_required: false\n    readonly_mode: none\n"
+
+
+class CheckCodexReadonlyElementsTests(unittest.TestCase):
+    """codex 只读要素化校验（2026-10-19 豁免证据化只读后）。"""
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.agents_dir = Path(self.temp.name) / "agents"
+        self.agents_dir.mkdir()
+        self._write_codex_toml()
+        (self.agents_dir / "review-backends.yaml").write_text(CODEX_REGISTRY)
+
+    def tearDown(self) -> None:
+        self.temp.cleanup()
+
+    def _write_codex_toml(self) -> None:
+        (self.agents_dir / "codex").mkdir(exist_ok=True)
+        (self.agents_dir / "codex" / "strong-reviewer.toml").write_text(
+            CODEX_TOML_TEMPLATE.format(sandbox="")
+        )
+
+    def run_check(self, bindings=None):
+        return VB.check_codex_readonly_elements(bindings or CODEX_BINDINGS, self.agents_dir)
+
+    def test_elements_hold_under_waived_registry(self) -> None:
+        # 豁免形态（none + 决策记录）：只读要素仍必须保留。
+        self.assertEqual(self.run_check(), [])
+
+    def test_elements_hold_under_readonly_registry(self) -> None:
+        (self.agents_dir / "review-backends.yaml").write_text(
+            "backends:\n  codex-cli:\n    readonly_required: true\n"
+            "    readonly_mode: codex-read-only-transport\n"
+        )
+        self.assertEqual(self.run_check(), [])
+
+    def test_registry_omitting_readonly_contract_is_rejected(self) -> None:
+        # 省略 readonly_required / readonly_mode 等于静默放开，fail-closed。
+        (self.agents_dir / "review-backends.yaml").write_text("backends:\n  codex-cli:\n    command: [review]\n")
+        errors = self.run_check()
+        self.assertTrue(any("readonly_required" in e for e in errors), errors)
+
+    def test_sandbox_downgrade_in_profile_is_rejected(self) -> None:
+        (self.agents_dir / "codex" / "strong-reviewer.toml").write_text(
+            CODEX_TOML_TEMPLATE.format(sandbox="# ").replace('sandbox_mode = "read-only"', 'sandbox_mode = "workspace-write"')
+        )
+        errors = self.run_check()
+        self.assertTrue(any("sandbox_mode" in e for e in errors), errors)
+
+    def test_real_canonical_keeps_readonly_elements(self) -> None:
+        bindings = VB.load_bindings(Path(__file__).resolve().parents[1] / "agents" / "model-bindings.yaml")
+        self.assertEqual(VB.check_codex_readonly_elements(bindings), [])
+
+    def test_canonical_sandbox_drift_is_not_hidden_by_readonly_element_check(self) -> None:
+        bindings = VB.load_bindings(Path(__file__).resolve().parents[1] / 'agents' / 'model-bindings.yaml')
+        bindings['codex']['reviewer']['sandbox'] = 'workspace-write'
+        errors = VB.check_native(bindings)
+        self.assertTrue(any('sandbox_mode' in error for error in errors), errors)
+
+
 if __name__ == "__main__":
     unittest.main()

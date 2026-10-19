@@ -27,12 +27,15 @@ hosts:
       model: gpt-5.6-sol
       effort_key: model_reasoning_effort
       effort: high
+      # 保留的纵深防御要素：exact 值由 check_codex_readonly_elements 机械校验；
+      # 证据化只读已于 2026-10-19 豁免（review-backends.yaml readonly_mode: none，
+      # 记录见 docs/AI/later/LATER-20261019-codex-cli-nonreadonly-reviewer.md）。
       sandbox: read-only
       # advisory 轮（决策建议，LATER-20260907）专用 profile：单模式契约，
       # developer_instructions 由 adapter 注入 prompt（codex exec 无 agent 选择参数）
       advisory_agent_file: codex/strong-reviewer-advisory.toml
     install: "~/.codex/config.toml direct canonical config_file; no duplicate ~/.codex/agents entry"
-    status: installed-invoked-parent-override-guarded  # 正常父 L1-L7 pass；危险/未知父禁止 native Reviewer Gate
+    status: installed-invoked-parent-override-guarded  # 正常父 L1-L7 pass；危险/未知父禁止 native Reviewer Gate；2026-10-19 codex-cli 豁免证据化只读（保留 sandbox + 轮后基线复验）
 
   zcode:
     reviewer:

@@ -323,6 +323,64 @@ class AdapterIntegrationTests(unittest.TestCase):
         self.assertEqual(obj["failure_category"], "session_resume_mismatch")
         self.assertEqual(cmds, [])
 
+    def _run_adapter_with_side_effect(self, req: dict, side_effect, stream: str = ""):
+        """Like _run_adapter, but git commands run for real and codex is stubbed.
+
+        `side_effect(cmd, real_run)` may mutate the fixture repository to
+        emulate a provider that writes during its round.
+        """
+        mock_completed = mock.Mock()
+        mock_completed.stdout = stream
+        mock_completed.stderr = ""
+        mock_completed.returncode = 0
+        orig_run = subprocess.run
+        with mock.patch("subprocess.run") as mocked, \
+                mock.patch.dict("os.environ", {"CODEX_REVIEW_STATE_DIR": self.state.name}):
+            def side(cmd, **kw):
+                if cmd[0] == "codex":
+                    return side_effect(cmd, orig_run)
+                return orig_run(cmd, **kw)
+            mocked.side_effect = side
+            import io, sys
+            with mock.patch("sys.stdin", io.StringIO(json.dumps(req))):
+                with mock.patch("sys.stdout", new_callable=io.StringIO) as fake_out:
+                    with mock.patch.object(sys, "argv", ["codex-review", "review"]):
+                        ret = ADAPTER_MOD.main()
+                        return ret, fake_out.getvalue()
+
+    def test_midround_mutation_voids_the_round(self):
+        # 2026-10-19 waiver (readonly_mode: none): the compensating control is
+        # the post-round frozen-baseline re-verification.  A provider that
+        # writes during its round must void the whole round (fail-closed)
+        # instead of being reported as an accepted review.
+        result = _valid_result("FINDINGS")
+        req = self.request()
+        result["target"] = {"base_sha": req["base_sha"], "head_sha": req["head_sha"], "scope": ["review.py"]}
+        stream = _codex_stream(json.dumps(result))
+
+        def mutate(cmd, real_run):
+            (self.repo / "review.py").write_text("print('mutated mid-round')\n")
+            mock_completed = mock.Mock()
+            mock_completed.stdout = stream
+            mock_completed.stderr = ""
+            mock_completed.returncode = 0
+            return mock_completed
+
+        ret, out = self._run_adapter_with_side_effect(self.request(), mutate)
+        self.assertEqual(ret, 0)
+        obj = json.loads(out)
+        self.assertEqual(obj["status"], "BLOCKED")
+        self.assertEqual(obj["failure_category"], "baseline_mismatch")
+
+    def test_dirty_fixture_blocks_at_admission(self):
+        (self.repo / "review.py").write_text("print('dirty before round')\n")
+        ret, out, cmds = self._run_adapter(self._valid_stream())
+        self.assertEqual(ret, 0)
+        obj = json.loads(out)
+        self.assertEqual(obj["status"], "BLOCKED")
+        self.assertEqual(obj["failure_category"], "baseline_mismatch")
+        self.assertEqual(cmds, [])
+
     def test_explicit_initial_keeps_sandbox_form_and_reports_session(self):
         ret, out, cmds = self._run_adapter(
             self._valid_stream(),

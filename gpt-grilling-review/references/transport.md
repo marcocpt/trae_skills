@@ -42,7 +42,7 @@
 
 句柄的取值类型、获取方式与续接调用形态**按后端分两类**实现，不得互相套用：
 
-1. **runtime-managed backend**（`opencode-cli`、`codex-cli` 等）：调用形态与会话标识由 runtime adapter 合同定义，grilling 只编排轮次、不拼装 provider 命令行（FR-MB-015）；每次续接后从 canonical 结构化 `session` 字段提取实际标识，校验 `actual_session_id == review_session_handle`，无法提取或不相等 → `session_resume_mismatch` → BLOCKED。
+1. **runtime-managed backend**（`opencode-cli`、`codex-cli` 等）：调用形态与会话标识由 runtime adapter 合同定义，grilling 只编排轮次、不拼装 provider 命令行（FR-MB-015）；每次续接后从 canonical 结构化 `session` 字段提取实际标识，校验 `actual_session_id == review_session_handle`，无法提取或不相等 → `session_resume_mismatch` → BLOCKED。**这两个后端均为裁决豁免的非只读后端**（opencode-cli 2026-09-23、codex-cli 2026-10-19），其轮次只能用于 finding 发现与复审参考。
 2. **`chatgpt-tunnel`**：会话身份由本传输合同自管（DEC-MB-04），映射与连续性规则见本文件下方 `chatgpt-tunnel` 分节。要点是**句柄取回读到的实际 `conversation_id`，不取送审时传入的别名**——两者并不相同。
 
 其余不变式：
@@ -336,22 +336,24 @@ STATUS: HUMAN_DECISION_REQUIRED
 - 在 content 中写本地绝对路径（如 `/Users/dengdeng/Working/...`）或项目真实目录名代替 `work/<相对路径>` 形式的 repo 名
 - 措辞未锁死插件名路由：未按「本机插件名解析」替换 `<插件名>`（如仍写"Tunnel 插件"或写非本机插件名）、未要求"先调用工具再回答"、或未禁止基于上下文推断/猜绝对路径——三者任一缺失都可能让审核方拿不到仓库
 
+### CLI 共用读取方式
+
+**读取方式（FR-MB-005）**：两个 CLI 后端都**不使用仓库读取插件，不要求 `work/<相对路径>` repo 名**。给定工作区 cwd 与相对 `scope` 列表，审核方直接 Read / Grep / Glob。因此：
+
+- content 里写**仓库内相对路径清单**与关注点，不写 `work/<相对路径>` repo 名，也不写绝对路径；
+- 本后端不适用上面「仓库命名」与「repo 名解析规则」两节，那两节只属于 `chatgpt-tunnel`。
+
 ### `opencode-cli`
 
 **资格**：由 `review-backends.yaml` 的续接形态、会话标识与只读声明，以及 `routing-policy.yaml` 的 stateful 候选序列共同决定；**本节不记录当前资格状态**。其调用命令、参数与 `readonly_mode` 的属主是 `review-backends.yaml`，本文件不重述。
 
-**指定模型**：先按 [model-routing.md 的 OpenCode 模型改选](../../dd-workflow-runtime/references/model-routing.md#opencode-模型改选) 核对模型 ID、绑定与授权；不得把默认模型当成不可更换的架构约束，也不得把本次模型选择当作修改共享配置的授权。版本或配置漂移须按本文件「能力探测与失效触发器」重新取证，不能只报告“证据过期”便建议换后端；说明所需取证及授权缺口，已获授权则执行取证，未通过仍 BLOCKED。已有 finding 时优先检查原 reviewer 连续性，换模型不继承关闭权。
+**指定模型**：先按 [model-routing.md 的 OpenCode 模型改选](../../dd-workflow-runtime/references/model-routing.md#opencode-模型改选) 核对模型 ID、绑定与授权；不得把默认模型当成不可更换的架构约束，也不得把本次模型选择当作修改共享配置的授权。版本或配置漂移须按本文件「能力探测与失效触发器」重新取证，不能只报告“证据过期”便建议换后端；说明所需取证及授权缺口，已获授权则执行取证，未通过仍 BLOCKED。已有 finding 时优先检查原 reviewer 连续性，换模型不继承关闭权。该后端自 2026-09-23 起为裁决豁免的非只读后端（`readonly_mode: none`）：其 L6 只读证据为历史事实，不构成当前合同证据，亦不因模型改绑而重采；豁免后果（轮次不得作为 CLOSED 依据）不变。
 
-**单次覆盖用法**：派发请求的顶层 `model` 即本次 reviewer 模型（完整 ID），只影响本轮；canonical 与默认不动。pin 必须配同模型 proof（`model` 一致），proof 的 `source` 指向该模型的 L6 证据文件。
+**单次覆盖用法**：派发请求的顶层 `model` 即本次 reviewer 模型（完整 ID），只影响本轮；canonical 与默认不动。仅在该后端恢复机械只读要求后，pin 才必须配同模型 proof（`model` 一致），proof 的 `source` 指向该模型的 L6 证据文件；当前豁免期间按下方例外执行。
 
-**无证新模型自动重测（须用户预授权）**：在隔离临时仓库执行，不得接触真实代码：建仓并写保护文件记 sha；以 pin 模型 + reviewer profile 跑一次小范围只读审查并尝试写入/创建；父侧验证 sha 不变、无新增文件、工作树干净、审查方拒绝写入；通过后落盘 `tests/evidence/opencode-cli-l6-evidence.<slug>.yaml`（slug 为模型 ID 的 `/` 换 `-`，含 model、opencode 版本、profile、调用形态与验证结论），proof 引用它。需多轮复审时续接形态同样取证，否则复审 BLOCKED。**豁免后端例外**（FR-MB-004 修订，2026-09-23）：`opencode-cli` 已声明 `readonly_mode: none`，pin 新模型不再要求 L6 只读 proof（dispatch 不校验该条件），但新模型仍须实际可服务，且其轮次同样不得作为 CLOSED 依据。
+**恢复机械只读后的无证新模型自动重测（须用户预授权）**：在隔离临时仓库执行，不得接触真实代码：建仓并写保护文件记 sha；以 pin 模型 + reviewer profile 跑一次小范围只读审查并尝试写入/创建；父侧验证 sha 不变、无新增文件、工作树干净、审查方拒绝写入；通过后落盘 `tests/evidence/opencode-cli-l6-evidence.<slug>.yaml`（slug 为模型 ID 的 `/` 换 `-`，含 model、opencode 版本、profile、调用形态与验证结论），proof 引用它。需多轮复审时续接形态同样取证，否则复审 BLOCKED。**豁免后端例外**（FR-MB-004 修订，2026-09-23）：`opencode-cli` 已声明 `readonly_mode: none`，pin 新模型不再要求 L6 只读 proof（dispatch 不校验该条件），但新模型仍须实际可服务，且其轮次同样不得作为 CLOSED 依据。
 
 **续接**：走 adapter 的 `resume` 调用形态，显式传入 `review_session_handle`（FR-MB-015）。每次续接后按「续接句柄与身份校验」从结构化 `session` 字段提取实际会话标识并比对；不得依赖"最近会话"隐式续接，不得以退出码 0 判定续接成功。
-
-**读取方式（FR-MB-005）**：**不使用仓库读取插件，不要求 `work/<相对路径>` repo 名**。给定工作区 cwd 与相对 `scope` 列表，审核方直接 Read / Grep / Glob。因此：
-
-- content 里写**仓库内相对路径清单**与关注点，不写 `work/<相对路径>` repo 名，也不写绝对路径；
-- 本后端不适用上面「仓库命名」与「repo 名解析规则」两节，那两节只属于 `chatgpt-tunnel`。
 
 **只读（现状：已豁免，2026-09-23 用户裁决）**：registry 将该后端声明为 `readonly_required: false` + `readonly_mode: none` + `readonly_exception`（决策记录 `docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md`）。原因：OpenCode Zen 免费档对任何带能力限制的 agent 返回 403 FreeTierError，机械只读在可用套餐内不可达（实测矩阵见 `dd-workflow-runtime/tests/evidence/opencode-nonreadonly-decision-20260923.yaml`）。因此：
 
@@ -369,6 +371,22 @@ STATUS: HUMAN_DECISION_REQUIRED
 **取证边界**：修订前的只读取证——续接形态 `dd-workflow-runtime/tests/evidence/opencode-resume-readonly-evidence.yaml`（opencode 1.18.25）与 L6 `opencode-cli-l6-evidence.yaml`（1.18.29）——是历史事实，在豁免存续期间不构成当前合同证据；恢复只读时须按 FR-MB-012 重新采集，**不得改写旧证据的版本号冒充重新取证**。
 
 **结果**：按请求 mode 返回——finding 轮返回 `dd-review-result/1`，advisory 轮返回 `dd-advisory-result/1`（均由 runtime schema/validator 属主机械保证，FR-MB-017），本文件只引用，F/V/H 分流仍按 [SKILL.md](../SKILL.md) 的语义执行，advisory 的决策点模型按 [advisory-review.md](advisory-review.md) 执行，不得由 provider 定义另一套枚举含义。
+
+### `codex-cli`
+
+**资格**：由 `review-backends.yaml` 的续接形态、会话标识与只读声明，以及 `routing-policy.yaml` 的 stateful 候选序列共同决定；**本节不记录当前资格状态**（2026-10-19 起为裁决豁免的非只读后端，见 `LATER-20261019-codex-cli-nonreadonly-reviewer.md`）。
+
+**指定模型**：codex-cli 没有 per-call pin 通道（registry 未声明 `per_call_model`），模型由 canonical 绑定 `codex/strong-reviewer.toml` 决定；改模型须走持久改绑流程（`validate-bindings.py` 校验），豁免期间不要求重采 L6；恢复机械只读后才按 FR-MB-012 重新取证。若未来在请求中携带 `model`，dispatch 会因后端不支持 pin 而 fail-closed，不得静默忽略。
+
+**续接**：走 adapter 的 `resume` 调用形态，显式传入 `review_session_handle`（FR-MB-015）；`codex exec resume` 不接受 `--sandbox`，只接受本 adapter 登记为 read-only 的 thread（探源门禁）。每次续接后按「续接句柄与身份校验」从结构化 `session` 字段提取实际标识并比对。
+
+**结果**：按请求 mode 返回 `dd-review-result/1` 或 `dd-advisory-result/1`（runtime schema/validator 属主机械保证），F/V/H 分流与「不得 CLOSED」约束同 `opencode-cli`。
+
+**只读（现状：已豁免，2026-10-19 用户裁决）**：registry 将该后端声明为 `readonly_required: false` + `readonly_mode: none` + `readonly_exception`（决策记录 `docs/AI/later/LATER-20261019-codex-cli-nonreadonly-reviewer.md`）。原因：L6/续接证据链在每次 CLI 版本升级或换模型时按 FR-MB-012 全部失效、须重采，摩擦不可接受；证据化只读按 FR-MB-004 修订移除。保留的要素（不是证据）：
+
+- 初始调用仍为 `codex exec --sandbox read-only` 的 OS 级沙箱形态；续接只接受 adapter 登记为 read-only 的 thread（探源门禁）；
+- adapter 在**准入**与**轮后**（含超时回退前）各复验一次冻结基线：任何一轮内出现改动即 `baseline_mismatch` BLOCKED（fail-closed、不 fallback）；
+- 其轮次**不得作为 finding CLOSED 依据**；结果 `readonly_confirmation` 为 `not-required:codex-cli:readonly-waived-by-decision`，不得把它当作只读确认处置。
 
 ## 红线 - 出现即停下纠正
 

@@ -13,6 +13,10 @@ Router owns selection/authorization/fallback. This process only:
   and reports it under the canonical `session` field (FR-MB-016)
 - strict-parses the final text as dd-review-result/1 and validates
 - outputs single JSON object for Router normalization
+- verifies the frozen baseline twice: at admission and once the round has
+  finished (including before a timeout fallback).  The backend is waived from
+  evidence-backed read-only (readonly_mode: none, 2026-10-19), so a round that
+  mutates the repository voids itself as baseline_mismatch (fail-closed).
 
 No retry, no second dispatch, no readonly authority.
 """
@@ -108,6 +112,41 @@ def _validate_continuation(req: Dict[str, Any]) -> str | None:
     handle = continuation.get("handle")
     if form == "resume" and (not isinstance(handle, str) or not handle):
         return "request.continuation.handle is required for a resume form"
+    return None
+
+
+def _frozen_baseline_failure(request: Dict[str, Any]) -> tuple[str, str] | None:
+    """Return (failure_category, detail) if the frozen candidate is not intact.
+
+    Checked twice: at admission, and again once the round has finished.  Since
+    the 2026-10-19 waiver (readonly_mode: none, FR-MB-004 amendment) the
+    backend is no longer *evidence*-read-only; the documented compensating
+    control is this post-round candidate re-verification, so a round that
+    mutates the repository must void itself as ``baseline_mismatch``
+    (fail-closed) instead of being reported as an accepted review.
+    """
+    repo = Path(request["repo"])
+    try:
+        head_run = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if head_run.returncode != 0:
+            return "evidence_mismatch", f"git rev-parse failed: {head_run.stderr.strip()[:200]}"
+        if head_run.stdout.strip() != request["head_sha"]:
+            return "baseline_mismatch", "HEAD differs from head_sha"
+        status_run = subprocess.run(
+            ["git", "-C", str(repo), "status", "--porcelain=v1", "--untracked-files=all"],
+            capture_output=True, text=True, timeout=10,
+        )
+        # An unreadable/failed status call must not be mistaken for "clean": a
+        # non-zero exit with empty stdout would otherwise fail open.
+        if status_run.returncode != 0:
+            return "evidence_mismatch", f"git status failed: {status_run.stderr.strip()[:200]}"
+        if status_run.stdout.strip():
+            return "baseline_mismatch", "worktree dirty"
+    except Exception as exc:
+        return "evidence_mismatch", f"git check failed: {exc}"
     return None
 
 
@@ -466,20 +505,13 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False))
         return 0
 
-    repo = Path(request["repo"])
-    try:
-        head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=10).stdout.strip()
-        if head != request["head_sha"]:
-            result = _blocked(request, "baseline_mismatch", "HEAD differs from head_sha")
-            print(json.dumps(result, ensure_ascii=False))
-            return 0
-        dirty = subprocess.run(["git", "-C", str(repo), "status", "--porcelain=v1", "--untracked-files=all"], capture_output=True, text=True, timeout=10).stdout.strip()
-        if dirty:
-            result = _blocked(request, "baseline_mismatch", "worktree dirty")
-            print(json.dumps(result, ensure_ascii=False))
-            return 0
-    except Exception as exc:
-        result = _blocked(request, "evidence_mismatch", f"git check failed: {exc}")
+    # Verify frozen baseline at admission (HEAD matches head_sha, clean
+    # worktree).  Full verification is Router's job, but the adapter fails
+    # closed on its own so a direct invocation is equally guarded.  The same
+    # check runs again after the round (and before any timeout fallback).
+    failure = _frozen_baseline_failure(request)
+    if failure is not None:
+        result = _blocked(request, failure[0], failure[1])
         print(json.dumps(result, ensure_ascii=False))
         return 0
 
@@ -526,7 +558,26 @@ def main() -> int:
     except FileNotFoundError:
         return 69
     except subprocess.TimeoutExpired:
+        # The process ran before being killed; with the read-only waiver it may
+        # have written, so re-verify the baseline before a fallback hands the
+        # repository to another backend -- a mutated repo must not be passed on.
+        failure = _frozen_baseline_failure(request)
+        if failure is not None:
+            result = _blocked(request, failure[0], failure[1])
+            print(json.dumps(result, ensure_ascii=False))
+            return 0
         return 75
+
+    # Post-round re-verification: the backend is waived from evidence-backed
+    # read-only (readonly_mode: none, 2026-10-19), so a round that mutated the
+    # repository is void as baseline_mismatch (fail-closed) rather than an
+    # accepted result.  This is the compensating control required of waived
+    # backends and matches the Router's own post-run re-check.
+    failure = _frozen_baseline_failure(request)
+    if failure is not None:
+        result = _blocked(request, failure[0], failure[1])
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
 
     if completed.returncode != 0:
         if completed.returncode == 69:
