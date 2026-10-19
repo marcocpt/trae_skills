@@ -43,6 +43,11 @@ backends:
     result_schema: dd-review-result/1
 
   codex-cli:
+    # Same-session collaboration is an explicit opt-in transport. Its result
+    # is never passed through the legacy read-only review normalizer.
+    collaboration:
+      initial: [codex, exec, --sandbox, workspace-write, --json, --model, "{model}", -c, 'model_reasoning_effort={effort_toml}', -]
+      resume: [codex, exec, resume, "{session}", --json, --model, "{model}", -c, 'model_reasoning_effort={effort_toml}', -]
     type: cli
     execution: external
     executable: codex-review
@@ -79,6 +84,9 @@ backends:
     result_schema: dd-review-result/1
 
   opencode-cli:
+    collaboration:
+      initial: [opencode, run, --standalone, --agent, build, --format, json, --model, "{model_variant}"]
+      resume: [opencode, run, --standalone, --agent, build, --format, json, --model, "{model_variant}", --session, "{session}"]
     type: cli
     execution: external
     executable: opencode-review
