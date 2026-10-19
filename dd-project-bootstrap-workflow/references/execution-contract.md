@@ -15,7 +15,8 @@
 7. 将已有产物标记为 `missing`、`partial`、`valid`、`stale` 或 `conflicting`；
 8. 生成 `blocking_gaps` 和 `deferred_gaps`；
 9. 只询问无法从仓库或状态确定的 blocker；
-10. 首次修改文件前确定并持久化工作环境。
+10. 首次修改文件前确定并持久化工作环境；
+11. 按 [共享持久任务入口约定](../../dd-workflow-runtime/references/state.md#持久任务入口) 建立或复用持久任务入口，将缺口扫描得到的待执行节点和下一安全动作写入入口；已有父任务入口时直接复用，不为 Bootstrap 再建一份。
 
 最小产物扫描：
 
@@ -66,6 +67,8 @@ handoff: {}
 
 每个 Node Gate 通过后立即更新状态。恢复时验证路径、产物、规则和当前节点；不能盲信 JSON。
 
+恢复时先核对已有任务入口及其链接的工作树、状态、批准依据与验证证据，再从第一个未满足 Gate 的节点继续；入口中的旧摘要不能覆盖已核验事实。入口更新与只读位置的处理遵循 [共享持久任务入口约定](../../dd-workflow-runtime/references/state.md#持久任务入口)，不新增 Bootstrap 专用状态或入口字段。
+
 ## 3. Gap Scan
 
 Gap 分类：
@@ -96,6 +99,8 @@ next: []
 5. blocking issues 为零。
 
 Node Gate 不要求“最新 commit 必须是当前 artifact”。Git commit、push 和 PR 属于 Delivery Gate。
+
+节点 Gate 通过、出现阻塞、暂停或交接时，先持久化状态，再更新同一任务入口：把本节点实际结果、有效产物与验证证据链接、未解决阻塞和下一安全动作写清。待执行与因证据失效需重验的节点据实标注；不能把“文档已生成”当作“验证已通过”。入口仅保存可读摘要与链接，通用内容和恢复边界以 [state.md 的持久任务入口](../../dd-workflow-runtime/references/state.md#持久任务入口) 为准。
 
 ## 5. Dependency Graph
 
@@ -206,6 +211,8 @@ delivery_policy: project-rules
 - 发现上游冲突时返回 blocker；
 - 独立触发时才执行自己的最小 Preflight。
 
+调用上下文同时提供既有任务入口位置（不扩展状态 schema）；子 Skill 复用父任务入口，不另建看板。子 Skill 返回产物路径、验证结果、阻塞项与下一建议动作，由 Bootstrap 按 Node Contract 更新入口，不自行把父任务标为完成。
+
 ## 7. 审查规则
 
 审查遵循 [dd-workflow-runtime/review-gate](../../dd-workflow-runtime/references/review-gate.md)：主 Agent 按 A/B/C 三方向自检；命中高风险附加检查触发器时追加对应检查。检查语义不因执行方式简化而减少。
@@ -256,6 +263,8 @@ Greenfield 必须携带非空 Requirements Seed，`phase_contract_path=null`。B
 
 Handoff 写入 Bootstrap state 并设 `status=handoff-ready`。`dd-feature-development-workflow` 验证 payload、路径和工作树，先写入自己的 Bootstrap 消费字段，再把 Bootstrap state 改为 `completed`。
 
+将同一任务入口的路径放入既有 `relevant_files`，在入口中链接 Bootstrap state 和 Handoff，并记录待接收的下一安全动作；不新增 payload 字段。接收方按 [共享持久任务入口约定](../../dd-workflow-runtime/references/state.md#持久任务入口) 复用入口并接续 Feature 任务。Bootstrap 节点与下游实现分别据实记录：治理产物通过验证不能把首个 Feature 标为已实现，尚未接收不能标为已移交。下游消费成功后再更新接收结果及 Feature 状态链接，保留 Bootstrap 产物与验证依据。
+
 下游状态必须记录：
 
 ```yaml
@@ -269,4 +278,4 @@ phase_contract_path: null
 
 ## 10. Host Close
 
-仅 `invocation_mode=standalone` 执行：Exit Gate 与 Handoff 完成后先原子持久化 `status=completed`（必要时写 Completion Receipt），再按 [dd-workflow-runtime 宿主结束合同](../../dd-workflow-runtime/SKILL.md) 收尾；询问模板遵循 [dd-workflow-runtime/ask](../../dd-workflow-runtime/references/ask.md)。
+仅 `invocation_mode=standalone` 执行：Exit Gate 通过且下游确认接收后，按 §9 的时序确认 `status=completed` 已原子持久化（必要时写 Completion Receipt），并更新同一任务入口中的接收结果，再按 [dd-workflow-runtime 宿主结束合同](../../dd-workflow-runtime/SKILL.md) 收尾。尚未接收时保持 `status=handoff-ready`，报告待接收状态与下一安全动作，不执行完成收尾；不得为结束会话提前标为 `completed`。询问模板遵循 [dd-workflow-runtime/ask](../../dd-workflow-runtime/references/ask.md)。

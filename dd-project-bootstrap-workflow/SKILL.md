@@ -40,7 +40,8 @@ description: 当需要从零创建 Greenfield 项目、为 Brownfield 项目重�
 5. 扫描已有治理产物；
 6. 生成 `blocking_gaps`、`deferred_gaps` 和执行顺序；
 7. 只询问无法从状态、仓库或已批准文档推断的 blocker；
-8. 首次修改文件前确定并持久化工作环境。
+8. 首次修改文件前确定并持久化工作环境；
+9. 建立或复用持久任务入口，再进入首个待执行节点（见[看板与接手入口](#看板与接手入口)）。
 
 用户请求“从 Roadmap 开始”只决定目标入口。若 Brownfield Baseline 缺失，必须先补 Baseline。
 
@@ -69,6 +70,12 @@ PROGRESS_FIELD=current_node
 恢复时先验证路径、产物和项目规则。状态不存在时从仓库事实重建，禁止默认从头 grill。
 
 runtime 通用 state schema 容忍 `tracking` 字段（语义见 [task-tracking](../dd-workflow-runtime/references/task-tracking.md)），但本工作流**第一阶段不自动创建、不自动绑定、不自动投影**外部任务；Bootstrap 出口 Handoff 之后的 Feature / Bug 工作流才按该合同绑定。
+
+## 看板与接手入口
+
+遵循 [共享持久任务入口约定](../dd-workflow-runtime/references/state.md#持久任务入口)：复用同一任务专属入口，不另建看板。本地任务入口不触发 GitHub Issue 创建、绑定或远端投影，不改变上述外部任务边界。
+
+Preflight 建立入口，节点推进、阻塞、暂停与交接时更新；具体调用点见 [execution-contract.md](references/execution-contract.md) 的 State、Node Contract、Child Invocation 与 Handoff。子 Skill 和接收同一任务的 Feature 工作流复用该入口。
 
 ## 依赖图
 
@@ -191,6 +198,8 @@ delivery_policy: project-rules
 
 子 skill 必须消费上游事实，不得重复询问已解决内容。只允许询问缺失 blocker 或该产物特有的新决策。发现上游冲突时返回 blocker，不在下游另写一套规则。
 
+调用时提供既有任务入口位置，子 Skill 复用父任务入口，不另建看板；返回产物、验证结果与阻塞项后由 Bootstrap 汇总，详见 [execution-contract.md](references/execution-contract.md) 的 Child Invocation。
+
 所有子 skill 一律传 `invocation_mode=child`（原子 Git/CI/shared 能力传 `helper`），完成后返回本编排器；不得自行执行最终 Host Close。
 
 询问和 worktree 选择遵循 [dd-workflow-runtime/ask](../dd-workflow-runtime/references/ask.md)。
@@ -233,7 +242,7 @@ Brownfield：
 
 ## 宿主结束合同
 
-仅 `invocation_mode=standalone` 执行：Exit Gate 与 Handoff 完成后先原子持久化 `status=completed`（必要时写 Completion Receipt），再按 [dd-workflow-runtime 宿主结束合同](../dd-workflow-runtime/SKILL.md) 收尾——Trae 结构化 ASK `结束本次任务 / 还有其他任务`（null 重问），Codex 正常交付完成结果。询问与收尾模板遵循 [dd-workflow-runtime/ask](../dd-workflow-runtime/references/ask.md)。
+仅 `invocation_mode=standalone` 执行：Exit Gate 通过且下游确认接收后，按 [execution-contract.md](references/execution-contract.md) 的 Handoff 时序确认 `status=completed` 已原子持久化（必要时写 Completion Receipt），再按 [dd-workflow-runtime 宿主结束合同](../dd-workflow-runtime/SKILL.md) 收尾——Trae 结构化 ASK `结束本次任务 / 还有其他任务`（null 重问），Codex 正常交付完成结果。尚未接收时保持 `status=handoff-ready`，如实交付待接收状态，不执行完成收尾。询问与收尾模板遵循 [dd-workflow-runtime/ask](../dd-workflow-runtime/references/ask.md)。
 
 ## References
 
