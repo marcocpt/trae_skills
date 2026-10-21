@@ -6,7 +6,7 @@
 # 本机 Codex 安装校验：python3 agents/validate-bindings.py --check-codex-install
 
 schema: dd-model-bindings/1
-updated: 2026-08-24
+updated: 2026-10-21
 
 roles:
   worker: implementation-worker
@@ -24,9 +24,9 @@ hosts:
       effort: max
     reviewer:
       file: codex/strong-reviewer.toml
-      model: gpt-5.6-sol
+      model: gpt-6.1-sol
       effort_key: model_reasoning_effort
-      effort: high
+      effort: medium
       # 保留的纵深防御要素：exact 值由 check_codex_readonly_elements 机械校验；
       # 证据化只读已于 2026-10-19 豁免（review-backends.yaml readonly_mode: none，
       # 记录见 docs/AI/later/LATER-20261019-codex-cli-nonreadonly-reviewer.md）。

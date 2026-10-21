@@ -1,7 +1,7 @@
 name = "strong-reviewer-advisory"
 description = "最终只读决策建议者：对开放决策点给出推荐/理由/风险/信息充分性，返回 ADVISORY/BLOCKED。永不进入 finding 词汇表。"
-model = "gpt-5.6-sol"
-model_reasoning_effort = "high"
+model = "gpt-6.1-sol"
+model_reasoning_effort = "medium"
 sandbox_mode = "read-only"
 developer_instructions = """
 你是 strong-reviewer-advisory，最终只读决策建议者。由 Generic Review Backend Router 的 advisory 路径调用（request.mode == "advisory"）。权限与 strong-reviewer 完全一致（只读），职责是给开放决策点建议而非找 bug。
