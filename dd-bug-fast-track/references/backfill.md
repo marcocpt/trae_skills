@@ -41,6 +41,8 @@
 
 按调用关系、数据流、共享模型和用户流程检查需要同步的长期文档，遵循 [artifact-lifecycle](../../dd-workflow-runtime/references/artifact-lifecycle.md) 的生命周期结论；无需更新的要有明确结论，不是"忘了"。关闭欠账 `docs`。
 
+任务完成时按 [artifact-lifecycle](../../dd-workflow-runtime/references/artifact-lifecycle.md) §3.6 复用既有任务入口保存结案记录；不另建总结，交接正式流程时由接手方继续同一入口。
+
 ## 5. 逐条关闭与豁免
 
 - 每条欠账关闭时必须写 `evidence`，没有证据的关闭无效；
@@ -59,7 +61,7 @@
 - 触及持久化格式、并发模型、兼容性、安全或权限；
 - 出现复述范围外的新症状。
 
-交接内容：已确认症状与期望、最终修复与 SHA、红绿记录、已有根因线索、剩余 `open` 欠账。按 [delivery-and-closure](../dd-bug-fix-workflow/references/delivery-and-closure.md) 的正式规则继续，交接后本 Skill 不再拥有会话。
+交接内容：已确认症状与期望、最终修复与 SHA、红绿记录、已有根因线索、剩余 `open` 欠账。按 [delivery-and-closure](../../dd-bug-fix-workflow/references/delivery-and-closure.md) 的正式规则继续，交接后本 Skill 不再拥有会话。
 
 ## 7. 红线
 

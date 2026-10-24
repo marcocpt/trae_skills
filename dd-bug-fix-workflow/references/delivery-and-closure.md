@@ -33,6 +33,8 @@
 
 修复证据（failing test、根因、绿灯 diff、CI run）与下一步（`next_safe_action`）归持久任务入口（看板与交接）与 runtime state、tracking Issue 入口（各自属主，tracking 见 [task-tracking](../../dd-workflow-runtime/references/task-tracking.md)），不维护独立进度镜像。
 
+任务完成时按 [artifact-lifecycle](../../dd-workflow-runtime/references/artifact-lifecycle.md) §3.6 在同一入口保存结案记录，不默认新增历史报告；普通 Bug 的文档无需更新结论也留在该入口，保留根因与回归依据。
+
 Gate：文档/合同与修复一致，或已给可验证的无需修改结论；行为变化已裁决；状态写入路径和结论，`current_stage=delivery`。
 
 ## 2. Delivery

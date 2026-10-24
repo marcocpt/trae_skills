@@ -9,6 +9,8 @@ description: 当需要为新功能／重大重构／API 迁移编写规格时使
 
 默认用**一个持久任务入口**完成规格：入口任务专属、仓库内持久、离线可读（路径选择见[持久任务入口](#持久任务入口)），包含目标/范围、必要设计决定、验证条件、任务安排，以及人话看板（任务、状态、完成条件/实际结果、阻塞）和 agent 交接信息（目标、边界、代码位置/worktree、关键决定、验证证据、下一步、授权边界）。看板与交接在同一文件，不新建第二套状态 schema。
 
+资料以供 AI 接手、检索和核验为目的，不要求用户逐篇阅读；只记录无法从既有合同、代码和测试充分恢复的信息，已有事实用引用。任务结案与历史问答按 [artifact-lifecycle](../dd-workflow-runtime/references/artifact-lifecycle.md) §3.6、§3.7；本 writer 只交还规格时保持接手状态，不宣称实现完成。
+
 用户或项目明确要求完整套件时，进入 Full 模式，按 Stage Graph 逐篇产出四件套；确认默认整包一次完成，仅当用户或项目明确要求逐篇确认时才逐篇。用户明确只要某一篇时，用单文档模式。
 
 内容批准不等于 Git 授权；交付按已明确的 `delivery_policy` 单独执行。长流程遵循 [dd-workflow-runtime](../dd-workflow-runtime/SKILL.md)；规范事实、派生视图和证据遵循 [artifact-contract](../dd-workflow-runtime/references/artifact-contract.md)。默认只加载本文件，进入具体步骤时再读 reference，以减少 token 而不降低 Gate。
@@ -106,6 +108,8 @@ delivery_policy: <inherited>
 7. **更新入口并交付**：交还时把入口更新为可接手状态（看板、交接摘要、`next_safe_action` 指向下一步执行方）；执行方回填的实际结果与验证证据同样更新入口，不另建进度镜像；Git 与外部动作按 `delivery_policy` 和既有授权单独判定，内容批准不授权 Git。
 
 **拆独立规格的条件**：出现明确消费者（如下游团队、对外合同）或独立稳定合同，或用户/项目明确要求时，从任务包拆出 Requirements/Design/Visual/Test Matrix 单篇；单篇沿用 Full 中该篇的 Gate；未拆事实仍以任务包为属主，不复制成第二份；拆文件不改变批准范围，也不自动触发逐份同步。**高风险本身不构成拆份条件**：风险通过 [review-gate](../dd-workflow-runtime/references/review-gate.md) 加强审查/验证/tracer 承接，不以增加文档数量代理风险控制。
+
+项目允许合并的最小长期合同时，只提取任务包中仍有效且需要长期独立引用的约定，沿用 Lite 自检与确认，并按 [来源与批准合同](../dd-workflow-runtime/references/artifact-source-and-packet.md) 绑定原文与批准；不新增批准字段或 Gate。消费方按同一来源读取和验证，速通欠账也引用该已批准来源，不因文件名不同要求再补一套规格。
 
 ## Full 模式（用户或项目明确要求时）
 

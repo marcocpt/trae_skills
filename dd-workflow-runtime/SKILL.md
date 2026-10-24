@@ -1,6 +1,6 @@
 ---
 name: dd-workflow-runtime
-description: 当 dd 系列长流程需要状态恢复、Gap Scan、Stage Gate、结构化询问、CI/UI 证据或测试位置规则时使用；通常由 Feature、Bug、Refactor、Bootstrap、Specs 工作流按需调用。
+description: 当 dd 系列工作流需要状态恢复、Gap Scan、Stage Gate、结构化询问、CI/UI 证据、测试位置、任务结案或项目历史检索时使用；通常由 Feature、Bug、Refactor、Bootstrap、Specs 工作流按需调用。
 ---
 
 # DD 共享工作流运行时
@@ -55,6 +55,8 @@ tracking: null
 首次进入或恢复时读取 [runtime-contract.md](references/runtime-contract.md) 的 Preflight、State、Recovery 和 Stage Contract。进入最终完成 Gate 时再读取其中的 Completion Receipt 与 Host Close；不要为普通阶段预加载整份 reference。
 
 Stage 创建或消费规范文档、人审视图、弱模型执行包或验证证据时，读取 [artifact-contract.md](references/artifact-contract.md)；调用方只补领域检查，不复制通用字段和语义。
+
+任务结案时按 [artifact-lifecycle](references/artifact-lifecycle.md) §3.6 在既有持久任务入口留下简短记录；回答项目当前行为、修改原因或进度时按同文件 §3.7 定向检索。只读提问不启动开发流程，也不新建记忆库。
 
 ## Preflight
 
@@ -150,7 +152,7 @@ Delivery 失败必须记录和处理，但不得倒推为已经验证的领域�
 
 只有 `invocation_mode=standalone` 的会话所有者执行本节。`child/helper` 完成后向调用方返回 `status`、产物、证据、blocker 与下一建议动作，不输出宿主最终摘要、不执行 Host Close。
 
-会话所有者完成所有 Workflow 与必需 Delivery Gate 后，先持久化 `status=completed`。若活动状态会随 worktree 清理而消失，必须先写 Completion Receipt。
+会话所有者完成所有 Workflow 与必需 Delivery Gate 后，先按 [artifact-lifecycle](references/artifact-lifecycle.md) §3.6 保全结案记录，再持久化 `status=completed`。若活动状态会随 worktree 清理而消失，必须先写 Completion Receipt。
 
 Trae：
 
