@@ -13,7 +13,7 @@
 
 ## 2. 补规格（第二步）
 
-1. **规模判定**：对照 [small-change-track](../dd-feature-development-workflow/references/small-change-track.md) §3 的准入条件判断——满足则补 1 份 mini-spec（AC 清单、IN／OUT、验证命令与预期、影响面），不满足则补完整规格套件（Requirements、Design、Test Matrix，UI 功能含 Visual），走 `dd-writing-specs` 的写法；
+1. **规格组织与风险分开判定**：按 [dd-writing-specs](../../dd-writing-specs/SKILL.md) 的模式选择，默认在既有持久任务入口补齐目标、IN／OUT、必要决定、AC 清单、验证命令与预期、影响面和任务映射；独立文档只按该 Skill 的实际消费需求或用户／项目明确要求拆出。仍按 [small-change-track](../../dd-feature-development-workflow/references/small-change-track.md) §3 与本文件 §6 判断风险准入和正式流程交接；风险只决定审查和验证强度，不决定文档数量；
 2. **反向规格纪律**：规格描述"应该是什么"，不是"现在是什么"。实现与已确认需求冲突时改实现，并把冲突与处置记入 `decisions`；不得为了让规格和实现一致而改写已确认需求；
 3. 记录规格路径与内容指纹，作为后续缺口检查的基准。
 
@@ -33,6 +33,8 @@
 
 按调用关系、数据流、共享模型和用户流程检查需要同步的长期文档，遵循 [artifact-lifecycle](../../dd-workflow-runtime/references/artifact-lifecycle.md) 的生命周期结论；无需更新的要有明确结论，不是"忘了"。关闭欠账 `docs`。
 
+任务完成时按 [artifact-lifecycle](../../dd-workflow-runtime/references/artifact-lifecycle.md) §3.6 复用既有任务入口保存结案记录；不另建总结，交接正式流程时由接手方继续同一入口。
+
 ## 5. 逐条关闭与豁免
 
 - 每条欠账关闭时必须写 `evidence`，没有证据的关闭无效；
@@ -51,7 +53,7 @@
 - 兼容性、迁移、安全或权限影响；
 - 需要 ≥ 2 个 Phase 才能验证。
 
-交接内容：已确认需求、最终实现与 SHA、补齐产出（规格、映射、CI 记录、审查结论）、`decisions`、剩余 `open` 欠账。按 [state-and-handoff](../dd-feature-development-workflow/references/state-and-handoff.md) 的 Handoff 字段写入，交接后本 Skill 不再拥有会话。
+交接内容：已确认需求、最终实现与 SHA、补齐产出（规格、映射、CI 记录、审查结论）、`decisions`、剩余 `open` 欠账。按 [state-and-handoff](../../dd-feature-development-workflow/references/state-and-handoff.md) 的 Handoff 字段写入，交接后本 Skill 不再拥有会话。
 
 ## 7. 红线
 

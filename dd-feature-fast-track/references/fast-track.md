@@ -61,7 +61,7 @@ Intake Gate：需求复述已获用户确认、工作环境已持久化、tracki
 - 涉及持久化格式、并发模型、兼容性、迁移、安全或权限；
 - 实现中发现已确认需求需要拆成 ≥ 2 个 Phase 才能验证。
 
-交接时带上已确认需求、当前实现、已有证据、`decisions` 与欠账台账，按 [state-and-handoff](../dd-feature-development-workflow/references/state-and-handoff.md) 的 Handoff 字段写入。
+交接时带上已确认需求、当前实现、已有证据、`decisions` 与欠账台账，按 [state-and-handoff](../../dd-feature-development-workflow/references/state-and-handoff.md) 的 Handoff 字段写入。
 
 ## 3. Smoke
 
@@ -80,9 +80,9 @@ Intake Gate：需求复述已获用户确认、工作环境已持久化、tracki
 
 | kind | 速通阶段为什么不做 | 关闭所需证据 |
 |---|---|---|
-| `spec` | 没先写规格套件 | mini-spec 或完整规格套件已产出并绑定内容指纹（规模判定见 [backfill](backfill.md) §2） |
+| `spec` | 未先记录完整验收约定 | 既有任务入口中的最小任务包或按需独立规格已补齐并绑定内容指纹（组织方式见 [backfill](backfill.md) §2） |
 | `plan` | 没拆 Phase 与任务 | AC → Task → 测试/证据映射已补齐 |
-| `test` | 只跑了最小验证 | 测试矩阵执行结果，覆盖全部 AC |
+| `test` | 只跑了最小验证 | 覆盖全部 AC 的测试／证据执行结果，复用既有入口内映射 |
 | `determinism` | 没做确定性验证 | 同一份实现重复执行结果一致的验证记录 |
 | `ci` | 没跑完整 CI | 最终 SHA 上的完整 CI 运行记录 |
 | `review` | 没做审查 | A/B/C 自检结论，或按 [review-gate](../../dd-workflow-runtime/references/review-gate.md) 升级的独立强审结论 |
