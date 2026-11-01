@@ -30,7 +30,7 @@ description: 通过 curl 收发企业微信消息（阿布热线协作面）。�
 
 路径：`~/.abu-hotline/state/<bot>.<host>.cursor`（如 `wxr1.codebuddy.cursor`，见路由表）。
 
-- **读**：回合开始先判别再取值——`p=~/.abu-hotline/state/wxr1.codebuddy.cursor; if [ -s "$p" ] && grep -q '^[0-9][0-9]*$' "$p"; then cursor=$(cat "$p"); else cursor=; fi`。cursor 非空数字 → 增量续接；**文件缺失/为空/非数字一律 cursor 为空 → 走冷启动**（不得把缺失折叠成 0，否则与合法 cursor=0 无法区分）
+- **读**：回合开始**整值判别**——`cursor=$(cat ~/.abu-hotline/state/wxr1.codebuddy.cursor 2>/dev/null); cursor=${cursor%$'\n'}; [[ "$cursor" =~ ^[0-9]+$ ]] || cursor=`。整值恰为一个非负整数（允许单个尾换行）才有效；文件缺失/为空/非数字/多行损坏一律 cursor 为空 → 走冷启动（不得把缺失折叠成 0，否则与合法 cursor=0 无法区分）
 - **写（处理后推进）**：**处理完**返回的消息批次后，才把最后一条 `seq` 写入：`mkdir -p ~/.abu-hotline/state && echo -n <seq> > ~/.abu-hotline/state/wxr1.codebuddy.cursor`；**空返回不写**。cursor 语义 = 已完成处理的位置：中断恢复后未确认批次会被重新拉取（at-least-once），重复回复由 req_id 幂等去重兜底
 - 会话内上下文可顺带记住 cursor 省一次读，但 state 文件是事实源；上下文被压缩或进入新回合后以文件为准
 
@@ -56,13 +56,24 @@ print("last:", json.dumps(m[-1], ensure_ascii=False) if m else "none")'
 
 - **宿主 shell 工具超时必须 ≥ curl -m**，否则工具先杀掉 curl 造成误判失败。宿主超时不足时降级分段：`curl -m 110 '.../wait?cursor=N&timeout=100'`
 - **禁止循环轮询**（sleep 后重拉）：每次轮询都是全上下文重放（60k 上下文 30s 一轮 ≈ 720 万 token/小时；长轮询空唤醒 6 次/小时 ≈ 36 万，按上下文大小等比放大）。单次 wait 挂满，唤醒次数越少越省
-- 宿主 shell 工具超时**覆盖整条命令**（而非单次 curl）且足够长时，可把多次 wait 压成一次唤醒。循环总预算 ≈ `N_ROUNDS × 580` 秒——**按宿主总预算定轮数**（宿主 3600s → 5 轮；宿主仅 600s 上限则不适用本模板，直接单次 wait）。行为：成功时输出完整响应（退出 0）；传输失败（curl 非零）或 HTTP 错误（`-f` 对 4xx/5xx 返回 22）或预算耗尽——立即非零退出并留 stderr 诊断，交错误矩阵处置；仅"有效空响应（messages 数组为空）"继续等待：
+- 宿主 shell 工具超时**覆盖整条命令**（而非单次 curl）且足够长时，可把多次 wait 压成一次唤醒。循环总预算 ≈ `N_ROUNDS × 580` 秒——**按宿主总预算定轮数**（宿主 3600s → 5 轮；宿主仅 600s 上限则不适用本模板，直接单次 wait）。每轮响应用 python3 做**结构校验**：合法 JSON 且 `messages` 为非空数组 → 输出完整响应（退出 0）；合法空数组 → 续等；非法 JSON / 缺 `messages` / 错误对象 / 传输失败（curl 非零）/ HTTP 错误（`-f` 对 4xx/5xx 返回 22）/ 预算耗尽——立即非零退出并留 stderr 诊断，交错误矩阵处置：
 
 ```bash
 N_ROUNDS=5; n=0
 while true; do
   resp=$(curl -sf -m 580 'http://127.0.0.1:9876/wait?cursor=N&timeout=570') || { echo "curl/HTTP error $?" >&2; exit 1; }
-  if printf '%s' "$resp" | grep -q '"seq"'; then printf '%s\n' "$resp"; break; fi
+  printf '%s' "$resp" | python3 -c '
+import json, sys
+try:
+    m = json.load(sys.stdin)["messages"]
+except Exception:
+    sys.exit(2)
+sys.exit(0 if m else 1)'; rc=$?
+  case "$rc" in
+    0) printf '%s\n' "$resp"; break;;
+    1) :;;
+    *) echo "invalid wait response" >&2; exit 1;;
+  esac
   n=$((n+1)); [ "$n" -ge "$N_ROUNDS" ] && { echo 'wait budget exhausted' >&2; exit 1; }
 done
 ```
@@ -152,12 +163,13 @@ req_id 规则同 `/send`：每次附件交付独立生成（如 `task-42-file1`�
 ## 完整回合模板
 
 ```
-0. 读 cursor   cat state 文件（有效值 → 增量续接；缺失/空/非数字 → 冷启动，绝不盲拉全量）
-1. 取消息      curl /messages?cursor=N → 处理完这批消息 → 最后一条 seq 写回 state
+0. 读 cursor   state 整值判别（合法数字 → 增量续接；缺失/空/损坏 → 冷启动，绝不盲拉全量）
+1. 取消息      curl /messages?cursor=N
 2. 处理        （agent 干活）
-3. 发结果      python3/jq 构造 | curl /send 或 /send-file（简单结果 markdown，复杂结果暗色 HTML 文件）
-4. 等回复      curl -m 600 /wait?cursor=M&timeout=570
-   ↳ 返回消息：处理消息并交付结果 → seq 写回 state → 回到 2
+3. 交付        python3 构造 | curl /send 或 /send-file（简单结果 markdown，复杂结果暗色 HTML 文件），确认投递成功
+4. 推进        处理且交付成功后，最后一条 seq 写回 state；交付失败保留旧 cursor（重试或转报告）
+5. 等回复      curl -m 600 /wait?cursor=M&timeout=570
+   ↳ 返回新消息：回到 2（唯一处理入口：处理 → 交付 → 推进）
    ↳ 空返回：再 wait（回合制场景则结束回合，等待期 0 token）
 ```
 
