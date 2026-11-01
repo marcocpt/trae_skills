@@ -19,13 +19,13 @@ description: 通过 curl 收发企业微信消息（阿布热线协作面）。�
 
 | 用户提示词 | 机器人 | 端口 |
 |---|---|---|
-| 提到 "abu" / "阿布热线" / **未指定（默认）** | abu | 9876 |
-| 提到 "codex" | codex | 9877 |
+| 提到 "wxr1" / "阿布热线" / **未指定（默认）** | wxr1 | 9876 |
+| 提到 "wxr2" | wxr2 | 9877 |
 
 **路由规则**：
 
-1. 用户明确说用哪个机器人（如"用 codex 发"/"查 codex 收件箱"）→ 用对应端口；
-2. 未指定 → 默认 abu（9876）；
+1. 用户明确说用哪个机器人（如"用 wxr2 发"/"查 wxr2 收件箱"）→ 用对应端口；
+2. 未指定 → 默认 wxr1（9876）；
 3. 新增机器人或不记得端口时读配置：`cat ~/Working/AICoding/abu-hotline/bots.config.json`（bots 数组的 name/apiPort 就是完整映射表）。
 
 **零绑定原则**：agent 无需预先绑定机器人——每次请求按提示词选端口即可，切换机器人 = 换端口号，其余操作完全不变。
@@ -98,4 +98,4 @@ curl -s -X POST http://127.0.0.1:9876/send-file \
 - 发送目标默认最近发消息的用户；收件箱空时 `/send` 返回 409 `no_target`（先让用户发一条消息）；
 - `req_id` 可选，传则幂等（同 req_id 不重复投递）；
 - 客户端是纯通道，不自动回复——回复必须由 agent 主动调 `/send` 发起；
-- **多机器人**：每个 bot 一个客户端实例 + 独立端口（abu=9876、codex=9877 等），各 agent curl 自己的端口，互不干扰；配置见 `~/Working/AICoding/abu-hotline/bots.config.json` 与 `docs/协作指引.md`。
+- **多机器人**：每个 bot 一个客户端实例 + 独立端口（wxr1=9876、wxr2=9877 等），各 agent curl 自己的端口，互不干扰；配置见 `~/Working/AICoding/abu-hotline/bots.config.json` 与 `docs/协作指引.md`。
