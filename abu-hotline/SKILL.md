@@ -30,7 +30,7 @@ description: 通过 curl 收发企业微信消息（阿布热线协作面）。�
 
 路径：`~/.abu-hotline/state/<bot>.<host>.cursor`（如 `wxr1.codebuddy.cursor`，见路由表）。
 
-- **读**：回合开始 `cat ~/.abu-hotline/state/wxr1.codebuddy.cursor 2>/dev/null || echo 0`；文件不存在、为空或非数字时按无有效 cursor 处理（走冷启动）
+- **读**：回合开始先判别再取值——`p=~/.abu-hotline/state/wxr1.codebuddy.cursor; if [ -s "$p" ] && grep -q '^[0-9][0-9]*$' "$p"; then cursor=$(cat "$p"); else cursor=; fi`。cursor 非空数字 → 增量续接；**文件缺失/为空/非数字一律 cursor 为空 → 走冷启动**（不得把缺失折叠成 0，否则与合法 cursor=0 无法区分）
 - **写（处理后推进）**：**处理完**返回的消息批次后，才把最后一条 `seq` 写入：`mkdir -p ~/.abu-hotline/state && echo -n <seq> > ~/.abu-hotline/state/wxr1.codebuddy.cursor`；**空返回不写**。cursor 语义 = 已完成处理的位置：中断恢复后未确认批次会被重新拉取（at-least-once），重复回复由 req_id 幂等去重兜底
 - 会话内上下文可顺带记住 cursor 省一次读，但 state 文件是事实源；上下文被压缩或进入新回合后以文件为准
 
@@ -46,7 +46,7 @@ print("count:", len(m))
 print("last:", json.dumps(m[-1], ensure_ascii=False) if m else "none")'
 ```
 
-- 有消息（count > 0）：取最后一条 `seq` 写入 state（作为处理完成位），只处理最新消息（可回一句"收到，跳过 N 条积压"），之后走增量
+- 有消息（count > 0）：只处理最新消息（可回一句"收到，跳过 N 条积压"），**处理完成并交付结果后**把该消息的 `seq` 写入 state（处理完成位），之后走增量
 - 空收件箱（count: 0）：写入 0，直接进入 `/wait` 等新消息
 - 已装 jq 可用 `jq '{count:(.messages|length), last:.messages[-1]}'` 等价替代
 
@@ -56,14 +56,14 @@ print("last:", json.dumps(m[-1], ensure_ascii=False) if m else "none")'
 
 - **宿主 shell 工具超时必须 ≥ curl -m**，否则工具先杀掉 curl 造成误判失败。宿主超时不足时降级分段：`curl -m 110 '.../wait?cursor=N&timeout=100'`
 - **禁止循环轮询**（sleep 后重拉）：每次轮询都是全上下文重放（60k 上下文 30s 一轮 ≈ 720 万 token/小时；长轮询空唤醒 6 次/小时 ≈ 36 万，按上下文大小等比放大）。单次 wait 挂满，唤醒次数越少越省
-- 宿主允许超长 shell 超时（≥ 20 分钟）时，可把多次 wait 压成一次唤醒（成功时输出完整响应、curl 失败立即退出走错误矩阵、空响应续等、累计上限 10 轮）：
+- 宿主 shell 工具超时**覆盖整条命令**（而非单次 curl）且足够长时，可把多次 wait 压成一次唤醒。循环总预算 ≈ `N_ROUNDS × 580` 秒——**按宿主总预算定轮数**（宿主 3600s → 5 轮；宿主仅 600s 上限则不适用本模板，直接单次 wait）。行为：成功时输出完整响应（退出 0）；传输失败（curl 非零）或 HTTP 错误（`-f` 对 4xx/5xx 返回 22）或预算耗尽——立即非零退出并留 stderr 诊断，交错误矩阵处置；仅"有效空响应（messages 数组为空）"继续等待：
 
 ```bash
-n=0
+N_ROUNDS=5; n=0
 while true; do
-  resp=$(curl -s -m 580 'http://127.0.0.1:9876/wait?cursor=N&timeout=570') || { echo "curl error $?" >&2; break; }
+  resp=$(curl -sf -m 580 'http://127.0.0.1:9876/wait?cursor=N&timeout=570') || { echo "curl/HTTP error $?" >&2; exit 1; }
   if printf '%s' "$resp" | grep -q '"seq"'; then printf '%s\n' "$resp"; break; fi
-  n=$((n+1)); [ "$n" -ge 10 ] && { echo 'wait budget exhausted' >&2; break; }
+  n=$((n+1)); [ "$n" -ge "$N_ROUNDS" ] && { echo 'wait budget exhausted' >&2; exit 1; }
 done
 ```
 
@@ -92,7 +92,7 @@ curl -s 'http://127.0.0.1:9876/messages?cursor=<seq>'
 # {"messages":[{"seq":1,"msgid":"...","received_at":"...","from_userid":"...","msgtype":"text","content":"..."}]}
 ```
 
-返回 seq > cursor 的全部消息（无条数上限，别让大数组灌进上下文）。返回后立即把最后一条 seq 写回 state 文件。
+返回 seq > cursor 的全部消息（无条数上限，别让大数组灌进上下文）。**处理完这批消息后**才把最后一条 seq 写回 state 文件（处理完成位，时序见回合衔接协议）。
 
 ### 3. 等待新消息（长轮询）
 
@@ -125,11 +125,13 @@ CONTENT
 ```bash
 python3 -c '
 import json, sys
-sys.stdout.write(json.dumps({"path": sys.stdin.read().strip()}, ensure_ascii=False))' <<'PATH' \
-  | curl -s -X POST http://127.0.0.1:9876/send-file -H 'Content-Type: application/json' --data @-
+sys.stdout.write(json.dumps({"path": sys.stdin.read().strip(), "req_id": sys.argv[1]}, ensure_ascii=False))' 'task-42-file1' <<'PATH' \
+  | curl -sf -X POST http://127.0.0.1:9876/send-file -H 'Content-Type: application/json' --data @-
 /absolute/path/to/result.html
 PATH
 ```
+
+req_id 规则同 `/send`：每次附件交付独立生成（如 `task-42-file1`），仅该交付失败重试时复用原值。
 
 **HTML 交付物一律暗色主题**（D12）：深色背景约 #1a1a1a、浅色文字、语义色可辨识、自包含 CSS 不依赖外部资源。
 
@@ -155,7 +157,7 @@ PATH
 2. 处理        （agent 干活）
 3. 发结果      python3/jq 构造 | curl /send 或 /send-file（简单结果 markdown，复杂结果暗色 HTML 文件）
 4. 等回复      curl -m 600 /wait?cursor=M&timeout=570
-   ↳ 返回消息：seq 写回 state → 回到 2
+   ↳ 返回消息：处理消息并交付结果 → seq 写回 state → 回到 2
    ↳ 空返回：再 wait（回合制场景则结束回合，等待期 0 token）
 ```
 
