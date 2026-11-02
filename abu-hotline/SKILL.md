@@ -97,6 +97,36 @@ done
 - 更长等待 / 一轮结束等新任务 → **回合制**：结束回合（等待期 0 token），用户说"继续"时先读 state 文件再 `/messages` 增量
 - 各宿主会话恢复（codex resume / opencode session / IDE 常驻会话）能免费带回 cursor，但压缩摘要可能丢具体数字——state 文件始终兜底
 
+### 常驻值守（会话在就常驻；Monitor 模式）
+
+用户要求「会话在就一直值守，除非我说停」时：用宿主的常驻监视器（如 CodeBuddy Monitor，`persistent: true`）跑下面这个循环，而不是回合内 `/wait` 或 sleep 轮询。**必须按 seq 去重**——cursor 推进滞后时 `/wait` 会反复返回同一批消息，无去重会刷屏唤醒、烧上下文。
+
+```bash
+LAST=/tmp/abu-<bot>-last-printed
+while true; do
+  cursor=$(python3 -c 'import os,sys
+p=sys.argv[1]
+d=open(p,"rb").read() if os.path.exists(p) else b""
+v=d[:-1] if d.endswith(b"\n") else d
+print(v.decode() if v.isdigit() else "")' ~/.abu-hotline/state/<bot>.<host>.cursor)
+  case "$cursor" in ''|*[!0-9]*) sleep 15; continue;; esac
+  resp=$(curl -sf -m 580 "http://127.0.0.1:9877/wait?cursor=$cursor&timeout=570") || { sleep 10; continue; }
+  printf '%s' "$resp" | grep -q '"messages":\[\]' && continue
+  seq=$(printf '%s' "$resp" | python3 -c 'import json,sys;m=json.load(sys.stdin)["messages"];print(max(x["seq"] for x in m))' 2>/dev/null)
+  [ -z "$seq" ] && continue
+  last=$(cat $LAST 2>/dev/null || echo 0); case "$last" in ''|*[!0-9]*) last=0;; esac
+  if [ "$seq" -gt "$last" ]; then printf '%s\n' "$resp"; echo -n "$seq" > $LAST; fi
+  sleep 1
+done
+```
+
+规则：
+
+- 等待期零 token；仅新消息唤醒一次（≈一次上下文回放）。
+- 去重按 seq（不按内容哈希）：处理慢或上下文压缩导致 cursor 落后时也不重复刷屏。
+- Monitor 只负责唤醒，不写 cursor；agent 处理完消息后照常推进 state 文件。
+- CLI 进程退出后 Monitor 即死；要「进程级常驻」需独立守护（launchd），当前场景不必要。
+
 ### 多宿主共存（ADR-0004）
 
 同一消息可能被多个宿主先后读取，处理权由用户流程协调，服务端不做认领。state 已按宿主隔离（各自独立 cursor），但**并行**消费同一 bot 的收件箱仍会重复消费同一批消息、可能重复回复用户——需要多 agent 真正并行时，各用各的 bot（wxr1/wxr2…，F3.5 多机器人隔离）。
