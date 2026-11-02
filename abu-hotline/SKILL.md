@@ -9,18 +9,34 @@ description: 通过 curl 收发企业微信消息（阿布热线协作面）。�
 
 ## 服务地址
 
-`http://127.0.0.1:9876`
+`http://127.0.0.1:<端口>` —— 端口按本机配置取，**不要凭记忆背固定数字**（见下节）。
 
-**启动检查**：`curl -s http://127.0.0.1:9876/status` → `{"status":"connected"}` 为在线；`"reconnecting"` 为重连中（等几秒重试，消息不丢）；`"down"` 或连不上时，按 `~/Working/AICoding/abu-hotline/docs/部署说明.md` 启动客户端（手动 `node --experimental-strip-types src/index.ts` 或 launchd 守护）。
+**启动检查**：`curl -s http://127.0.0.1:<端口>/status` → `{"status":"connected"}` 为在线；`"reconnecting"` 为重连中（等几秒重试，消息不丢）；`"down"` 或连不上时，按仓库 `docs/部署说明.md` 启动客户端（手动 `node --experimental-strip-types src/index.ts` 或 launchd 守护）。
 
 ## 机器人路由（提示词 → 端口）
 
+**本机配置是唯一事实源。** 先定位仓库根，再读配置：
+
+```bash
+REPO=$(ls -d ~/work/AICoding/abu-hotline ~/Working/AICoding/abu-hotline 2>/dev/null | head -1)
+# 多机器人模式：打印 name → apiPort 完整映射
+python3 - "$REPO" <<'PY'
+import json, os, sys
+p = os.path.join(sys.argv[1], "bots.config.json")
+if not os.path.exists(p):
+    print("无 bots.config.json → 单机 .env 模式，端口见 .env 的 API_PORT")
+else:
+    print(json.dumps([{"name": b.get("name"), "apiPort": b.get("apiPort")}
+                      for b in json.load(open(p))["bots"]], ensure_ascii=False, indent=1))
+PY
+```
+
 | 用户提示词 | 机器人 | 端口 | cursor state 文件 |
 |---|---|---|---|
-| "wxr1" / "阿布热线" / **未指定（默认）** | wxr1 | 9876 | `~/.abu-hotline/state/wxr1.<host>.cursor` |
-| "wxr2" | wxr2 | 9877 | `~/.abu-hotline/state/wxr2.<host>.cursor` |
+| 未指定 / "阿布热线" / "默认" | 本机默认 bot（`bots.config.json` 第一条的 `name`；单机 `.env` 模式无名） | 该 bot 的 `apiPort`（单机 `.env` 模式取 `API_PORT`） | `~/.abu-hotline/state/<bot>.<host>.cursor` |
+| "用 wxrN" / "查 wxrN 收件箱" | wxrN | `bots.config.json` 里 `name=wxrN` 的 `apiPort` | `~/.abu-hotline/state/wxrN.<host>.cursor` |
 
-**路由规则**：用户明确指定（如"用 wxr2 发"/"查 wxr2 收件箱"）→ 用对应端口；未指定 → 默认 wxr1；新增机器人或不记得端口时读 `~/Working/AICoding/abu-hotline/bots.config.json`（bots 数组的 name/apiPort 即完整映射表）。`<host>` = 宿主稳定标识（codebuddy / codex / opencode / trae 等）——每宿主独立 state 文件（对齐 ADR-0004"各宿主各自维护 cursor"），同一宿主跨会话复用同一文件。**零绑定原则**：无需预先绑定机器人，切换机器人 = 换端口号 + 换 state 文件，其余操作不变。
+**路由规则**：用户明确指定（如"用 wxrN 发"/"查 wxrN 收件箱"）→ 用该 bot 的端口；未指定 → 本机默认 bot；配置里没有的机器人名 → 说明本机没配这个 bot，不要瞎猜端口。**机器人按机器分组**（开发机 wxr1/wxr2，其他机器各自新建如 wxr3/wxr4）——同一 BOT 凭据只能一台机器长连接，两台同时跑会互踢。`<host>` = 宿主稳定标识（codebuddy / codex / opencode / trae 等）——每宿主独立 state 文件（对齐 ADR-0004"各宿主各自维护 cursor"），同一宿主跨会话复用同一文件。**零绑定原则**：无需预先绑定机器人，切换机器人 = 换端口号 + 换 state 文件，其余操作不变。
 
 ## 回合衔接协议（核心，必须遵守）
 
@@ -110,7 +126,7 @@ d=open(p,"rb").read() if os.path.exists(p) else b""
 v=d[:-1] if d.endswith(b"\n") else d
 print(v.decode() if v.isdigit() else "")' ~/.abu-hotline/state/<bot>.<host>.cursor)
   case "$cursor" in ''|*[!0-9]*) sleep 15; continue;; esac
-  resp=$(curl -sf -m 580 "http://127.0.0.1:9877/wait?cursor=$cursor&timeout=570") || { sleep 10; continue; }
+  resp=$(curl -sf -m 580 "http://127.0.0.1:<端口>/wait?cursor=$cursor&timeout=570") || { sleep 10; continue; }
   printf '%s' "$resp" | grep -q '"messages":\[\]' && continue
   seq=$(printf '%s' "$resp" | python3 -c 'import json,sys;m=json.load(sys.stdin)["messages"];print(max(x["seq"] for x in m))' 2>/dev/null)
   [ -z "$seq" ] && continue
@@ -224,4 +240,4 @@ req_id 规则同 `/send`：每次附件交付独立生成（如 `task-42-file1`�
 - 发送目标 = 最近发消息的 allowlist 用户（单人场景即 dengdeng）。多人 allowlist 时注意：处理耗时期间他人插话，回复会发给插话者
 - **信任边界**：本机 API 无鉴权（INV-003 仅回环地址）——任何本机进程都能调 `/send` 冒名发消息，`/send-file` 可读任意本机路径。勿发敏感路径文件
 - `--archive <seq>` 归档仅支持默认 bot（当前实现限制）；多 bot 清理需手动处理 `data/<bot>/inbox.jsonl`
-- 完整人读规范见 `~/Working/AICoding/abu-hotline/docs/协作指引.md`（本文档的完整版，修改须两处同步）
+- 完整人读规范见仓库 `docs/协作指引.md`（本文档的完整版，修改须两处同步）
