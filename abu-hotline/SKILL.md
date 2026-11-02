@@ -30,7 +30,18 @@ description: 通过 curl 收发企业微信消息（阿布热线协作面）。�
 
 路径：`~/.abu-hotline/state/<bot>.<host>.cursor`（如 `wxr1.codebuddy.cursor`，见路由表）。
 
-- **读**：回合开始**整值判别**——`cursor=$(cat ~/.abu-hotline/state/wxr1.codebuddy.cursor 2>/dev/null); cursor=${cursor%$'\n'}; [[ "$cursor" =~ ^[0-9]+$ ]] || cursor=`。整值恰为一个非负整数（允许单个尾换行）才有效；文件缺失/为空/非数字/多行损坏一律 cursor 为空 → 走冷启动（不得把缺失折叠成 0，否则与合法 cursor=0 无法区分）
+- **读**：回合开始**整值判别**。注意 shell 命令替换 `$(cat ...)` 会吞掉全部尾换行、无法区分一个与多个尾换行，须经 python3 读原始字节校验：
+
+```bash
+cursor=$(python3 -c 'import os, sys
+p = sys.argv[1]
+d = open(p, "rb").read() if os.path.exists(p) else b""
+v = d[:-1] if d.endswith(b"\n") else d
+print(v.decode() if v.isdigit() else "")' ~/.abu-hotline/state/wxr1.codebuddy.cursor)
+[[ "$cursor" =~ ^[0-9]+$ ]] || cursor=   # 空 → 冷启动
+```
+
+整值恰为一个非负整数（允许单个尾换行）才有效；文件缺失/为空/非数字/多行/多尾换行一律 cursor 为空 → 走冷启动（不得把缺失折叠成 0，否则与合法 cursor=0 无法区分）
 - **写（处理后推进）**：**处理完**返回的消息批次后，才把最后一条 `seq` 写入：`mkdir -p ~/.abu-hotline/state && echo -n <seq> > ~/.abu-hotline/state/wxr1.codebuddy.cursor`；**空返回不写**。cursor 语义 = 已完成处理的位置：中断恢复后未确认批次会被重新拉取（at-least-once），重复回复由 req_id 幂等去重兜底
 - 会话内上下文可顺带记住 cursor 省一次读，但 state 文件是事实源；上下文被压缩或进入新回合后以文件为准
 
@@ -67,6 +78,8 @@ import json, sys
 try:
     m = json.load(sys.stdin)["messages"]
 except Exception:
+    sys.exit(2)
+if not isinstance(m, list):
     sys.exit(2)
 sys.exit(0 if m else 1)'; rc=$?
   case "$rc" in
