@@ -1,0 +1,7 @@
+#!/bin/sh
+# post-rewrite — rebase / commit --amend 后自动同步 skills 软链到本机各 Agent。
+# 逻辑见 bin/link-agent-skills.sh（幂等，失败不影响 git 操作）。
+root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+[ -x "$root/bin/link-agent-skills.sh" ] || exit 0
+"$root/bin/link-agent-skills.sh" --quiet
+exit 0
