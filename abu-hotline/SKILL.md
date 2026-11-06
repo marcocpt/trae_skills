@@ -7,6 +7,18 @@ description: 通过 curl 收发企业微信消息（阿布热线协作面）。�
 
 企业微信智能机器人长连接协作面，本机 HTTP API。任何能跑 shell 的 agent 都可以通过 curl 使用。
 
+## 收到即回执（强制，2026-11-05 约定）
+
+**用户不该空等。凡 `/messages` / `/wait` 返回非空消息批次，处理前第一动作必须先 `/send` 回一句确认；空批次不回。**
+
+1. 取 `last_seq = max(seq)`（不依赖数组顺序）；
+2. 发一条 markdown，**统一中性文案、不摘录正文**：`**收到**（seq <last_seq>）：已接住，结果稍后发回。` 文案只由 `last_seq` 决定，所有宿主一律相同——不按「本宿主是否负责处理」改写，不写「正在处理」这类无法保证的承诺，避免相同 `req_id` 对应不同内容；
+3. **幂等粒度（方案 A）**：`req_id` 固定 `ack-<bot>-<last_seq>`（如 `ack-wxr2-65`），约定每 bot 每末条 seq 一条回执。不同宿主 cursor 独立，取到不同批次但末条 seq 相同时，**在同一 Sender 实例内顺序调用且首次发送已成功登记**的前提下，后发者收到 `duplicate:true` 属预期，不重试、不补发、不换 ID；并发调用不保证只投递一次。失败重试复用同一 ID，不与其他消息混用（INV-007）；
+4. **保证范围**：去重只覆盖**同一 `Sender` 实例生命周期内已完整成功并登记**的 ID（`processed` 是实例字段，发送成功后才写入；`index.ts` 每进程只建一个 Sender，但范围以实例为准）。不保证并发同 ID 只投递一次（无 in-flight 合并），也不保证实例重建/重启后仍去重；并发需调用方自行串行；
+5. 失败按错误矩阵复用同一 ID 重试一次，仍失败则继续处理并注明「回执未送达」，**不阻塞结果交付、不回滚 cursor**。服务端是 **2s 时间戳节流**（`sleep`）：顺序调用不丢弃，单次相邻发送最多额外等待约 2 秒（重试可能累计）；**无锁无队列**，并发不保证串行。
+
+时序：`回执 → 处理 → 交付 → 推进 cursor`。**冷启动计数口径**：`N_total` = 返回条数；`N_total = 0` → `N_skipped = 0`、`N_processed = 0`、不发回执（写 cursor=0 进入 wait）；`N_total > 0` → `N_skipped = N_total - 1`、`N_processed = 1`。回执文案不含条数与范围，跳过积压的说明放到结果交付里；统计命令用 `min(seq)`/`max(seq)` 取端点。回执**不替代**「需要用户时，一律走微信」的完整问题与连续等待。完整规范见仓库 `docs/协作指引.md`「收到即回执」。
+
 ## 需要用户时，一律走微信（强制路由）
 
 **凡是要决策、要暂停、或卡住等用户，都必须把完整问题发到微信机器人，并持续等到回复；不得只在当前会话里提问后结束回合。**
@@ -51,7 +63,7 @@ description: 通过 curl 收发企业微信消息（阿布热线协作面）。�
 - `curl -m 600 'http://127.0.0.1:<端口>/wait?cursor=<当前已处理 seq>&timeout=570'`；空返回 `{"messages":[]}` 是正常事件，**原样再发一次 wait**，cursor 不变；
 - 宿主 shell 工具超时、轮次预算耗尽、curl 非零或 HTTP 错误：按「回合内长轮询」模板与错误处理矩阵处置，预算耗尽就重新发起一轮（新的 shell 调用），始终继续 wait，**不结束回合**。禁止 sleep 轮询、禁止转去做别的任务、禁止自行假定答案继续推进；
 - 等待回复期间**不适用**「等待策略选择」里「更长等待 → 结束回合走回合制」的分支（该分支只用于一轮结束等新任务）；
-- 收到新消息 → 先判断是否为本次问题的答复；不是则按正常流程处理后继续 wait，是才回到「完整回合模板」的处理 → 交付 → 推进，这是唯一继续入口。
+- 收到非空消息 → **立即先发统一回执**（见「收到即回执」）→ 再判断是否为本次问题的答复；是则回到「完整回合模板」的处理 → 交付 → 推进，不是则按正常新消息流程处理后继续 wait，这是唯一继续入口；空返回不回执、直接再 wait。
 
 例外：仅当用户本次明确指定不走微信，客户端按 `docs/部署说明.md` 确认无法启动或无法恢复，或发送按错误处理矩阵重试后仍无法确认送达（含 HTTP 409 `no_target`）时，才允许在当前会话内提问并结束等待，且必须写明原因。
 
@@ -118,12 +130,14 @@ curl -s 'http://127.0.0.1:9876/messages?cursor=0' | python3 -c '
 import json, sys
 m = json.load(sys.stdin)["messages"]
 print("count:", len(m))
-print("last:", json.dumps(m[-1], ensure_ascii=False) if m else "none")'
+print("min_seq:", min(x["seq"] for x in m) if m else "none")
+print("max_seq:", max(x["seq"] for x in m) if m else "none")
+print("last:", json.dumps(max(m, key=lambda x: x["seq"]), ensure_ascii=False) if m else "none")'
 ```
 
 - 有消息（count > 0）：只处理最新消息（可回一句"收到，跳过 N 条积压"），**处理完成并交付结果后**把该消息的 `seq` 写入 state（处理完成位），之后走增量
 - 空收件箱（count: 0）：写入 0，直接进入 `/wait` 等新消息
-- 已装 jq 可用 `jq '{count:(.messages|length), last:.messages[-1]}'` 等价替代
+- 已装 jq 可用 `jq '{count:(.messages|length), min_seq:(if (.messages|length)>0 then (.messages|map(.seq)|min) else "none" end), max_seq:(if (.messages|length)>0 then (.messages|map(.seq)|max) else "none" end), last:(if (.messages|length)>0 then (.messages|max_by(.seq)) else "none" end)}'` 等价替代（用 `max_by(.seq)` 取末条，不依赖数组顺序）
 
 ### 回合内长轮询（零 token 等待）
 
@@ -272,22 +286,25 @@ req_id 规则同 `/send`：每次附件交付独立生成（如 `task-42-file1`�
 
 ```
 0. 读 cursor   state 整值判别（合法数字 → 增量续接；缺失/空/损坏 → 冷启动，绝不盲拉全量）
-1. 取消息      curl /messages?cursor=N
+1. 取消息      curl /messages?cursor=N 或 /wait 返回新消息
+   ↳ 非空：**先发回执**（见「收到即回执」，req_id=ack-<bot>-<last_seq>）→ 再进入 2
+   ↳ 空：不回执，继续等
 2. 处理        （agent 干活）
    ↳ 需要用户决策 / 暂停 / 卡住：按「需要用户时，一律走微信」发全问题（过长发 HTML）→ 确认送达 → 连续 /wait 直到回复，再回到 2
 3. 交付        python3 构造 | curl /send 或 /send-file（简单结果 markdown，复杂结果暗色 HTML 文件），确认投递成功
-4. 推进        处理且交付成功后，最后一条 seq 写回 state；交付失败保留旧 cursor（重试或转报告）
+4. 推进        处理且交付成功后，最后一条 seq 写回 state；交付失败保留旧 cursor（重试或转报告）；回执失败不阻塞本步
 5. 等回复      curl -m 600 /wait?cursor=M&timeout=570
-   ↳ 返回新消息：回到 2（唯一处理入口：处理 → 交付 → 推进）
+   ↳ 返回新消息：回到 1（先回执 → 处理 → 交付 → 推进）
    ↳ 空返回：再 wait（决策等待场景不结束回合；仅"一轮结束等新任务"的回合制场景结束回合，等待期 0 token）
 ```
 
 ## 注意事项
 
 - **只收文本消息**：客户端只监听 `message.text`，image/file 等其他类型不入站（用户须发文字）
-- **req_id 幂等仅覆盖"已完整成功并登记"的发送，且仅客户端进程生命周期内有效**（内存去重，重启失效）。多段消息部分失败后重试会重发已成功分段；网络失败重试复用同一 req_id 防重复投递
+- **req_id 幂等仅覆盖同一 `Sender` 实例内"已完整成功并登记"的发送**（内存 Set，实例重建/进程重启失效；并发同 ID 不保证只投递一次）。多段消息部分失败后重试会重发已成功分段；网络失败重试**必须复用同一 req_id**，但只有首次发送已完整成功并登记时后续重放才会被抑制，结果不确定的网络失败仍可能重复投递
 - 发送有 2s/条 时间戳节流，**仅在调用方顺序发起时生效**（无锁无队列）；并发调用（含多进程/多宿主）需调用方自行串行
 - 发送目标 = 最近发消息的 allowlist 用户（单人场景即 dengdeng）。多人 allowlist 时注意：处理耗时期间他人插话，回复会发给插话者
 - **信任边界**：本机 API 无鉴权（INV-003 仅回环地址）——任何本机进程都能调 `/send` 冒名发消息，`/send-file` 可读任意本机路径。勿发敏感路径文件
 - `--archive <seq>` 归档仅支持默认 bot（当前实现限制）；多 bot 清理需手动处理 `data/<bot>/inbox.jsonl`
-- 完整人读规范见仓库 `docs/协作指引.md`（本文档的完整版，修改须两处同步）
+- 完整人读规范见仓库 `docs/协作指引.md`（本文档的完整版，修改须两处同步；「收到即回执」同步写在根 `AGENTS.md` 宿主交互规则）；
+- 「收到即回执」是 agent 侧协议动作，客户端不自动回复（INV-001）；回执失败不阻塞结果交付与 cursor 推进；`req_id` 去重不覆盖并发同 ID 与进程重启后
