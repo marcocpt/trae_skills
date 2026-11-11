@@ -12,7 +12,7 @@
 
 Devboard 的 F10 基线（`759da10`）**没有通用 `devboard` CLI**，`devboard-mcp` 的 board 模式未接写入器。该基线已配置部署中的 HTTP 写入仅有 `register_session`、`claim_task`、`heartbeat`、`release_task`、`append_checkpoint`。建单、编辑、正式交接与完成在该模式尚未接通。后续版本以核实的能力为准。
 
-没有安全写客户端仍可查询。先确认 `DEVBOARD_URL` 是配置好的本机地址，未配置时从可信本机配置查，不猜端口。**查询 `/api/v1/board` 必须带 `project_id`**：多个项目时服务端不带该参数会返回 400（`INVALID_INPUT`），先从项目列表取得真实 ID 再查询；不要照抄旧示例的无参请求。只读例子：
+没有安全写客户端仍可查询。先确认 `DEVBOARD_URL` 是配置好的本机地址，未配置时从可信本机配置查，不猜端口。**查询 `/api/v1/board` 建议带 `project_id`**：数据集只有 1 个项目时，不带参数也返回 200；多于 1 个项目时服务端返回 400（`INVALID_INPUT`）。因此始终先从项目列表取得真实 ID 再查询，既避免歧义也不依赖项目数量。实测记录（2026-11-11，单项目实验数据集）：`/api/v1/projects` → 200、`/api/v1/board?project_id=trial` → 200、`/api/v1/board` → **200**。只读例子：
 
 ```bash
 curl --fail --silent --show-error "${DEVBOARD_URL:?需要已配置的本机 Devboard 地址}/api/v1/meta"
