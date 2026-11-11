@@ -4,7 +4,7 @@
 
 **目标：** 将项目 Bootstrap 工作流及其直接依赖重构为可在 Trae/Codex 中跨会话恢复、按需加载、低重复询问并保持质量 Gate 的 Agent Skill 生态。
 
-**架构：** `dd-project-bootstrap-workflow/SKILL.md` 只保留路由、状态、依赖图、Gate 和 Handoff，详细治理规则拆入三份 reference。共享 skill 提供宿主询问、状态恢复和风险分级审查协议；原子 writer 消费统一上游上下文；新增 `dd-write-phase-contract`；最终统一交接给 Feature workflow。
+**架构：** `boot/SKILL.md` 只保留路由、状态、依赖图、Gate 和 Handoff，详细治理规则拆入三份 reference。共享 skill 提供宿主询问、状态恢复和风险分级审查协议；原子 writer 消费统一上游上下文；新增 `dd-write-phase-contract`；最终统一交接给 Feature workflow。
 
 **技术栈：** Markdown Agent Skills、YAML frontmatter、Git、Python 3 静态验证、`rg`、Codex `quick_validate.py`
 
@@ -14,11 +14,11 @@
 
 ### 创建
 
-- `dd-project-bootstrap-workflow/references/docs-governance.md`：项目文档目录、SSOT、同步、History/ADR 和阅读策略。
-- `dd-project-bootstrap-workflow/references/execution-contract.md`：Preflight、状态模型、节点 Gate、审查预算、子 skill 协议和 Handoff。
-- `dd-project-bootstrap-workflow/references/brownfield-policy.md`：模式判定、兼容分类、公开面、lint ratchet 和架构冻结。
-- `dd-project-bootstrap-workflow/tests/baseline-3-resume-without-reasking.md`：恢复后不重复询问。
-- `dd-project-bootstrap-workflow/tests/baseline-4-trae-final-ask.md`：Trae 最终 ASK。
+- `boot/references/docs-governance.md`：项目文档目录、SSOT、同步、History/ADR 和阅读策略。
+- `boot/references/execution-contract.md`：Preflight、状态模型、节点 Gate、审查预算、子 skill 协议和 Handoff。
+- `boot/references/brownfield-policy.md`：模式判定、兼容分类、公开面、lint ratchet 和架构冻结。
+- `boot/tests/baseline-3-resume-without-reasking.md`：恢复后不重复询问。
+- `boot/tests/baseline-4-trae-final-ask.md`：Trae 最终 ASK。
 - `dd-write-phase-contract/SKILL.md`：准备/迁移阶段需求与验收 writer。
 - `dd-write-phase-contract/tests/baseline-1-brownfield-classification.md`：Characterization 分类映射。
 - `dd-write-phase-contract/tests/baseline-2-known-defect-not-ac.md`：已知缺陷不进入目标 AC。
@@ -29,16 +29,16 @@
 - `dd-shared-ask/SKILL.md`：宿主无关询问和 Trae 会话结束合同。
 - `dd-shared-state/SKILL.md`：增加 `project-bootstrap` 状态类型和恢复验证。
 - `dd-shared-subagent/SKILL.md`：固定语义视角、风险分级执行。
-- `dd-project-bootstrap-workflow/SKILL.md`：重写为短编排入口。
-- `dd-project-bootstrap-workflow/tests/baseline-1-greenfield-skip-phase-contract.md`：改用兼容义务判断。
-- `dd-project-bootstrap-workflow/tests/baseline-2-brownfield-baseline-first.md`：改用 requested entry + gap scan。
+- `boot/SKILL.md`：重写为短编排入口。
+- `boot/tests/baseline-1-greenfield-skip-phase-contract.md`：改用兼容义务判断。
+- `boot/tests/baseline-2-brownfield-baseline-first.md`：改用 requested entry + gap scan。
 - `dd-brownfield-baseline/SKILL.md`：兼容义务、处置分类和上游上下文。
 - `dd-project-research/SKILL.md`：上游上下文和风险触发研究。
 - `dd-write-roadmap/SKILL.md`：消费上游事实和 Gap Scan。
 - `dd-write-architecture-contract/SKILL.md`：状态三阶段与双公开面。
 - `dd-write-coding-standards/SKILL.md`：Greenfield/ Brownfield lint 策略。
 - `dd-write-ai-conventions/SKILL.md`：短入口、nested `AGENTS.md`、薄 Trae adapter 和最终 ASK。
-- `dd-feature-development-workflow/SKILL.md`：消费统一 Bootstrap Handoff。
+- `fdev/SKILL.md`：消费统一 Bootstrap Handoff。
 
 ---
 
@@ -336,18 +336,18 @@ git commit -m "feat(skills): add phase contract writer"
 
 **文件：**
 
-- 创建：`dd-project-bootstrap-workflow/references/docs-governance.md`
-- 创建：`dd-project-bootstrap-workflow/references/execution-contract.md`
-- 创建：`dd-project-bootstrap-workflow/references/brownfield-policy.md`
-- 修改：`dd-project-bootstrap-workflow/SKILL.md`
+- 创建：`boot/references/docs-governance.md`
+- 创建：`boot/references/execution-contract.md`
+- 创建：`boot/references/brownfield-policy.md`
+- 修改：`boot/SKILL.md`
 
 - [ ] **步骤 1：记录重构前基线**
 
 运行：
 
 ```bash
-wc -l dd-project-bootstrap-workflow/SKILL.md
-rg -n "^## docs 治理规范|^## 流程|^## 步骤 0|^## 步骤 9" dd-project-bootstrap-workflow/SKILL.md
+wc -l boot/SKILL.md
+rg -n "^## docs 治理规范|^## 流程|^## 步骤 0|^## 步骤 9" boot/SKILL.md
 ```
 
 预期：`SKILL.md` 为 679 行；docs 治理从第 38 行开始，流程约从第 411 行开始。
@@ -360,7 +360,7 @@ rg -n "^## docs 治理规范|^## 流程|^## 步骤 0|^## 步骤 9" dd-project-bo
 - 技术探针按风险触发，不再写“可选，greenfield 必含”；
 - Architecture 使用 hypothesis → provisional → approved baseline → frozen；
 - `AskUserQuestion` 改为引用 `dd-shared-ask` 的宿主协议；
-- Git 分支/merge/rebase 细则改为引用 `dd-git-workflow`；
+- Git 分支/merge/rebase 细则改为引用 `git`；
 - AI 阅读策略明确“Always read / Read when relevant / Do not preload”。
 ```
 
@@ -393,13 +393,13 @@ rg -n "^## docs 治理规范|^## 流程|^## 步骤 0|^## 步骤 9" dd-project-bo
 artifact exists + validated + decisions resolved + state persisted + blockers zero。
 
 ## Delivery Gate
-Git、lint、test、commit、push 和 PR 由项目规则与 dd-git-workflow 决定。
+Git、lint、test、commit、push 和 PR 由项目规则与 git 决定。
 
 ## Child invocation
 传递 host、mode、workspace、resolved decisions、artifact paths、review level 和 delivery policy；子 skill 不得重复询问。
 
 ## Handoff
-统一交给 dd-feature-development-workflow，包含 Goal、Scope、Mode、Selected Feature/Phase、Required Reading、Relevant Files、Constraints、Acceptance Criteria/Requirements Seed、Verification、Out of Scope、Resolved Decisions。
+统一交给 fdev，包含 Goal、Scope、Mode、Selected Feature/Phase、Required Reading、Relevant Files、Constraints、Acceptance Criteria/Requirements Seed、Verification、Out of Scope、Resolved Decisions。
 
 ## Host close
 Trae 必须 ASK“结束本次任务 / 还有其他任务”；Codex 按项目规则正常交付。
@@ -468,7 +468,7 @@ Preflight → Docs Governance → Baseline?/Research? → Roadmap → Architectu
 - coding-standards：所有模式强制；
 - ai-conventions：所有模式强制；
 - phase-contract：Brownfield 强制，Greenfield 默认跳过；
-- handoff：统一交给 dd-feature-development-workflow。
+- handoff：统一交给 fdev。
 
 ## Exit Gate
 验证模式要求的产物、状态、blocker、Handoff 和宿主结束合同。
@@ -486,16 +486,16 @@ Preflight → Docs Governance → Baseline?/Research? → Roadmap → Architectu
 运行：
 
 ```bash
-python3 /Users/dengdeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py dd-project-bootstrap-workflow
-test "$(wc -l < dd-project-bootstrap-workflow/SKILL.md)" -le 320
+python3 /Users/dengdeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py boot
+test "$(wc -l < boot/SKILL.md)" -le 320
 for f in \
-  dd-project-bootstrap-workflow/references/docs-governance.md \
-  dd-project-bootstrap-workflow/references/execution-contract.md \
-  dd-project-bootstrap-workflow/references/brownfield-policy.md; do
+  boot/references/docs-governance.md \
+  boot/references/execution-contract.md \
+  boot/references/brownfield-policy.md; do
   test -s "$f"
 done
 rg -n ">=1 个源文件.*brownfield|严格按 0→1→2→3→4→5→6→7→8→9|git log --oneline -1.*禁止" \
-  dd-project-bootstrap-workflow/SKILL.md
+  boot/SKILL.md
 git diff --check
 ```
 
@@ -504,7 +504,7 @@ git diff --check
 - [ ] **步骤 7：Commit**
 
 ```bash
-git add dd-project-bootstrap-workflow/SKILL.md dd-project-bootstrap-workflow/references
+git add boot/SKILL.md boot/references
 git commit -m "refactor(bootstrap): split orchestration from policy"
 ```
 
@@ -525,7 +525,7 @@ git commit -m "refactor(bootstrap): split orchestration from policy"
 ```markdown
 ## 上游上下文协议
 
-被 `dd-project-bootstrap-workflow` 调用时，先读取其传入的 project mode、host、workspace、resolved decisions、artifact paths、review level 和 delivery policy。
+被 `boot` 调用时，先读取其传入的 project mode、host、workspace、resolved decisions、artifact paths、review level 和 delivery policy。
 
 - 已解决事实不得重复询问；
 - 只询问本产物缺失的 blocker 或新增决策；
@@ -707,9 +707,9 @@ git commit -m "refactor(skills): align architecture quality and host rules"
 
 **文件：**
 
-- 修改：`dd-feature-development-workflow/SKILL.md`
-- 修改：`dd-project-bootstrap-workflow/SKILL.md`
-- 修改：`dd-project-bootstrap-workflow/references/execution-contract.md`
+- 修改：`fdev/SKILL.md`
+- 修改：`boot/SKILL.md`
+- 修改：`boot/references/execution-contract.md`
 
 - [ ] **步骤 1：在 Feature workflow 增加 Bootstrap Handoff 入口**
 
@@ -747,20 +747,20 @@ git commit -m "refactor(skills): align architecture quality and host rules"
 Bootstrap 核心和 execution reference 只保留：
 
 ```markdown
-Handoff target: `dd-feature-development-workflow`
+Handoff target: `fdev`
 ```
 
-Greenfield/Brownfield 差异全部进入 payload，不再由 Bootstrap 直接调用 `dd-writing-specs`。
+Greenfield/Brownfield 差异全部进入 payload，不再由 Bootstrap 直接调用 `spec`。
 
 - [ ] **步骤 4：验证 Handoff**
 
 运行：
 
 ```bash
-python3 /Users/dengdeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py dd-feature-development-workflow
-python3 /Users/dengdeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py dd-project-bootstrap-workflow
-rg -n "bootstrap_handoff_consumed|Requirements Seed|Phase Contract|不重复 worktree" dd-feature-development-workflow/SKILL.md
-rg -n "dd-writing-specs.*greenfield|greenfield.*dd-writing-specs" dd-project-bootstrap-workflow
+python3 /Users/dengdeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py fdev
+python3 /Users/dengdeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py boot
+rg -n "bootstrap_handoff_consumed|Requirements Seed|Phase Contract|不重复 worktree" fdev/SKILL.md
+rg -n "spec.*greenfield|greenfield.*spec" boot
 git diff --check
 ```
 
@@ -770,9 +770,9 @@ git diff --check
 
 ```bash
 git add \
-  dd-feature-development-workflow/SKILL.md \
-  dd-project-bootstrap-workflow/SKILL.md \
-  dd-project-bootstrap-workflow/references/execution-contract.md
+  fdev/SKILL.md \
+  boot/SKILL.md \
+  boot/references/execution-contract.md
 git commit -m "refactor(workflows): unify bootstrap feature handoff"
 ```
 
@@ -782,10 +782,10 @@ git commit -m "refactor(workflows): unify bootstrap feature handoff"
 
 **文件：**
 
-- 修改：`dd-project-bootstrap-workflow/tests/baseline-1-greenfield-skip-phase-contract.md`
-- 修改：`dd-project-bootstrap-workflow/tests/baseline-2-brownfield-baseline-first.md`
-- 创建：`dd-project-bootstrap-workflow/tests/baseline-3-resume-without-reasking.md`
-- 创建：`dd-project-bootstrap-workflow/tests/baseline-4-trae-final-ask.md`
+- 修改：`boot/tests/baseline-1-greenfield-skip-phase-contract.md`
+- 修改：`boot/tests/baseline-2-brownfield-baseline-first.md`
+- 创建：`boot/tests/baseline-3-resume-without-reasking.md`
+- 创建：`boot/tests/baseline-4-trae-final-ask.md`
 
 - [ ] **步骤 1：更新 Greenfield 场景**
 
@@ -798,7 +798,7 @@ git commit -m "refactor(workflows): unify bootstrap feature handoff"
 - project_mode=greenfield；
 - 不执行 Brownfield Baseline；
 - 默认不写 Phase Contract；
-- Handoff 到 dd-feature-development-workflow，由其进入 Feature Specs。
+- Handoff 到 fdev，由其进入 Feature Specs。
 ```
 
 - [ ] **步骤 2：更新 Brownfield requested-entry 场景**
@@ -848,10 +848,10 @@ host=trae，所有 Exit Gate 已通过，Handoff 已准备。
 运行：
 
 ```bash
-test "$(find dd-project-bootstrap-workflow/tests -maxdepth 1 -name 'baseline-*.md' | wc -l | tr -d ' ')" = "4"
-rg -n "兼容义务|requested_entry|不得重复询问|结束本次任务|还有其他任务" dd-project-bootstrap-workflow/tests
+test "$(find boot/tests -maxdepth 1 -name 'baseline-*.md' | wc -l | tr -d ' ')" = "4"
+rg -n "兼容义务|requested_entry|不得重复询问|结束本次任务|还有其他任务" boot/tests
 git diff --check
-git add dd-project-bootstrap-workflow/tests
+git add boot/tests
 git commit -m "test(bootstrap): cover entry resume and Trae completion"
 ```
 
@@ -870,7 +870,7 @@ git commit -m "test(bootstrap): cover entry resume and Trae completion"
 
 ```bash
 for d in \
-  dd-project-bootstrap-workflow \
+  boot \
   dd-write-phase-contract \
   dd-shared-ask \
   dd-shared-state \
@@ -881,7 +881,7 @@ for d in \
   dd-write-architecture-contract \
   dd-write-coding-standards \
   dd-write-ai-conventions \
-  dd-feature-development-workflow; do
+  fdev; do
   python3 /Users/dengdeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py "$d" || exit 1
 done
 ```
@@ -895,7 +895,7 @@ python3 - <<'PY'
 from pathlib import Path
 
 roots = [
-    Path("dd-project-bootstrap-workflow"),
+    Path("boot"),
     Path("dd-write-phase-contract"),
     Path("dd-shared-ask"),
     Path("dd-shared-state"),
@@ -906,7 +906,7 @@ roots = [
     Path("dd-write-architecture-contract"),
     Path("dd-write-coding-standards"),
     Path("dd-write-ai-conventions"),
-    Path("dd-feature-development-workflow"),
+    Path("fdev"),
 ]
 for root in roots:
     for path in root.rglob("*.md"):
@@ -918,7 +918,7 @@ print("markdown fences: ok")
 PY
 
 rg -n ">=1 个源文件.*brownfield|严格按 0→1→2→3→4→5→6→7→8→9|每步产物已 git commit" \
-  dd-project-bootstrap-workflow dd-write-phase-contract
+  boot dd-write-phase-contract
 
 git diff --check
 ```
@@ -961,7 +961,7 @@ git diff origin/develop...HEAD --stat
 
 ```bash
 git add \
-  dd-project-bootstrap-workflow \
+  boot \
   dd-write-phase-contract \
   dd-shared-ask/SKILL.md \
   dd-shared-state/SKILL.md \
@@ -972,7 +972,7 @@ git add \
   dd-write-architecture-contract/SKILL.md \
   dd-write-coding-standards/SKILL.md \
   dd-write-ai-conventions/SKILL.md \
-  dd-feature-development-workflow/SKILL.md
+  fdev/SKILL.md
 git commit -m "fix(skills): close bootstrap ecosystem validation gaps"
 ```
 

@@ -5,11 +5,11 @@
 
 ## 1. 目标
 
-把 `dd-project-bootstrap-workflow` 及其直接依赖重构为 Trae/Codex 可以跨会话稳定执行的项目 Bootstrap Agent Skill 生态。在不降低产物质量和 Gate 强度的前提下，通过渐进式加载、状态恢复、上游事实复用和按风险审查减少重复上下文与 Token 消耗。
+把 `boot` 及其直接依赖重构为 Trae/Codex 可以跨会话稳定执行的项目 Bootstrap Agent Skill 生态。在不降低产物质量和 Gate 强度的前提下，通过渐进式加载、状态恢复、上游事实复用和按风险审查减少重复上下文与 Token 消耗。
 
 ## 2. 成功标准
 
-1. `dd-project-bootstrap-workflow/SKILL.md` 只保留触发边界、路由算法、依赖图、节点 Gate、状态恢复和 Handoff，不再内嵌完整 docs 治理规范。
+1. `boot/SKILL.md` 只保留触发边界、路由算法、依赖图、节点 Gate、状态恢复和 Handoff，不再内嵌完整 docs 治理规范。
 2. 用户可指定任意入口；Agent 必须先执行 Preflight Gap Scan，补齐阻塞依赖后再进入请求节点。
 3. Greenfield/Brownfield 按历史兼容义务判定，代码数量只作为辅助信号。
 4. Bootstrap 可在新会话读取持久化状态、验证产物后继续，不重复询问已确认事实。
@@ -18,7 +18,7 @@
 7. 审查始终覆盖范围、正确性、可验证性三个语义视角，但只有高风险节点默认使用三个并行审查 Agent。
 8. Brownfield Characterization Test 只有经过处置分类后才能进入目标 AC。
 9. Legacy Compatibility Surface 与 Target Public Surface 分开管理。
-10. Bootstrap 对 Greenfield/Brownfield 统一交接给 `dd-feature-development-workflow`，通过结构化 Handoff 表达模式差异。
+10. Bootstrap 对 Greenfield/Brownfield 统一交接给 `fdev`，通过结构化 Handoff 表达模式差异。
 11. Trae 完成 Bootstrap 后禁止直接结束会话；必须 ASK 用户“结束本次任务”或“还有其他任务”。
 
 ## 3. 非目标
@@ -34,7 +34,7 @@
 ```text
 User request
     ↓
-dd-project-bootstrap-workflow/SKILL.md
+boot/SKILL.md
     ├─ Preflight / Gap Scan / State Restore
     ├─ Dependency Graph / Node Gate
     ├─ Child Invocation Contract
@@ -54,9 +54,9 @@ dd-project-bootstrap-workflow/SKILL.md
                        ↓
               structured handoff
                        ↓
-            dd-feature-development-workflow
+            fdev
                        ↓
-                 dd-writing-specs
+                 spec
 ```
 
 核心原则是“workflow 负责编排，writer 负责产物，reference 负责详细政策，state 负责跨会话连续性”。
@@ -67,14 +67,14 @@ dd-project-bootstrap-workflow/SKILL.md
 
 | 文件 | 职责 |
 |---|---|
-| `dd-project-bootstrap-workflow/SKILL.md` | 短入口、Preflight、依赖图、节点调度、Gate、Handoff、Trae 收尾约束 |
-| `dd-project-bootstrap-workflow/references/docs-governance.md` | 当前内嵌 docs 治理规范、目录、SSOT、同步、History/ADR、阅读策略 |
-| `dd-project-bootstrap-workflow/references/execution-contract.md` | 状态模型、Gap Scan、节点契约、审查预算、Workflow/Delivery Gate、子 skill 调用协议、Handoff |
-| `dd-project-bootstrap-workflow/references/brownfield-policy.md` | 模式判定、Characterization 分类、兼容面拆分、lint ratchet、技术探针和架构冻结规则 |
-| `dd-project-bootstrap-workflow/tests/baseline-1-greenfield-skip-phase-contract.md` | 验证空脚手架仍是 Greenfield，默认跳过 Phase Contract |
-| `dd-project-bootstrap-workflow/tests/baseline-2-brownfield-baseline-first.md` | 验证请求从 Roadmap 开始时仍补齐 Brownfield Baseline |
-| `dd-project-bootstrap-workflow/tests/baseline-3-resume-without-reasking.md` | 验证跨会话恢复和已确认事实复用 |
-| `dd-project-bootstrap-workflow/tests/baseline-4-trae-final-ask.md` | 验证 Trae 完成后必须 ASK，不能直接结束 |
+| `boot/SKILL.md` | 短入口、Preflight、依赖图、节点调度、Gate、Handoff、Trae 收尾约束 |
+| `boot/references/docs-governance.md` | 当前内嵌 docs 治理规范、目录、SSOT、同步、History/ADR、阅读策略 |
+| `boot/references/execution-contract.md` | 状态模型、Gap Scan、节点契约、审查预算、Workflow/Delivery Gate、子 skill 调用协议、Handoff |
+| `boot/references/brownfield-policy.md` | 模式判定、Characterization 分类、兼容面拆分、lint ratchet、技术探针和架构冻结规则 |
+| `boot/tests/baseline-1-greenfield-skip-phase-contract.md` | 验证空脚手架仍是 Greenfield，默认跳过 Phase Contract |
+| `boot/tests/baseline-2-brownfield-baseline-first.md` | 验证请求从 Roadmap 开始时仍补齐 Brownfield Baseline |
+| `boot/tests/baseline-3-resume-without-reasking.md` | 验证跨会话恢复和已确认事实复用 |
+| `boot/tests/baseline-4-trae-final-ask.md` | 验证 Trae 完成后必须 ASK，不能直接结束 |
 
 ### 5.2 新增 Phase Contract writer
 
@@ -109,7 +109,7 @@ dd-project-bootstrap-workflow/SKILL.md
 | `dd-write-architecture-contract/SKILL.md` | 区分 provisional/approved/frozen；拆分 Legacy/Target Public Surface |
 | `dd-write-coding-standards/SKILL.md` | Greenfield 零新增违规；Brownfield baseline + changed-code ratchet |
 | `dd-write-ai-conventions/SKILL.md` | 生成短 `AGENTS.md`、按需 nested `AGENTS.md`、薄 Trae adapter，并固化 Trae 最终 ASK |
-| `dd-feature-development-workflow/SKILL.md` | 接收 Bootstrap Handoff，复用工作环境、目标、范围、阶段合同和已确认决策 |
+| `fdev/SKILL.md` | 接收 Bootstrap Handoff，复用工作环境、目标、范围、阶段合同和已确认决策 |
 
 ## 6. Preflight 与模式判定
 
@@ -202,7 +202,7 @@ Docs Governance
 4. 状态已持久化；
 5. blocking issue 为零。
 
-Git commit、push、PR 和远程 CI 属于 Delivery Gate，由用户、项目规则与 `dd-git-workflow` 决定。Delivery 失败必须如实记录，但不反向伪造节点产物未完成。
+Git commit、push、PR 和远程 CI 属于 Delivery Gate，由用户、项目规则与 `git` 决定。Delivery 失败必须如实记录，但不反向伪造节点产物未完成。
 
 ## 9. 上游上下文与子 skill 协议
 
@@ -287,7 +287,7 @@ Bootstrap 出口要求“足以约束首个 Feature 的 approved baseline”，�
 
 ## 13. Handoff
 
-Greenfield 与 Brownfield 统一交给 `dd-feature-development-workflow`。Handoff 包含：
+Greenfield 与 Brownfield 统一交给 `fdev`。Handoff 包含：
 
 ```text
 Goal
@@ -304,7 +304,7 @@ Resolved Decisions
 Open Non-blocking Items
 ```
 
-Greenfield 默认没有 Phase Contract，由 Feature workflow 使用 Requirements Seed 进入 `dd-writing-specs`。Brownfield 必须携带 Baseline 与已批准 Phase Contract；Feature workflow 直接复用，不重新 grill 已确认内容。
+Greenfield 默认没有 Phase Contract，由 Feature workflow 使用 Requirements Seed 进入 `spec`。Brownfield 必须携带 Baseline 与已批准 Phase Contract；Feature workflow 直接复用，不重新 grill 已确认内容。
 
 ## 14. Trae/Codex 宿主合同
 

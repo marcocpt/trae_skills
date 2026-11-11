@@ -1,0 +1,337 @@
+> 迁移来源：`dd-shared-state/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
+
+# dd 共享状态持久化
+
+## 概述
+
+会话上下文压缩后可能遗忘 worktree 路径、`BASE_BRANCH`、当前分支、当前步骤等关键状态。通过**状态文件持久化**解决——每个 worktree 拥有独立状态文件，支持多会话并行开发。
+
+本技能固定为 `invocation_mode=helper`：完成状态读写、恢复或并发检查后返回调用方，不自行 Host Close。宿主结束由顶层 `standalone` 工作流按 [wrt/ask](../../wrt/references/ask.md) 负责。
+
+## 何时使用
+
+- bug 或 fdev 的步骤开始前，需要恢复工作上下文
+- 工作树创建/验证成功后写入状态
+- 合并后按 `WORKFLOW_TYPE` 分支处置状态：bug-fix 允许合并清理时删除；feature-development 须先完成 Closure（写 Completion Receipt、`in_progress.operation=cleanup`），cleanup 完成或 worktree 删除后才删除/归档活动状态，**不得在 Closure 前删除**
+
+## 参数化
+
+调用方按工作流类型选择参数：
+
+| 工作流 | `WORKFLOW_TYPE` | 文件名 | 进度字段 |
+|--------|-----------------|--------|----------|
+| bug 修复 | `bug-fix` | `bug-fix-state.json` | `current_step` |
+| 新特性 | `feature-development` | `feature-development-state.json` | `current_step` |
+| 项目启动 | `project-bootstrap` | `project-bootstrap-state.json` | `current_node` |
+
+## 状态文件位置
+
+`$(git rev-parse --git-dir)/${WORKFLOW_TYPE}-state.json`
+
+存放在 git dir（worktree 私有目录）下，不被 `git status` 检测。每个 worktree 拥有独立状态文件。
+
+## 状态文件内容
+
+### 通用字段（所有工作流必需）
+
+```json
+{
+  "schema_version": 2,
+  "workflow_type": "<bug-fix|feature-development|project-bootstrap>",
+  "status": "active",
+  "owner": {
+    "name": "<人类负责人/裁决者；缺省取 git config user.name>",
+    "email": "<缺省取 git config user.email>",
+    "role": "owner",
+    "delegated_to": "<本轮执行者：owner 自执填 owner；委托本地 agent 填 local-agent>",
+    "evidence": "<身份来源：git config / handoff 文本 / remote 属主>"
+  },
+  "worktree_path": "/absolute/path/to/worktree",
+  "base_branch": "main",
+  "<BRANCH_FIELD>": "<当前分支名>",
+  "main_root": "/absolute/path/to/main/repo",
+  "worktree_dir": "/absolute/path/to/project-worktrees",
+  "current_step": "<步骤号>",
+  "tracking": null,
+  "created_at": "<ISO 时间>"
+}
+```
+
+`tracking` 记录该工作流外部任务绑定尝试的结果（已绑定一张 Issue，或已尝试但未绑定并记原因）；初始为 `null`，字段形状与枚举的唯一属主是 [task-tracking.md](task-tracking.md)，本文件不重复定义。
+
+`<BRANCH_FIELD>` 对 bug-fix / feature-development 分别为 `fix_branch` / `feature_branch`；project-bootstrap 不要求分支专用字段，使用 `worktree_path` 和 `base_branch` 即可。
+
+`status` 原样消费 [runtime-contract.md](runtime-contract.md) §3 的 canonical 状态值（含 abandoned），不得自行缩减词表。已有调用方未写入 `schema_version` 或 `status` 时，恢复逻辑按 schema 0 / active 兼容读取，不得直接判为损坏。
+
+`schema_version: 2` 只变更一件事，且**只对 `workflow_type` 为 `feature-development`、`feature-fast-track`、`bug-fix` 或 `bug-fast-track` 的 state 生效**（四类长流程工作流，见 [task-tracking.md](task-tracking.md) §2）：它们的 `tracking` 为 `null` 时表示"从未尝试"（[task-tracking.md](task-tracking.md) §2）；`schema_version` 缺失、`0` 或 `1` 时同样的 `null` 含义未分类，必须按 §3.2 迁移——**不得反向解释成从未尝试**，因为旧 schema 无法表达"当年未强制／未授权／用户拒绝"。`project-bootstrap` 不在 §3.2 范围内（见 §12），其 `null` 仍按未绑定读取；它**可以继续写 `schema_version: 1`**，本次升版不要求 bootstrap 同步。
+
+`owner` 记录**人类负责人（裁决者）身份**：状态里大量出现「owner 裁决」这类角色标签，但角色不等于人；不记名字时每个新会话都要从 handoff 文本、git 作者或 remote 属主反推，而同一台机器上的并行会话常共用同一 git 身份——容易把「并行提交者」误判成另一个人。
+`name` / `email` 缺省取 `git config user.name` / `git config user.email`；`delegated_to` 记录**本轮执行权**归属：owner 明确把决策与实施交给本地 agent 时填 `local-agent`，并在 `evidence` 留一句授权原话或来源（例如「用户：你就是 owner，你直接做」）。字段缺失时按「owner 自执」兼容读取，不得判为损坏。
+
+### feature-development 特有字段
+
+```json
+{
+  "feature_name": "<简短特性名>",
+  "requirements_path": "<需求文档路径>",
+  "design_path": "<设计文档路径>",
+  "visual_path": "<视觉原型路径>",
+  "test_case_path": "<测试用例表路径>",
+  "review_path": "<审查结果路径>",
+  "plan_dir": "<计划目录路径>",
+  "phase_plan_paths": [{"phase_id": 1, "path": "<Phase 子计划文件路径>"}],
+  "integration_plan_path": "<跨 Phase 集成计划路径，仅复杂档>",
+  "current_phase": "<当前 Phase>",
+  "total_phases": "<Phase 总数>",
+  "completed_phases": ["<已完成本地验证的 Phase 编号列表>"],
+  "smoke_ci_phases": ["<触发过远程 UI Smoke CI 的 Phase 编号列表>"],
+  "final_candidate_branch": "<最终合并候选分支名>",
+  "candidate_sha": "<冻结候选 SHA>",
+  "candidate_review": {"level": "standard|low", "execution": "auto", "sha": "<candidate_sha>", "review_ref": "<review-ref>"},
+  "full_spec_gap": {"sha": "<candidate_sha>", "gap_table_ref": "<gap-table-ref>"},
+  "full_ci_run": {"run_id": "<run-id>", "url": "<run-url>", "head_sha": "<candidate_sha>", "conclusion": "success"},
+  "commits": {
+    "specs": "<规格文档套件提交 sha>",
+    "plans": "<commit-sha>"
+  }
+}
+```
+
+> `candidate_review.level` 的取值语义由 [review-gate](review-gate.md) 拥有，本文件只记录字段形状；feature-development 按该合同的**风险触发器**路由——未命中为 `low`（主 Agent A/B/C 自检），命中按该合同升到 `standard`／`high`，**不由 `change_tier` 直接决定**；判定规则见该工作流的 `small-change-track.md`，不在此复制。
+
+> **三层增量验证约束**：feature-development 工作流采用三层验证。`completed_phases` 记录已通过本地快速验证的 phase 列表，`smoke_ci_phases` 记录触发过远程 UI Smoke CI 的 phase 列表；`final_candidate_branch`、`candidate_sha`、`candidate_review`、`full_spec_gap`、`full_ci_run` 跟踪最终合并候选，对有提交且项目要求CI的路径，`candidate_review.sha == full_spec_gap.sha == full_ci_run.head_sha == candidate_sha`（exact-SHA 不变量）；`full_ci_run.conclusion` 终态均落盘，`PASS` 仅当 `conclusion==success` 且 `head_sha==candidate_sha`。
+
+### project-bootstrap 特有字段
+
+```json
+{
+  "project_mode": "brownfield",
+  "host": "trae",
+  "requested_entry": "roadmap",
+  "current_node": "preflight",
+  "completed_nodes": ["preflight"],
+  "artifacts": {},
+  "decisions": [],
+  "blocking_gaps": ["brownfield-baseline"],
+  "deferred_gaps": [],
+  "handoff": {}
+}
+```
+
+- `project_mode` 只能是 `greenfield` 或 `brownfield`；
+- `decisions` 保存用户已批准或由仓库证据确认的事实，子 skill 不得重复询问；
+- `artifacts` 记录路径、状态和最后验证时间，不把“路径曾存在”当成当前有效；
+- `handoff` 在下游确认接收前保留；
+- `status=completed` 的状态文件不阻塞新的工作流。
+
+## 恢复流程
+
+每个步骤或节点开始前，若不确定当前工作上下文，执行恢复。读取状态后必须验证：
+
+1. `worktree_path` 与当前 Git worktree 匹配；
+2. 状态中记录的必需产物仍存在；
+3. 适用的项目规则没有与已记录决策发生冲突；
+4. `current_step` / `current_node` 与完成产物一致；
+5. 状态为 `completed` 时只作历史参考，不恢复为 active。
+
+```bash
+git_dir=$(git rev-parse --git-dir)
+state_file="$git_dir/${WORKFLOW_TYPE}-state.json"
+
+if [ -f "$state_file" ]; then
+    eval $(python3 -c "
+import json
+d = json.load(open('$state_file'))
+for k in ['worktree_path','base_branch','${BRANCH_FIELD}','main_root','worktree_dir','current_step']:
+    print(f'{k.upper()}=\"{d.get(k,\"\")}\"')
+")
+    cd "$WORKTREE_PATH"
+else
+    echo "未找到状态文件，可能尚未创建工作树或已清理"
+fi
+```
+
+Bootstrap 没有状态文件时，先从仓库中的 `docs.md`、Roadmap、Architecture、Standards、`AGENTS.md` 和 Baseline 重建 artifact map；只有无法从事实判断时才重新询问，禁止默认从头 grill。
+
+## 写入时机
+
+- **写入**：工作树创建/验证成功后（bug-fix 步骤 1，feature-dev 步骤 1）
+- **更新 `current_step`**：**每个步骤出口判定成功后必须立即更新**（HARD-GATE）。仅步骤 1 写入一次是不够的，会话压缩后智能体凭此字段恢复进度，停在 1 会让智能体误以为还在步骤 1。
+- **更新 `current_phase`**（仅 feature-development）：每完成一个子计划，更新此字段
+- **更新 `phase_plan_paths` / `integration_plan_path`**（仅 feature-development）：Planning Stage 拆分档位为 `per-phase` 或 `per-phase-with-integration` 时，写入每个 Phase 子计划路径数组；复杂档同时写 `integration_plan_path`。`phase_plan_paths` 长度必须等于 `total_phases`，否则禁止推进到 implementation
+- **更新 `completed_phases`**（仅 feature-development）：每完成一个 phase 的本地验证，追加当前 phase 编号到此数组
+- **更新 `smoke_ci_phases`**（仅 feature-development）：每触发一次远程 UI Smoke CI，追加当前 phase 编号到此数组
+- **更新 `final_candidate_branch`**（仅 feature-development）：创建最终合并候选分支时记录
+- **更新候选 exact-SHA 字段**（仅 feature-development）：冻结候选时写 `candidate_sha`、`candidate_review`、`full_spec_gap`；完整远程 CI 终态（`success|failure|cancelled|timed_out|…`）后即写 `full_ci_run={run_id,url,head_sha,conclusion}`（无论成功失败），`PASS` 仅当 `conclusion==success && head_sha==candidate_sha`，`null` 表示未有终态。**未提交或有相关 dirty／未跟踪输入时 `candidate_sha` 为空**，被验证版本由 `verification_evidence.result.bindings.implementation_digest` 绑定真实工作树内容，不得把内容摘要写入 `candidate_sha` 冒充 Git 提交；项目不要求远端 CI 时 `full_ci_run` 保持 `null` 并在 Gate 结论记 `not-required` 与依据
+- **更新 `owner.delegated_to`**：owner 明确把决策/实施权委托给本地 agent 时写 `local-agent`（授权原话记入 `owner.evidence`），收回时写回 `owner`；状态缺失时按「owner 自执」读取
+- **更新 `in_progress`**：merge/push/cleanup 等不可瞬时动作执行前写 `in_progress: {operation, target, source, started_at}`（见 runtime-contract §4），动作成功后写完成证据再清除；**不另设布尔兼容字段**
+- **写 checkpoint**：绑定 `tracking` 后按 [task-tracking.md](task-tracking.md) 的六个写回时机追加 Issue checkpoint；字段形状、写回顺序、crash-safe 防重与 Issue 关闭规则以该文件为准，本文件不复制
+- **删除**（按 `WORKFLOW_TYPE` 分支）：**bug-fix** 在 `git merge --no-ff` 成功后、清理前可删除（**禁止 merge 前删除**）；**feature-development** 在 merge 后仍须保留状态直到 Closure 完成——写 Completion Receipt、cleanup 执行并验证后才删除/归档活动状态，**禁止在 Closure 校验与 Receipt 写入前删除**（delivery-and-closure 的 Closure 流程为准）
+- **Bootstrap 写入**：Preflight 结束后写入；每个节点 Gate 通过后更新 `current_node`、`completed_nodes`、`artifacts` 和 gaps
+- **Bootstrap 完成**：Handoff 准备后设为 `handoff-ready`；下游确认接收且 Exit Gate 通过后、Host Close ASK 前设为 `completed`，不立即删除
+
+### 写入模板
+
+```bash
+git_dir=$(git rev-parse --git-dir)
+
+cat > "$git_dir/${WORKFLOW_TYPE}-state.json" <<EOF
+{
+  "workflow_type": "${WORKFLOW_TYPE}",
+  "owner": {
+    "name": "$(git config user.name)",
+    "email": "$(git config user.email)",
+    "role": "owner",
+    "delegated_to": "owner",
+    "evidence": "git config"
+  },
+  "worktree_path": "$(pwd)",
+  "base_branch": "$BASE_BRANCH",
+  "${BRANCH_FIELD}": "$(git rev-parse --abbrev-ref HEAD)",
+  "main_root": "$main_root",
+  "worktree_dir": "$worktree_dir",
+  "current_step": "<当前步骤号>",
+  "created_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+```
+
+feature-development 工作流需追加特有字段（feature_name、requirements_path、design_path、visual_path、test_case_path、review_path、plan_dir 等）。
+
+### 更新 `current_step` 模板（每个步骤出口执行）
+
+```bash
+git_dir=$(git rev-parse --git-dir)
+python3 -c "
+import json
+state_file = '$git_dir/${WORKFLOW_TYPE}-state.json'
+with open(state_file) as f:
+    state = json.load(f)
+state['current_step'] = '<新步骤号或子步骤>'
+with open(state_file, 'w') as f:
+    json.dump(state, f, indent=2)
+"
+```
+
+### 合并中状态标记（仅 bug-fix 步骤 7.1 / feature-dev Delivery 合并步骤）
+
+执行 `git merge` 前必须先标记合并中状态；merge 成功后按 `WORKFLOW_TYPE` 处置：
+
+```bash
+# 1. merge 前更新状态文件
+git_dir=$(git rev-parse --git-dir)
+python3 -c "
+import json
+state_file = '$git_dir/${WORKFLOW_TYPE}-state.json'
+with open(state_file) as f:
+    state = json.load(f)
+state['in_progress'] = {'operation': 'merge', 'target': '$BASE_BRANCH', 'source': '<工作树分支>', 'started_at': '<ISO 时间>'}
+with open(state_file, 'w') as f:
+    json.dump(state, f, indent=2)
+"
+
+# 2. 执行 git merge（在主仓库路径）
+cd "$main_root"
+git checkout "$BASE_BRANCH"
+git merge --no-ff <工作树分支>
+
+# 3. merge 成功后处置状态（按 WORKFLOW_TYPE）
+#    - bug-fix: 清理时可直接删除
+#    - feature-development: 保留直到 Closure 完成（Receipt 写入、cleanup 验证后）才删除
+cd "$WORKTREE_PATH"
+git_dir=$(git rev-parse --git-dir)
+if [ "$WORKFLOW_TYPE" = "bug-fix" ]; then
+  rm -f "$git_dir/${WORKFLOW_TYPE}-state.json"
+fi
+# feature-development: 继续执行 delivery-and-closure 的 Closure 流程，最后才删除/归档
+```
+
+### 状态文件不存在时的恢复策略
+
+会话恢复时若状态文件不存在，**禁止默认从步骤 0 重启**。必须按以下顺序判断：
+
+1. 检查当前目录是否在 worktree 中（`git rev-parse --is-inside-work-tree`）
+2. 获取当前分支名（`git rev-parse --abbrev-ref HEAD`）
+3. 若分支名匹配 `fix/F<N>-<描述>` 或 `feature/<F编号>-<描述>` 格式，对比 `git log origin/<BASE_BRANCH>..HEAD` 判断是否有已提交的修复
+4. 若已有 commit：识别为「合并中」或「TDD 中」状态，询问用户是否继续或开新一轮。feature-dev 额外检查是否存在 `ci/F*-final-candidate` 分支判断是否在步骤 5 候选阶段
+5. 若无 commit：识别为「TDD 中」状态，询问用户是否继续修复或重新开始
+6. 仅当无法判断进度时，才从步骤 0 重新开始
+
+### 删除模板（仅 bug-fix 合并清理时执行）
+
+```bash
+git_dir=$(git rev-parse --git-dir)
+rm -f "$git_dir/${WORKFLOW_TYPE}-state.json"
+```
+
+> feature-development **不适用此模板**：merge 后先完成 Closure（校验 candidate/full_ci/completed_phases、写 Completion Receipt、`in_progress.operation=cleanup` 并执行），cleanup 完成或 worktree 删除后才删除/归档活动状态（见 delivery-and-closure §2/§3）。
+
+## 并发检查
+
+新工作流开始前（在当前 worktree 验证阶段），禁止同一 worktree 上同时运行多个 active/paused/handoff-ready 工作流；`completed` 状态不阻塞：
+
+```bash
+git_dir=$(git rev-parse --git-dir)
+for f in \
+  "$git_dir"/bug-fix-state.json \
+  "$git_dir"/feature-development-state.json \
+  "$git_dir"/project-bootstrap-state.json; do
+  if [ -f "$f" ]; then
+    existing=$(python3 -c "
+import json
+d=json.load(open('$f'))
+print(d.get('workflow_type','unknown'), d.get('status','active'))
+")
+    existing_type="${existing% *}"
+    existing_status="${existing##* }"
+    if [ "$existing_status" != "completed" ]; then
+      echo "当前 worktree 已有 ${existing_status} 的 ${existing_type} 工作流，禁止并发"
+      exit 1
+    fi
+  fi
+done
+```
+
+## 写入租约（跨宿主唯一写者）
+
+状态文件扫描是 check-then-act，两个宿主同时启动会同时看到"无 active state"。真正的互斥由 git common dir 下的原子租约提供（DD-006、FR-008、NFR-007）——common dir 对同仓库所有 worktree 和宿主共享：
+
+```bash
+# 取得租约：先建根目录（幂等），再对最终 lease 目录做原子 mkdir 竞争；
+# key 用 worktree 绝对路径的哈希，避免把路径字符直接拼进目录名
+lease_root="$(git rev-parse --path-format=absolute --git-common-dir)/dd-workflow-lease"
+worktree="$(git rev-parse --path-format=absolute --show-toplevel)"
+mkdir -p "$lease_root"
+lease="$lease_root/$(printf '%s' "$worktree" | shasum -a 256 | cut -c1-16)"
+if mkdir "$lease" 2>/dev/null; then
+  printf '{"workflow_id":"%s","host":"%s","worktree":"%s","holder_pid":%s,"acquired_at":"%s","last_validated_at":"%s"}\n' \
+    "$WORKFLOW_ID" "$HOST" "$worktree" "$$" \
+    "$(date -u +%FT%TZ)" "$(date -u +%FT%TZ)" > "$lease/holder.json"
+else
+  echo "写入租约被占：$(cat "$lease/holder.json" 2>/dev/null)"; exit 1
+fi
+
+# 持有期间每次写状态前刷新 last_validated_at
+# 释放时机：仅限任务完成、已阻塞或显式移交（记录接管方）后 rm -rf "$lease"；
+# Review PASS 不等于 Workflow 完成，审查期间保留租约但暂停写入
+```
+
+约束：
+
+- 同一时刻任一工作环境最多一个实现执行者持有租约；第二个入口必须保持只读、转入隔离 worktree 或明确停止；
+- `last_validated_at` 超过 2 小时未刷新只触发**重新核对**，不自动获得接管权：必须核实原 holder 进程是否存活、其状态文件的 `status` 是否仍 active/paused、宿主是否可达；全部证据表明已废弃，才可接管，且必须先把原 holder 信息记入本工作流状态文件；
+- 禁止静默覆盖他人租约。
+
+## 被其他 skill 引用方式
+
+各 dd 工作流技能在“上下文恢复机制”章节引用本技能，替换重复的状态文件规则。调用方声明 `WORKFLOW_TYPE`，并使用对应的 `current_step` 或 `current_node` 进度字段。
+
+## 持久任务入口
+
+每个任务使用一个项目内持久、离线可读的入口：child复用父入口，standalone先复用项目位置，无现成位置才创建任务专属路径docs/agent-tasks/<task-slug>/entry.md。同仓任务不互相覆盖。入口包含人话看板（任务/状态/实际结果/阻塞）与最小交接（目标/边界、代码及工作树、关键决定、有效批准范围、验证命令和证据、下一安全动作、授权边界）。私有状态与远端tracking仍由各自属主管理，入口保存可恢复链接及必要摘要，不建立第二套状态schema或只依赖联网/聊天记忆。恢复先核对代码、dirty diff与证据版本；代码说明实现事实，不自动改写目标或批准约束。已完成材料无需追更，唯一证据须保全。
+
+任务结案复用同一入口，按 [artifact-lifecycle](artifact-lifecycle.md) §3.6 保留简短历史；后续提问按同文件 §3.7 定向检索。入口、运行时状态和远端投影各保留原职责，不为项目记忆追加平行字段或另建总结文件。
+
+任务状态与批准边界：在已有授权写入范围内，根据新验证证据纠正看板或更新接手摘要不属于新需求/行为决定，无需重复请求内容批准。原入口只读时，在允许位置写接手摘要并明确原入口未更新，不把事实记录转成新的用户批准阻塞；扩大写入范围仍须授权。缺失的代码、状态、批准或验证材料不得自行补造为真实依据；演示fixture必须由测试控制方预先提供，不能代替真实任务的批准证据。
+
+Feature恢复的条件分支：上述exact-SHA不变量用于有提交且项目要求CI的交付路径。未提交的局部验证以现有verification_evidence中的implementation_digest绑定实际内容，SHA字段不接收内容摘要；项目不要求CI时full_ci_run为null并附not-required依据不构成失效，必需CI缺失仍不得放行。根据当前任务范围及证据判定，不用空字段相等冒充已验证。

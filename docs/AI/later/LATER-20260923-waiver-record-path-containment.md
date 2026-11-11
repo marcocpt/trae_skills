@@ -14,7 +14,7 @@ trigger: 再次修改 _verify_waiver_decision_records / load_configuration 的�
 
 ## 现状
 
-- `_verify_waiver_decision_records`（`dd-workflow-runtime/agents/dispatch-review.py`）当前只校验 `readonly_exception` 按仓库根解析后的文件存在。
+- `_verify_waiver_decision_records`（`wrt/agents/dispatch-review.py`）当前只校验 `readonly_exception` 按仓库根解析后的文件存在。
 - 复核者指出：绝对路径或含 `..` 的相对路径可指向仓库外文件而通过校验（fail-open 倾向），建议增加 repo-root containment 校验。
 - 该建议为非阻断项，不影响 RV-001~003 的 CLOSED；用户 2026-09-23 裁决登记为 TODO。
 

@@ -1,0 +1,51 @@
+> 迁移来源：`dd-shared-ui/SKILL.md`。现作为按需 reference 使用，不参与顶层 Skill 路由。
+
+# dd 共享 UI 可观测性门禁
+
+## 概述
+
+本技能包含 dd 系列技能通用的 UI 可观测性门禁规则，各 dd 技能引用本技能以避免重复。
+
+本技能固定为 `invocation_mode=helper`：返回 UI 证据与 Gate 结果，不自行 Host Close；顶层 `standalone` 会话按 [wrt/ask](../../wrt/references/ask.md) 收尾。
+
+## UI 可观测性门禁
+
+任何涉及 UI、桌面 app、Web app、可视化、快捷键交互、窗口/浮层/菜单/表单/画布的特性，都必须通过此门禁。
+
+### 证据分层
+
+优先级从高到低：
+
+1. **真实路径自动化证据**：E2E、XCUITest、Playwright、Appium、真实浏览器或真实 app 流程，断言用户可见结果。
+2. **稳定可观测标记**：可访问性树、DOM、窗口层级、截图像素、canvas pixel、状态日志、activation marker、ready hook；必须能证明用户可见行为。
+3. **组件级 UI 证据**：渲染测试、快照、视觉回归、故事书截图；只能覆盖组件边界。
+4. **手动验收证据**：明确步骤、预期画面、截图/录屏/日志路径、执行时间和执行人；只能用于自动化不可行的部分。
+5. **内部状态证据**：单元测试、ViewModel 状态、Core 状态机、日志；只能证明支撑逻辑，不能单独关闭 UI AC。
+
+### 运行时新鲜度绑定（build provenance）
+
+编译产物、运行中服务或真实 UI 的证据必须证明被测实例与当前 `implementation_digest` / `candidate_sha` 一致：
+
+```yaml
+live_evidence:
+  source_binding: {implementation_digest: <git-or-file-digest>}
+  runtime_binding: {build_artifact_digest: <sha256>, build_ref: <run-id-or-build-id>}
+  environment: <recorded-environment-id>
+  evidence_ref: <repo-relative-evidence>
+```
+
+- `runtime_binding` 与 `source_binding` 一致且可追溯 → `valid`，可关闭 UI AC
+- 已知 `runtime_binding` 与当前实现不一致 → `stale`，不得复用旧证据
+- 无法证明运行实例来源（缺 build provenance）→ `unverified`，不得关闭 UI AC，需补链路或按风险升级
+- CI 场景以 `run_id + head_sha + artifact provenance` 为 freshness 依据；本地 App 需 `implementation_digest → build → build_artifact_digest → launch → evidence` 完整链
+
+### 关闭规则
+
+- 每个 UI AC 至少需要一种 1-4 层证据；只有第 5 层证据时，状态必须标为"未完成 UI 验证"或"存在 UI 风险"。
+- 自动化不可行时，必须在设计文档和子计划中写明原因、手动验收步骤、证据保存位置和剩余风险。
+- 任何"测试不到但应该没问题"的结论都必须升级为风险项，不能作为完成依据。
+- 新鲜度 `stale` / `unverified` 的 UI 证据不得关闭对应 AC。
+
+## 被其他 skill 引用方式
+
+各 dd 技能中涉及 UI 的步骤引用本技能。引用格式：`UI 可观测性门禁遵循 [wrt/ui-evidence](../../wrt/references/ui-evidence.md)`

@@ -1,6 +1,6 @@
 # Task Tracking 绑定尝试入口可达性 实现计划
 
-> **面向 AI 代理的工作者：** 由 `dd-feature-development-workflow` 的 Implementation Stage 逐 Phase 执行本计划；步骤使用复选框（`- [ ]`）跟踪进度。
+> **面向 AI 代理的工作者：** 由 `fdev` 的 Implementation Stage 逐 Phase 执行本计划；步骤使用复选框（`- [ ]`）跟踪进度。
 
 **目标：** 让"必须尝试并记录外部任务绑定"这一既有硬约束在 Feature/Bug 工作流入口可达，并提供离线可运行的 Gate 判定器，使静默跳过变为确定性失败。
 
@@ -34,14 +34,14 @@ source_manifest:
     approval: {status: approved, authority: user, decided_at: 2026-10-03, evidence_ref: tm-confirm}
   OWNER-TT:
     stable_id: OWNER-TT
-    path: dd-workflow-runtime/references/task-tracking.md
+    path: wrt/references/task-tracking.md
     version: current
     digest: sha256:833004169350ced186f585c7e6730f5566252eb9a7635f67fb4c6284c5589f07
     approval: {status: frozen-owner, authority: repository, decided_at: 2026-10-02, evidence_ref: origin/develop@94dcc9a (fast-track 纳入 tracking 合同)}
     note: 语义属主，本计划只读，零改动
   BASE-STATE:
     stable_id: BASE-STATE
-    path: dd-workflow-runtime/references/state.md
+    path: wrt/references/state.md
     version: current
     digest: sha256:0c29a143f46df7b26574d509002f2ed010df6f4665ce1d979769d2f68f383b87
     approval: {status: baseline, authority: repository, decided_at: 2026-10-03, evidence_ref: origin/develop@94dcc9a (合并基线)}
@@ -61,7 +61,7 @@ source_manifest:
 
 **sources:** `[{ref: SPEC-DES, anchors: [3.4, 3.2]}, {ref: OWNER-TT, anchors: [2, 4]}, {ref: SPEC-TM, anchors: [T-70, T-73]}]`
 
-**Consumes：** 真实 `dd-workflow-runtime/references/task-tracking.md`；本工作流真实 state 文件 `$(git rev-parse --git-dir)/feature-development-state.json`。
+**Consumes：** 真实 `wrt/references/task-tracking.md`；本工作流真实 state 文件 `$(git rev-parse --git-dir)/feature-development-state.json`。
 
 **Produces：** 探针脚本与取证记录 `docs/AI/task-tracking-projection-evidence/L03-vocab-extract-probe.md`，含抽取词表、真实 state 判定退出码、`result` 结论。
 
@@ -104,12 +104,12 @@ delivery_authorization: {status: not-required, actions: [], scope: none, authori
 
 **Consumes：** 任务 0 的 `result: passed`。
 
-**Produces：** `dd-workflow-runtime/agents/validate-tracking-binding.py`，支持 `--state <path>`，退出码 0/1/2。
+**Produces：** `wrt/agents/validate-tracking-binding.py`，支持 `--state <path>`，退出码 0/1/2。
 
 ```
 write_scope:
-  - create: dd-workflow-runtime/agents/validate-tracking-binding.py
-  - create: dd-workflow-runtime/tests/test_validate_tracking_binding.py
+  - create: wrt/agents/validate-tracking-binding.py
+  - create: wrt/tests/test_validate_tracking_binding.py
   - modify: none
   - delete: none
 ```
@@ -122,7 +122,7 @@ write_scope:
 
 - [ ] **步骤 2：运行测试验证失败**
 
-  `verification:` `python3 -m unittest dd-workflow-runtime.tests.test_validate_tracking_binding`
+  `verification:` `python3 -m unittest wrt.tests.test_validate_tracking_binding`
   预期：FAIL，原因是缺少判定行为。
 
 - [ ] **步骤 3：编写最少实现**
@@ -131,7 +131,7 @@ write_scope:
 
 - [ ] **步骤 4：运行测试验证通过**
 
-  `verification:` `python3 -m unittest dd-workflow-runtime.tests.test_validate_tracking_binding`
+  `verification:` `python3 -m unittest wrt.tests.test_validate_tracking_binding`
   预期：PASS。
 
 ```
@@ -151,8 +151,8 @@ delivery_authorization: {status: not-required, actions: [], scope: none, authori
 
 ```
 write_scope:
-  - modify: dd-workflow-runtime/agents/validate-tracking-binding.py
-  - modify: dd-workflow-runtime/tests/test_validate_tracking_binding.py
+  - modify: wrt/agents/validate-tracking-binding.py
+  - modify: wrt/tests/test_validate_tracking_binding.py
   - create: none
   - delete: none
 ```
@@ -163,7 +163,7 @@ write_scope:
 
 - [ ] **步骤 2：运行测试验证失败**
 
-  `verification:` `python3 -m unittest dd-workflow-runtime.tests.test_validate_tracking_binding`
+  `verification:` `python3 -m unittest wrt.tests.test_validate_tracking_binding`
   预期：FAIL，失败点为未实现分支或未列入的词表值。
 
 - [ ] **步骤 3：补最少实现**
@@ -172,7 +172,7 @@ write_scope:
 
 - [ ] **步骤 4：运行测试验证通过**
 
-  `verification:` `python3 -m unittest dd-workflow-runtime.tests.test_validate_tracking_binding`
+  `verification:` `python3 -m unittest wrt.tests.test_validate_tracking_binding`
   预期：PASS，§4 的 11 行分母全部命中。
 
 ```
@@ -188,11 +188,11 @@ delivery_authorization: {status: not-required, actions: [], scope: none, authori
 
 **Consumes：** 任务 0 的抽取结论、任务 1/2 的判定器常量、`OWNER-TT`。
 
-**Produces：** `dd-workflow-runtime/tests/test_task_tracking.py` 新增 `TestVocabularyDrift`（8 例）与 `TestVocabularyDriftMutations`（11 个变异）。
+**Produces：** `wrt/tests/test_task_tracking.py` 新增 `TestVocabularyDrift`（8 例）与 `TestVocabularyDriftMutations`（11 个变异）。
 
 ```
 write_scope:
-  - modify: dd-workflow-runtime/tests/test_task_tracking.py
+  - modify: wrt/tests/test_task_tracking.py
   - create: none
   - delete: none
 ```
@@ -207,7 +207,7 @@ write_scope:
   - T-73 子字段名 ⊆ §2 schema 块；
   - T-74 `RECORDED_OUTCOMES` 配对集 == §4 逐行 `(sync, sync_reason)` 配对；
   - T-75 `SUPPORTED_PROVIDERS` == §2 登记的 provider；
-  - T-76 mandatory／exempt workflow type 集 == §2 与 §12（§12 按「声明不适用」的行识别，不按在表中出现，否则 `dd-git-workflow` 会被误认）；
+  - T-76 mandatory／exempt workflow type 集 == §2 与 §12（§12 按「声明不适用」的行识别，不按在表中出现，否则 `git` 会被误认）；
   - T-77 legacy 边界：§3.2 字面写 `< 2`；判定器保留所有低于当前版本的**非负**整数并显式拒绝负数。这是对字面文本的有意收窄（否则负版本会让未尝试状态通过），因此断言写成关系（`legacy == range(current)`、负数不在 legacy、owner 表达式仍为 `< 2`）而非与字面相等。
 
   **抽取失败必须 FAIL，不得 skip。**
@@ -220,7 +220,7 @@ write_scope:
 
 - [ ] **步骤 2：运行测试验证失败**
 
-  `verification:` `python3 -m unittest dd-workflow-runtime.tests.test_task_tracking.TestVocabularyDrift`
+  `verification:` `python3 -m unittest wrt.tests.test_task_tracking.TestVocabularyDrift`
   预期：FAIL，原因是常量未对齐或模块不可导入。
 
 - [ ] **步骤 3：补最少实现**
@@ -229,7 +229,7 @@ write_scope:
 
 - [ ] **步骤 4：运行测试验证通过**
 
-  `verification:` `python3 -m unittest dd-workflow-runtime.tests.test_task_tracking.TestVocabularyDrift dd-workflow-runtime.tests.test_task_tracking.TestVocabularyDriftMutations`
+  `verification:` `python3 -m unittest wrt.tests.test_task_tracking.TestVocabularyDrift wrt.tests.test_task_tracking.TestVocabularyDriftMutations`
   预期：PASS。
 
 ```
@@ -249,7 +249,7 @@ delivery_authorization: {status: not-required, actions: [], scope: none, authori
 
 ```
 write_scope:
-  - modify: dd-workflow-runtime/tests/test_task_tracking.py
+  - modify: wrt/tests/test_task_tracking.py
   - create: none
   - delete: none
 ```
@@ -260,7 +260,7 @@ write_scope:
 
 - [ ] **步骤 2：运行测试验证失败**
 
-  `verification:` `python3 -m unittest dd-workflow-runtime.tests.test_task_tracking.TestEntrypointReachability`
+  `verification:` `python3 -m unittest wrt.tests.test_task_tracking.TestEntrypointReachability`
   预期：FAIL，原因是三个入口尚未表达该义务。
 
 ```
@@ -280,10 +280,10 @@ delivery_authorization: {status: not-required, actions: [], scope: none, authori
 
 ```
 write_scope:
-  - modify: dd-feature-development-workflow/SKILL.md
-  - modify: dd-bug-fix-workflow/SKILL.md
-  - modify: dd-workflow-runtime/SKILL.md
-  - modify: dd-workflow-runtime/references/state.md
+  - modify: fdev/SKILL.md
+  - modify: bug/SKILL.md
+  - modify: wrt/SKILL.md
+  - modify: wrt/references/state.md
   - create: none
   - delete: none
 ```
@@ -292,16 +292,16 @@ write_scope:
 
   - Feature `SKILL.md`：`| Environment |` 行"实际要做什么"列加入"Environment Gate 前必须为本工作流创建并绑定一张 GitHub Issue（按 owner 合同 §3）"，"完成标志"列加入"绑定尝试结果已记录且判定器通过"；红线 → 阶段纪律加一条。
   - Bug `SKILL.md`：`### Environment` 段内加同义义务句与判定要求；红线加一条。**不得触碰 `## Bug State` 节**（既有测试逐字锁定该段）。
-  - `dd-workflow-runtime/SKILL.md`：Preflight 新增一条"以 Environment Gate 为绑定 Gate 的 Feature/Bug 两类工作流在 Environment Gate 前必须完成尝试"（并写明速通工作流走 Intake Gate、不由本条声明）；调用契约 `tracking` 说明改为表述尝试结果而非仅已绑定时定位；保留既有 `references/task-tracking.md` 链接（T-08）。
+  - `wrt/SKILL.md`：Preflight 新增一条"以 Environment Gate 为绑定 Gate 的 Feature/Bug 两类工作流在 Environment Gate 前必须完成尝试"（并写明速通工作流走 Intake Gate、不由本条声明）；调用契约 `tracking` 说明改为表述尝试结果而非仅已绑定时定位；保留既有 `references/task-tracking.md` 链接（T-08）。
   - 三处义务句只表述"创建并绑定 Issue"（§8.1 授权范围内），**不得提及 checkpoint/关闭/看板**（T-13）。
 
 - [ ] **步骤 2：按 T-09/T-10 补状态表示**
 
-  `dd-workflow-runtime/references/state.md` 通用字段 JSON 示例加 `"tracking": null`，注释指向 owner 合同；**不得出现** `issue_number`/`sync_reason`/`pending_checkpoint`/`last_checkpoint_ref`。
+  `wrt/references/state.md` 通用字段 JSON 示例加 `"tracking": null`，注释指向 owner 合同；**不得出现** `issue_number`/`sync_reason`/`pending_checkpoint`/`last_checkpoint_ref`。
 
 - [ ] **步骤 3：运行测试验证通过**
 
-  `verification:` `python3 -m unittest dd-workflow-runtime.tests.test_task_tracking`
+  `verification:` `python3 -m unittest wrt.tests.test_task_tracking`
   预期：PASS，含既有全部用例与新增 `TestEntrypointReachability`。
 
 ```
@@ -334,7 +334,7 @@ write_scope:
 - [ ] **步骤 2：验证 AC-14**
 
   `verification:` `git diff --name-only origin/develop...HEAD` 与 `git status --porcelain`
-  预期：变更集合不含 `dd-workflow-runtime/references/task-tracking.md`。
+  预期：变更集合不含 `wrt/references/task-tracking.md`。
 
   oracle 基线是**当前 PR 基线** `origin/develop`，不是本 Feature 的起点 `ee41fa8`：
   合并 fast-track 上游 commit 后，`ee41fa8..HEAD` 本身包含上游对 owner 合同的合法
@@ -391,6 +391,6 @@ tracer:
 | Phase | 回滚动作 |
 |---|---|
 | 1 | 删除 `agents/validate-tracking-binding.py` 与 `tests/test_validate_tracking_binding.py`；无既有文件被改 |
-| 2 | `git checkout -- dd-feature-development-workflow/SKILL.md dd-bug-fix-workflow/SKILL.md dd-workflow-runtime/SKILL.md dd-workflow-runtime/references/state.md dd-workflow-runtime/tests/test_task_tracking.py` |
+| 2 | `git checkout -- fdev/SKILL.md bug/SKILL.md wrt/SKILL.md wrt/references/state.md wrt/tests/test_task_tracking.py` |
 
 两个 Phase 的写入范围互不重叠，可独立回滚。

@@ -13,8 +13,8 @@
 
 | 层 | 手段 | 覆盖 AC | 执行位置 |
 |---|---|---|---|
-| L1 文档结构断言 | `dd-workflow-runtime/tests/test_task_tracking.py` 增补 | AC-01~AC-06, AC-12 | 本地 unittest |
-| L2 判定层单测 | `dd-workflow-runtime/tests/test_validate_tracking_binding.py`（新增） | AC-07~AC-10 | 本地 unittest |
+| L1 文档结构断言 | `wrt/tests/test_task_tracking.py` 增补 | AC-01~AC-06, AC-12 | 本地 unittest |
+| L2 判定层单测 | `wrt/tests/test_validate_tracking_binding.py`（新增） | AC-07~AC-10 | 本地 unittest |
 | L3 漂移一致性断言 | `test_task_tracking.py` 双向枚举比对 | AC-11 | 本地 unittest |
 | L4 既有合同回归 | 全量测试模块（合并上游后 14 个：本 Feature 新增判定层模块 1 个 + 既有 13 个，含上游 fast-track 带来的 3 个） | AC-13, AC-14 | 本地 unittest |
 
@@ -26,15 +26,15 @@
 
 | Test ID | AC | 断言 | 目标文件 |
 |---|---|---|---|
-| T-01 | AC-01 | Environment Stage 行文本同时含 owner 合同链接与动作指称（创建并绑定 Issue） | `dd-feature-development-workflow/SKILL.md` |
+| T-01 | AC-01 | Environment Stage 行文本同时含 owner 合同链接与动作指称（创建并绑定 Issue） | `fdev/SKILL.md` |
 | T-02 | AC-01 | 该义务位于 Stage 路由表 Environment 行内，不在文件末尾的被动路由清单 | 同上（行位置约束） |
 | T-03 | AC-04 | 红线含一条覆盖"未完成绑定尝试就过 Environment Gate" | 同上 |
-| T-04 | AC-02 | Environment 段义务句直接出现创建 Issue 的动作指称，不只是指向 owner 合同 | `dd-bug-fix-workflow/SKILL.md` |
+| T-04 | AC-02 | Environment 段义务句直接出现创建 Issue 的动作指称，不只是指向 owner 合同 | `bug/SKILL.md` |
 | T-05 | AC-04 | 红线含对应条目 | 同上 |
 | T-06 | AC-02 | 义务表述**不在** `## Bug State` 节内（该节被既有测试逐字锁定且禁创建动词） | 同上 |
-| T-07 | AC-05 | Preflight 含一条要求**以 Environment Gate 为绑定 Gate 的 Feature/Bug 两类工作流**在 Environment Gate 前完成尝试的条目。写成泛化的「声明该义务的工作流」会再次把四类强制工作流错误映射到 Environment Gate | `dd-workflow-runtime/SKILL.md` |
+| T-07 | AC-05 | Preflight 含一条要求**以 Environment Gate 为绑定 Gate 的 Feature/Bug 两类工作流**在 Environment Gate 前完成尝试的条目。写成泛化的「声明该义务的工作流」会再次把四类强制工作流错误映射到 Environment Gate | `wrt/SKILL.md` |
 | T-08 | AC-05 | Preflight 新增条目不替换既有 `references/task-tracking.md` 链接 | 同上（既有 `test_task_tracking_linked_from_runtime_skill` 的邻接保护） |
-| T-09 | AC-06 | 通用字段表示的 JSON 示例含 `"tracking"` 键 | `dd-workflow-runtime/references/state.md` |
+| T-09 | AC-06 | 通用字段表示的 JSON 示例含 `"tracking"` 键 | `wrt/references/state.md` |
 | T-10 | AC-06 | `state.md` 不含 owner 嵌套字段名（交由既有 `test_tracking_nested_schema_single_owner` 守护，T-10 只加正向断言） | 同上 |
 | T-11 | AC-12 | 变异测试：临时移除 T-01 断言的义务表述后，T-01 必须失败 | 变异探针 |
 | T-12 | AC-09（对称性） | 两个入口的义务表述都存在且都含动作指称（对称断言，防止只修一个） | 两个 SKILL.md |
@@ -125,7 +125,7 @@
 | T-73 | 判定器引用的 `tracking` 子字段名 ⊆ owner 合同 §2 schema 块声明的字段名 |
 | T-74 | 判定器 `RECORDED_OUTCOMES`（`(sync, sync_reason)` 配对集）== §4 表逐行抽出的配对集，双向相等 |
 | T-75 | 判定器 `SUPPORTED_PROVIDERS` == §2 登记的 provider |
-| T-76 | 判定器 mandatory／exempt workflow type 集 == §2 的枚举与 §12 中**声明不适用**的行（按在表中出现识别会误收 `dd-git-workflow`） |
+| T-76 | 判定器 mandatory／exempt workflow type 集 == §2 的枚举与 §12 中**声明不适用**的行（按在表中出现识别会误收 `git`） |
 | T-77 | legacy 边界：owner §3.2 表达式仍为 `` `< 2` ``，判定器 `LEGACY_SCHEMA_VERSIONS == set(range(CURRENT))` 且负数不在 legacy。这是**关系**而非与字面相等——判定器对字面文本做了有意收窄 |
 
 T-70~T-75 从 `task-tracking.md` 用正则抽取词表/配对，与判定器常量双向比对。抽取失败（如表格结构变化）必须 FAIL 而非静默跳过——否则 owner 改版后测试假绿。

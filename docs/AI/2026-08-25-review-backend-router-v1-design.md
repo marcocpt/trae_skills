@@ -15,7 +15,7 @@ adapter.
 | Backend invocation, capability and read-only requirements | `agents/review-backends.yaml` | Validate and invoke one adapter |
 | Role → ordered backend candidates and fallback categories | `agents/routing-policy.yaml` | Select the first eligible backend |
 | Workflow state, lease, rework and external authorization lifecycle | Runtime state/workflow | Supplied as request evidence; never owned by an adapter |
-| A/B/C review semantics and external finding closure | Existing runtime and `gpt-grilling-review` contracts | Referenced, not duplicated |
+| A/B/C review semantics and external finding closure | Existing runtime and `gpt` contracts | Referenced, not duplicated |
 
 ## Request and result contracts
 
@@ -35,7 +35,7 @@ scope: [relative/file]
 verification: [{name: tests, status: passed, evidence: ...}]
 external_review: {authorization: approved, scope: [relative/file]}
 readonly_evidence:
-  - {backend: mcp-review, mode: snapshot-send-only, level: L6, confirmed: true, source: dd-workflow-runtime/tests/evidence/mcp-review-l6-evidence.yaml}
+  - {backend: mcp-review, mode: snapshot-send-only, level: L6, confirmed: true, source: wrt/tests/evidence/mcp-review-l6-evidence.yaml}
   - {backend: codex-cli, mode: codex-read-only-transport, level: L6, confirmed: true, source: ...}
 context: {hop_count: 0, dispatch_chain: []}
 ```
@@ -100,7 +100,7 @@ retrieves the result through `chatgpt_get_result`; it does not supply a repo
 path and it never calls `chatgpt_send_file`.  This transport description is
 not by itself backend-specific L6 evidence.  The real backend-bound probe is
 recorded in
-`dd-workflow-runtime/tests/evidence/mcp-review-l6-evidence.yaml`; Router
+`wrt/tests/evidence/mcp-review-l6-evidence.yaml`; Router
 eligibility may use that proof only after checking its exact backend, mode,
 level, confirmation, and source.  The provider response is a strict
 `dd-review-provider/1` JSON object; Markdown or incomplete scope is rejected

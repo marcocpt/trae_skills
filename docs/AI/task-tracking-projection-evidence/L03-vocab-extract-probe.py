@@ -2,7 +2,7 @@
 """L-03 探针：从 task-tracking.md 真实表格抽取词表，验证 Design §3.4 的防漂移假设。
 
 一次性取证探针，不是交付物。产出 L03-vocab-extract-probe.md。
-真实依赖：dd-workflow-runtime/references/task-tracking.md（owner 合同，无 mock）。
+真实依赖：wrt/references/task-tracking.md（owner 合同，无 mock）。
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-TT = REPO_ROOT / "dd-workflow-runtime" / "references" / "task-tracking.md"
+TT = REPO_ROOT / "wrt" / "references" / "task-tracking.md"
 
 
 def section(text: str, heading: str) -> str:
@@ -94,7 +94,7 @@ def main() -> int:
         return 1
     print("真实 state:", state_file)
 
-    validator = REPO_ROOT / "dd-workflow-runtime" / "agents" / "validate-tracking-binding.py"
+    validator = REPO_ROOT / "wrt" / "agents" / "validate-tracking-binding.py"
     if not validator.exists():
         print("NOTE: 判定器尚未实现（Phase 1 Task 1 产出），跳过真实 state 判定")
         print("\nRESULT: passed（仅词表抽取假设成立；真实 state 判定待 Phase 1 补验）")

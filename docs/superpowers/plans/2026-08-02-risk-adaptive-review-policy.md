@@ -15,7 +15,7 @@
 - 修改：`dd-shared-subagent/SKILL.md` — 定义三档执行方式、默认等级、显式升级触发器及复验规则。
 - 修改：`dd-shared-workflow-runtime/SKILL.md` — 说明风险仅调整执行成本，确定性验证与验收条件不变。
 - 修改：`dd-brownfield-baseline/SKILL.md` — 移除基线盘点的类别型 `high` 默认值，改为共享规则的初始等级和升级路径。
-- 修改：`dd-ai-refactor-workflow/SKILL.md` — 移除每次提交后三代理并行的硬编码，改为当前等级的三视角审查。
+- 修改：`rfct/SKILL.md` — 移除每次提交后三代理并行的硬编码，改为当前等级的三视角审查。
 
 ### 任务 1：将共享审查等级改为风险触发升级
 
@@ -91,13 +91,13 @@ git commit -m "refactor(skills): apply risk-adaptive review defaults"
 ### 任务 3：移除重构工作流的每提交并行硬编码并做一致性检查
 
 **文件：**
-- 修改：`dd-ai-refactor-workflow/SKILL.md:119`
+- 修改：`rfct/SKILL.md:119`
 - 测试：四份修改后的 Skill
 
 - [ ] **步骤 1：运行会失败的重构入口断言**
 
 ```bash
-LC_ALL=en_US.UTF-8 ruby -EUTF-8:UTF-8 -e 'text = File.read("dd-ai-refactor-workflow/SKILL.md"); abort "legacy parallel rule remains" if text.include?("每个 Commit 后执行 [dd-shared-subagent]"); abort "current-level rule missing" unless text.include?("按当前 `review_level` 执行")'
+LC_ALL=en_US.UTF-8 ruby -EUTF-8:UTF-8 -e 'text = File.read("rfct/SKILL.md"); abort "legacy parallel rule remains" if text.include?("每个 Commit 后执行 [dd-shared-subagent]"); abort "current-level rule missing" unless text.include?("按当前 `review_level` 执行")'
 ```
 
 预期：失败；当前文件强制每个 Commit 后执行三视角并行检查。
@@ -111,7 +111,7 @@ LC_ALL=en_US.UTF-8 ruby -EUTF-8:UTF-8 -e 'text = File.read("dd-ai-refactor-workf
 - [ ] **步骤 3：运行全量策略检查**
 
 ```bash
-LC_ALL=en_US.UTF-8 ruby -EUTF-8:UTF-8 -e 'shared = File.read("dd-shared-subagent/SKILL.md"); runtime = File.read("dd-shared-workflow-runtime/SKILL.md"); baseline = File.read("dd-brownfield-baseline/SKILL.md"); refactor = File.read("dd-ai-refactor-workflow/SKILL.md"); abort "shared default missing" unless shared.include?("默认等级：`low`"); abort "runtime invariant missing" unless runtime.include?("不删除验收条件"); abort "baseline default missing" unless baseline.include?("默认 `review_level=low`"); abort "refactor level rule missing" unless refactor.include?("按当前 `review_level` 执行")'
+LC_ALL=en_US.UTF-8 ruby -EUTF-8:UTF-8 -e 'shared = File.read("dd-shared-subagent/SKILL.md"); runtime = File.read("dd-shared-workflow-runtime/SKILL.md"); baseline = File.read("dd-brownfield-baseline/SKILL.md"); refactor = File.read("rfct/SKILL.md"); abort "shared default missing" unless shared.include?("默认等级：`low`"); abort "runtime invariant missing" unless runtime.include?("不删除验收条件"); abort "baseline default missing" unless baseline.include?("默认 `review_level=low`"); abort "refactor level rule missing" unless refactor.include?("按当前 `review_level` 执行")'
 git diff --check
 ```
 
@@ -120,7 +120,7 @@ git diff --check
 - [ ] **步骤 4：提交实现**
 
 ```bash
-git add dd-ai-refactor-workflow/SKILL.md
+git add rfct/SKILL.md
 git commit -m "refactor(skills): make refactor review level-aware"
 ```
 

@@ -1,0 +1,462 @@
+#!/usr/bin/env python3
+"""Contract tests for fdev token-efficient refactor.
+
+These tests assert the *target* contracts defined in the refactor plan
+(AC-01 .. AC-14). They are red while the legacy SKILL.md / references are
+still in place, and go green as tasks 2-6 land the new schema and Stage split.
+"""
+from __future__ import annotations
+
+import unittest
+from pathlib import Path
+
+WORKFLOW_ROOT = Path(__file__).resolve().parents[1]
+RUNTIME_ROOT = WORKFLOW_ROOT.parent / "wrt"
+
+SKILL = WORKFLOW_ROOT / "SKILL.md"
+ARTIFACT = RUNTIME_ROOT / "references" / "artifact-contract.md"
+ARTIFACT_VERIFICATION = RUNTIME_ROOT / "references" / "artifact-verification.md"
+ARTIFACT_SOURCE = RUNTIME_ROOT / "references" / "artifact-source-and-packet.md"
+ARTIFACT_LIFECYCLE = RUNTIME_ROOT / "references" / "artifact-lifecycle.md"
+REVIEW_GATE = RUNTIME_ROOT / "references" / "review-gate.md"
+CANDIDATE = WORKFLOW_ROOT / "references" / "candidate.md"
+DELIVERY = WORKFLOW_ROOT / "references" / "delivery-and-closure.md"
+DOCUMENTATION = WORKFLOW_ROOT / "references" / "documentation.md"
+STATE = RUNTIME_ROOT / "references" / "state.md"
+STATE_AND_HANDOFF = WORKFLOW_ROOT / "references" / "state-and-handoff.md"
+IMPLEMENTATION = WORKFLOW_ROOT / "references" / "implementation.md"
+PLANNING = WORKFLOW_ROOT / "references" / "planning.md"
+PLANNING_STAGE = WORKFLOW_ROOT / "references" / "planning-stage.md"
+UI_EVIDENCE = RUNTIME_ROOT / "references" / "ui-evidence.md"
+TRACER = RUNTIME_ROOT / "references" / "tracer-contract.md"
+
+
+def read(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+class TestStageOrderDocumentationBeforeCandidate(unittest.TestCase):
+    """AC-07: Documentation completes before candidate freeze."""
+
+    def test_stage_order_documentation_before_candidate(self):
+        text = read(SKILL)
+        # In the new fixed order: documentation precedes final-candidate.
+        impl = text.find("implementation")
+        doc = text.find("documentation")
+        cand = text.find("final-candidate")
+        for name, pos in (("implementation", impl), ("documentation", doc),
+                          ("final-candidate", cand)):
+            self.assertNotEqual(pos, -1,
+                                f"{name} not found in SKILL.md Stage order (AC-07)")
+        self.assertLess(impl, doc, "documentation must come after implementation (AC-07)")
+        self.assertLess(doc, cand, "documentation must precede final-candidate (AC-07)")
+
+
+class TestCandidateDoesNotPromoteTarget(unittest.TestCase):
+    """AC-08: Candidate Gate produces a candidate without updating target branch."""
+
+    def test_candidate_does_not_promote_target(self):
+        text = read(CANDIDATE)
+        self.assertNotIn("candidate_ready", text,
+                         "Candidate must not expose derived candidate_ready (single-review P0)")
+        # Candidate must NOT promote develop/main itself.
+        self.assertIn("Candidate Gate 不更新 develop/main", text,
+                      "Candidate must not promote develop/main (AC-08)")
+
+    def test_no_derived_candidate_ready_anywhere(self):
+        for path, name in ((STATE, "state.md"), (CANDIDATE, "candidate.md"),
+                           (STATE_AND_HANDOFF, "state-and-handoff.md"), (DELIVERY, "delivery-and-closure.md")):
+            self.assertNotIn("candidate_ready", read(path),
+                             f"{name} must not contain derived candidate_ready (single-review P0)")
+        self.assertIn("候选是否就绪只由上述源字段推导判定", read(STATE_AND_HANDOFF),
+                      "state-and-handoff must derive candidate readiness from source fields (single-review P0)")
+
+
+class TestDeliveryPromotesExactCandidateSha(unittest.TestCase):
+    """AC-09: Delivery only promotes the exact candidate SHA."""
+
+    def test_delivery_promotes_exact_candidate_sha(self):
+        delivery = read(DELIVERY)
+        candidate = read(CANDIDATE)
+        self.assertIn("delivery_authorization", delivery,
+                      "delivery_authorization must be kept independently (AC-09)")
+        self.assertIn("candidate_sha", delivery,
+                      "Delivery must reference candidate_sha (AC-09)")
+        self.assertIn("review_sha == gap_sha == ci_sha == candidate_sha", delivery,
+                      "Delivery must enforce exact-SHA invariant (AC-09)")
+        # candidate.md must emit structured exact-SHA fields for consumption.
+        self.assertIn("full_ci_run.head_sha", candidate,
+                      "candidate.md must bind full_ci_run.head_sha to candidate_sha (R-001)")
+        self.assertIn("candidate_review.sha", candidate,
+                      "candidate.md must bind review to candidate_sha (R-001)")
+        self.assertIn("full_spec_gap.sha", candidate,
+                      "candidate.md must bind gap to candidate_sha (R-001)")
+        # closure must consume the same fields (cross-file producer/consumer).
+        self.assertIn("full_ci_run.head_sha", delivery,
+                      "closure must consume full_ci_run.head_sha (R-001)")
+
+    def test_documentation_gate_owned_by_documentation_reference(self):
+        doc = read(DOCUMENTATION)
+        delivery = read(DELIVERY)
+        # final-candidate transition is owned by documentation.md, not delivery.
+        self.assertIn("current_stage=final-candidate", doc,
+                      "documentation.md must own the final-candidate Gate (R-003)")
+        self.assertNotIn("current_stage=final-candidate", delivery,
+                         "delivery-and-closure.md must not own the documentation Gate (R-003)")
+
+
+class TestPhaseReadsAnchorsNotFullSpecs(unittest.TestCase):
+    """AC-05: Phase reads anchors/global constraints, not full spec re-read."""
+
+    def test_phase_reads_anchors_not_full_specs(self):
+        text = read(SKILL)
+        # New phase contract reads anchors, not the entire approved spec.
+        self.assertIn("anchors", text,
+                      "Phase must read anchors (AC-05)")
+        self.assertNotIn("完整读取该包引用的批准原始规格", text,
+                         "Phase must NOT re-read full approved spec (AC-05)")
+
+    def test_implementation_gap_table_uses_sources_anchors(self):
+        impl = read(IMPLEMENTATION)
+        self.assertIn("sources[].anchors", impl,
+                      "Implementation gap must be scoped to sources[].anchors (Batch1 P0-3)")
+        self.assertNotIn("gap table 与原始规格逐项一致", impl,
+                         "Implementation must not imply full-spec re-read via ambiguous phrase (Batch1 P0-3)")
+
+
+class TestCandidateRequiresFrozenReviewAndFullGap(unittest.TestCase):
+    """AC-08: Candidate requires frozen standard review and full-spec gap."""
+
+    def test_candidate_requires_frozen_standard_review_and_full_gap(self):
+        text = read(CANDIDATE)
+        self.assertIn("review_level", text,
+                      "Candidate review must fix review_level (AC-08)")
+        self.assertIn("full_spec_gap", text,
+                      "Candidate review must produce full_spec_gap (AC-08)")
+
+    def test_candidate_full_spec_gap_covers_normative_and_negative(self):
+        text = read(CANDIDATE)
+        for key in ("normative stable IDs/anchors", "Out of Scope", "Decision Freedom",
+                    "coverage/disposition"):
+            self.assertIn(key, text,
+                          f"Candidate full-spec gap must cover '{key}' (Batch1 P1-4)")
+
+
+class TestCompactVerificationKeepsInvariants(unittest.TestCase):
+    """AC-04: compact verification keeps coverage/run/bindings/validity."""
+
+    def test_compact_verification_keeps_coverage_run_bindings_validity(self):
+        text = read(ARTIFACT_VERIFICATION)
+        for key in ("coverage", "runs", "bindings", "validity"):
+            self.assertIn(key, text,
+                          f"verification must keep '{key}' (AC-04)")
+
+    def test_artifact_contract_is_router_and_split(self):
+        router = read(ARTIFACT)
+        # Router must point to three split files and not contain old sections duplicated
+        self.assertIn("artifact-source-and-packet.md", router,
+                      "router must route to source-and-packet (Batch2 P1-5)")
+        self.assertIn("artifact-verification.md", router,
+                      "router must route to verification (Batch2 P1-5)")
+        self.assertIn("artifact-lifecycle.md", router,
+                      "router must route to lifecycle (Batch2 P1-5)")
+        # Router should be small (progressive disclosure) and not contain full verification lifecycle content
+        self.assertLess(len(router), 3000,
+                        "router must be small (<3KB) for token saving (Batch2 P1-5)")
+        self.assertNotIn("迁移台账", router,
+                         "router must not duplicate lifecycle ledger (single owner)")
+        # Split files must each contain their owned invariants
+        self.assertIn("source_manifest", read(ARTIFACT_SOURCE),
+                      "source-and-packet must own source_manifest (Batch2 P1-5)")
+        self.assertIn("validity", read(ARTIFACT_VERIFICATION),
+                      "verification must own validity (Batch2 P1-5)")
+        self.assertIn("同步影响矩阵", read(ARTIFACT_LIFECYCLE),
+                      "lifecycle must own sync matrix (Batch2 P1-5)")
+
+    def test_planning_and_implementation_use_split_contracts(self):
+        # Hot consumers must read split files, not the old monolith
+        self.assertIn("artifact-source-and-packet.md", read(PLANNING),
+                      "planning.md must read source-and-packet (Batch2 P1-5)")
+        self.assertIn("artifact-source-and-packet.md", read(PLANNING_STAGE),
+                      "planning-stage.md must read source-and-packet (Batch2 P1-5)")
+        self.assertIn("artifact-verification.md", read(IMPLEMENTATION),
+                      "implementation.md must read verification (Batch2 P1-5)")
+        self.assertIn("artifact-lifecycle.md", read(DOCUMENTATION),
+                      "documentation.md must read lifecycle (Batch2 P1-5)")
+
+
+class TestUIFreshnessConsumesSharedEvidence(unittest.TestCase):
+    """Batch2 UI: implementation must consume shared ui-evidence freshness."""
+
+    def test_implementation_references_ui_evidence(self):
+        impl = read(IMPLEMENTATION)
+        self.assertIn("ui-evidence.md", impl,
+                      "implementation must consume shared ui-evidence (Batch2 UI)")
+
+    def test_ui_evidence_has_freshness_binding(self):
+        ui = read(UI_EVIDENCE)
+        for key in ("runtime_binding", "stale", "unverified", "build provenance"):
+            self.assertIn(key, ui,
+                          f"ui-evidence must define freshness '{key}' (Batch2 UI)")
+
+
+class TestPlanningNoDuplicateFullRead(unittest.TestCase):
+    """Batch3 P0-2: Planning 去第二次全量重读，必须以 inventory 为基准。"""
+
+    def test_planning_stage_uses_inventory_and_no_unconditional_reread(self):
+        stage = read(PLANNING_STAGE)
+        self.assertIn("normative coverage index", stage,
+                      "planning-stage must build normative coverage index (Batch3 P0-2)")
+        self.assertIn("canonical-index.json", stage,
+                      "planning-stage must define canonical-index.json with digest binding (Batch3 P0-2)")
+        self.assertIn("不得为自检无条件再次完整读取整套规格", stage,
+                      "planning-stage must forbid unconditional full re-read (Batch3 P0-2)")
+        self.assertIn("validate-workflow-artifact.py planning-index <canonical-index.json> <plan>", stage,
+                      "planning-stage must reference dual-param JSON validator (Batch3 P0-2)")
+
+    def test_planning_self_check_uses_inventory(self):
+        plan = read(PLANNING)
+        self.assertIn("canonical inventory", plan,
+                      "planning self-check must use canonical inventory (Batch3 P0-2)")
+        self.assertIn("canonical-index.json", plan,
+                      "planning must reference canonical-index.json (Batch3 P0-2)")
+        self.assertNotIn("重新浏览批准原始规格中的每个适用章节", plan,
+                         "planning must not require full re-read of every section (Batch3 P0-2)")
+
+
+class TestMainSkillRoutesEveryReferenceDirectly(unittest.TestCase):
+    """AC-01/AC-02: main SKILL.md routes each Stage reference one hop away."""
+
+    def test_main_skill_routes_every_reference_directly(self):
+        skill = read(SKILL)
+        expected_refs = [
+            "state-and-handoff.md",
+            "intake-and-environment.md",
+            "specification.md",
+            "planning-stage.md",
+            "implementation.md",
+            "documentation.md",
+            "candidate.md",
+        ]
+        for ref in expected_refs:
+            self.assertIn(ref, skill,
+                          f"SKILL.md must route {ref} directly (AC-02)")
+
+
+class TestRetiredReferencesHaveNoActiveLinks(unittest.TestCase):
+    """AC-13: retired references must not be linked from active paths."""
+
+    def test_retired_references_have_no_active_links(self):
+        skill = read(SKILL)
+        for retired in ("specification-and-planning.md",
+                        "implementation-and-verification.md"):
+            self.assertNotIn(retired, skill,
+                             f"SKILL.md must not route retired {retired} (AC-13)")
+
+
+class TestStateProducerConsumerConsistent(unittest.TestCase):
+    """R-001/R-004: shared state.md producer must match feature schema consumer."""
+
+    def test_state_md_no_legacy_candidate_fields(self):
+        state = read(STATE)
+        self.assertNotIn("final_ci_passed", state,
+                         "state.md producer must not write legacy final_ci_passed (R-001)")
+        self.assertNotIn("merge_in_progress", state,
+                         "state.md producer must not write legacy merge_in_progress (R-004)")
+        self.assertIn("full_ci_run", state,
+                      "state.md producer must write structured full_ci_run (R-001)")
+        self.assertNotIn("full_ci_passed", state,
+                         "state.md must not write derived full_ci_passed (Batch4 P0-1)")
+        self.assertIn("conclusion", state,
+                      "state.md full_ci_run must have conclusion (Batch4 P0-1)")
+
+    def test_no_derived_full_ci_passed_anywhere(self):
+        for path, name in ((STATE, "state.md"), (CANDIDATE, "candidate.md"),
+                           (STATE_AND_HANDOFF, "state-and-handoff.md"), (DELIVERY, "delivery-and-closure.md")):
+            text = read(path)
+            self.assertNotIn("full_ci_passed", text,
+                             f"{name} must not contain derived full_ci_passed (Batch4 P0-1)")
+        # delivery closure must check conclusion==success, not full_ci_passed
+        delivery = read(DELIVERY)
+        self.assertIn("conclusion==success", delivery,
+                      "delivery closure must check conclusion==success (Batch4 P0-1)")
+        self.assertIn("full_ci_run", delivery,
+                      "delivery must reference full_ci_run (Batch4 P0-1)")
+
+    def test_feature_state_uses_in_progress_not_booleans(self):
+        handoff = read(STATE_AND_HANDOFF)
+        self.assertIn("in_progress", handoff,
+                      "feature state must reuse runtime in_progress (R-004)")
+        self.assertNotIn("merge_in_progress", handoff,
+                         "feature state must not define boolean merge_in_progress (R-004)")
+        self.assertNotIn("cleanup_in_progress", handoff,
+                         "feature state must not define boolean cleanup_in_progress (R-004)")
+
+    def test_integration_gate_binds_implementation_digest_not_candidate_sha(self):
+        impl = read(IMPLEMENTATION)
+        self.assertIn("integration_verification.bindings.implementation_digest", impl,
+                      "Integration Gate must bind implementation digest, not candidate_sha (R-005)")
+        self.assertNotIn("integration_ci_run.head_sha == candidate_sha", impl,
+                         "Integration Gate must not reference candidate_sha before freeze (R-005)")
+
+    def test_feature_closure_keeps_state_until_after_cleanup(self):
+        state = read(STATE)
+        delivery = read(DELIVERY)
+        # state.md must not delete feature state immediately after merge.
+        self.assertIn("feature-development", state,
+                      "state.md must branch deletion by WORKFLOW_TYPE (R4-001)")
+        self.assertIn("禁止在 Closure 校验与 Receipt 写入前删除", state,
+                      "state.md must forbid deleting feature state before Closure (R4-001)")
+        # closure writes Receipt and cleanup in_progress before deleting state.
+        self.assertIn("Completion Receipt", delivery,
+                      "delivery must write Completion Receipt during Closure (R4-001)")
+        self.assertIn("operation: cleanup", delivery,
+                      "delivery must write cleanup in_progress before state disposal (R4-001)")
+
+    def test_legacy_stage_mapping_matches_stage_graph(self):
+        handoff = read(STATE_AND_HANDOFF)
+        # legacy mapping must follow new Stage order: impl → doc → final-candidate → confirmation.
+        mapping_block = handoff.split("legacy `current_step` mapping")[1]
+        self.assertIn("4 / 4.x → implementation", mapping_block,
+                      "legacy mapping must keep implementation at 4 (R4-002)")
+        self.assertIn("5 / 5.x → documentation", mapping_block,
+                      "legacy mapping must map documentation to 5, before final-candidate (R4-002)")
+        self.assertIn("6 / 6.x → final-candidate", mapping_block,
+                      "legacy mapping must map final-candidate to 6 (R4-002)")
+        self.assertIn("7 → confirmation", mapping_block,
+                      "legacy mapping must map confirmation to 7 (R4-002)")
+        self.assertIn("不得用于排序或推进", mapping_block,
+                      "legacy current_step must be label-only, not for ordering (R4-002)")
+
+
+class TestTracerBulletContract(unittest.TestCase):
+    """Tracer Bullet：两轴模型 + Phase 0 前置 + 单一属主 + 决策闭环。"""
+
+    def test_tracer_contract_is_single_owner_of_schema(self):
+        tr = read(TRACER)
+        for key in ("TracerDecision", "TracerResult", "entry_point",
+                    "implementation_digest", "review-gate.md"):
+            self.assertIn(key, tr,
+                          f"tracer-contract.md must own '{key}' (tracer single owner)")
+        # 不新增失败态：复用 BLOCKED，无 tracer 专属 failed
+        self.assertIn("不新增 tracer 专属失败态", tr,
+                      "tracer must reuse global BLOCKED, not invent failed (tracer)")
+        # 证据 run-bound：Phase 0 禁引 candidate_sha
+        self.assertIn("禁止引用 `candidate_sha`", tr,
+                      "tracer evidence must bind implementation_digest, never candidate_sha (tracer)")
+
+    def test_router_files_do_not_inline_full_schema(self):
+        # 入口文件只引用，不复制完整 schema（entry_point 仅属 owner 文件）
+        self.assertNotIn("entry_point", read(SKILL),
+                         "SKILL.md must reference, not inline, tracer schema (single owner)")
+        self.assertNotIn("entry_point", read(PLANNING_STAGE),
+                         "planning-stage.md must reference, not inline, tracer schema (single owner)")
+
+    def test_planning_records_decision_not_result(self):
+        stage = read(PLANNING_STAGE)
+        self.assertIn("tracer.decision", stage,
+                      "planning must record tracer decision (tracer)")
+        self.assertIn("target_ac", stage,
+                      "planning must record target_ac reusing existing AC (tracer)")
+        self.assertIn("tracer-contract", stage,
+                      "planning must reference tracer-contract owner (tracer)")
+
+    def test_implementation_gates_phase1_on_tracer(self):
+        impl = read(IMPLEMENTATION)
+        self.assertIn("不得开始 Phase 1", impl,
+                      "required tracer must gate Phase 1 start (tracer)")
+        self.assertIn("Phase 0", impl,
+                      "tracer executes as Phase 0, not a new Stage (tracer)")
+        self.assertIn("implementation_digest", impl,
+                      "Phase 0 evidence must bind implementation_digest (tracer)")
+
+    def test_candidate_checks_decision_closure(self):
+        cand = read(CANDIDATE)
+        self.assertIn("决策已闭环", cand,
+                      "candidate must verify tracer decision closure, not evidence existence (tracer)")
+        self.assertIn("tracer-contract", cand,
+                      "candidate must reference tracer-contract §9 (tracer)")
+
+    def test_state_field_and_recovery_no_skip(self):
+        handoff = read(STATE_AND_HANDOFF)
+        self.assertIn("tracer:", handoff,
+                      "feature state must carry tracer field (tracer)")
+        self.assertIn("不得进 Phase 1", handoff,
+                      "recovery must not skip Phase 0 when required (tracer)")
+        # 不新增 Stage：current_step 映射仍把 tracer 落在 implementation 4.x
+        self.assertIn("4 / 4.x → implementation", handoff,
+                      "tracer must not add a new Stage to legacy mapping (tracer)")
+
+
+class TestTrackingMissingDoesNotBlock(unittest.TestCase):
+    """task-tracking design: tracking binding failure must never block a Stage.
+
+    The original probe was the literal "绑定失败" in this file. Since the binding
+    attempt became mandatory and its failure semantics moved to the owner
+    (task-tracking §3/§4), the literal is no longer the right probe — the
+    protection is now: the hook must exist, delegate the outcome, and keep the
+    Stage non-blocking. Owner-side non-blocking is asserted by
+    `check_failure_matrix_allows_workflow` in the runtime suite.
+    """
+
+    def test_environment_gate_survives_binding_failure(self):
+        text = read(WORKFLOW_ROOT / "references" / "intake-and-environment.md")
+        self.assertIn("task-tracking", text,
+                      "Environment must route the binding outcome to the owning contract")
+        self.assertIn("不阻塞本 Stage", text,
+                      "tracking binding failure must not block the Environment Stage (task-tracking)")
+
+
+class TestTrackingHookDelegatesToOwner(unittest.TestCase):
+    """task-tracking §2/§3: the Environment hook owns the call site only.
+
+    Primary protection is structural: exactly two lines in the Environment section
+    may touch tracking — the call-site hook and the Gate persistence clause — so
+    any added creation/failure/authorization rule is caught regardless of wording.
+    """
+
+    ENV = "2. Environment"
+    TOKENS = ("task-tracking", "tracking", "绑定", "Issue", "sync", "同步")
+
+    def _env(self) -> str:
+        return read(WORKFLOW_ROOT / "references" / "intake-and-environment.md") \
+            .split(f"## {self.ENV}", 1)[1].split("\n## ", 1)[0]
+
+    def test_environment_has_only_the_hook_and_the_gate_clause(self):
+        lines = [ln.strip() for ln in self._env().splitlines() if any(t in ln for t in self.TOKENS)]
+        self.assertEqual(
+            len(lines), 2,
+            f"Environment must contain exactly the tracking hook and the Gate clause, got {lines}",
+        )
+        hook, gate_clause = lines
+        for required in ("task-tracking", "§3", "持久化结果", "不阻塞本 Stage"):
+            self.assertIn(required, hook, f"hook must require {required}: {hook}")
+        self.assertIn("owner 合同", gate_clause,
+                      "Gate clause must defer to the owner-defined result")
+        self.assertIn("持久化", gate_clause, "Gate must require the result to be persisted")
+
+    def test_hook_does_not_become_a_blocking_precondition(self):
+        env = self._env()
+        self.assertIn("完全由该合同定义", env, "hook must defer semantics to the owner")
+        self.assertIn("不阻塞本 Stage", env, "tracking outcomes must stay non-blocking")
+
+    def test_owner_result_encoding_stays_out_of_the_gate(self):
+        gate = self._env().split("Gate：", 1)[1]
+        for token in ("sync_reason", "sync=", "user-declined", "binding-ambiguous",
+                      "create-outcome-unknown", "provider-unavailable", "no-policy"):
+            self.assertNotIn(token, gate,
+                             f"feature Gate must not enumerate owner result encoding ({token})")
+
+
+class TestNoTrackingFieldDuplicationInFeatureState(unittest.TestCase):
+    """task-tracking design: `tracking` nested schema is runtime/task-tracking owned."""
+
+    def test_feature_state_has_no_tracking_nested_fields(self):
+        text = read(STATE_AND_HANDOFF)
+        for nested in ("issue_number", "sync_reason", "pending_checkpoint"):
+            self.assertNotIn(nested, text,
+                             f"feature state must not duplicate tracking field {nested} (task-tracking)")
+
+
+if __name__ == "__main__":
+    unittest.main()

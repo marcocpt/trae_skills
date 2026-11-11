@@ -3,7 +3,7 @@
 - Feature: tracking-binding-reachability
 - Workflow ID: feature-development-20261003T053419Z-ee41fa8
 - 探针脚本：`L03-vocab-extract-probe.py`
-- 真实依赖：`dd-workflow-runtime/references/task-tracking.md`（owner 合同，无 mock）
+- 真实依赖：`wrt/references/task-tracking.md`（owner 合同，无 mock）
 - 日期: 2026-10-03
 
 ## 1. 被验证的假设

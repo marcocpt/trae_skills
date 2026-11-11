@@ -29,7 +29,7 @@ trigger: codex-cli 恢复进入需要 CLOSED 权的路径，或 FR-MB-012 证据
 - `agents/codex-review`（adapter）：新增 `_frozen_baseline_failure`，在**准入**与**轮后**（含超时回退前）各复验一次冻结基线——豁免后端不经 Router 直调时也能机械作废被改动的轮次（与 opencode-review 的 RV-004 路线对齐）。
 - `agents/dispatch-review.py`：豁免机制（none 词汇、成对校验、决策记录存在性、轮后基线复验、非只读标记）此前已由 opencode-cli 引入，本次直接复用；同时补上 `readonly_exception` 的仓库根 containment 校验（见 `LATER-20260923-waiver-record-path-containment`，该 TODO 在本项内完成）。
 - `agents/validate-bindings.py`：codex 只读合同改为**要素化**校验——`sandbox_mode = read-only` 是保留的纵深防御要素，不再要求 `readonly_required: true`。
-- `gpt-grilling-review/references/transport.md`、`dd-workflow-runtime/references/model-routing.md`：记录 codex-cli 豁免及其"不得 CLOSED"约束与恢复条件。
+- `gpt/references/transport.md`、`wrt/references/model-routing.md`：记录 codex-cli 豁免及其"不得 CLOSED"约束与恢复条件。
 - 回归：`tests/test_codex_review.py`（轮后基线复验）、`tests/test_dispatch_review.py`（checked-in registry 与豁免路径）、`tests/test_validate_bindings.py`（要素化只读校验）。
 
 ## 恢复（Restore）条件

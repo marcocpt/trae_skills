@@ -20,7 +20,7 @@
 - 不把 GitHub Issue 变成第二套工作流状态；
 - 不复制 runtime state 的 Stage / Gate / CI / candidate SHA 语义；
 - 不实现跨机器互斥（§5.9 只做接管冲突检测，明确不是互斥）；
-- 不改动 `dd-later-tracking`；
+- 不改动 `later`；
 - 不新建顶层 Skill（遵守 `AGENTS.md` §2、§11）；
 - 第一阶段不创建 GitHub Project 视图（DP-2 已裁决：方案 A），映射规则先落合同。
 
@@ -63,7 +63,7 @@ GitHub Issue
 
 一句话边界：**Issue 可以告诉你去哪找，不可以告诉你已经 PASS 了什么。**
 
-`dd-workflow-runtime` 核心原则第 9 条（Canonical facts have one owner; derived views expire with their sources）已覆盖本设计的定性，不新增原则。
+`wrt` 核心原则第 9 条（Canonical facts have one owner; derived views expire with their sources）已覆盖本设计的定性，不新增原则。
 
 ---
 
@@ -94,7 +94,7 @@ GitHub Issue
 |---|---|
 | 规格套件（Requirements / Design / Test Matrix） | 本文档（目标/非目标 + 合同全文 + 改动清单 + 测试矩阵），其中 §5 为合同，§6 为测试矩阵 |
 | Phase 拆分 | 单 Phase：新增 reference → 路由接线 → 合同测试 |
-| 冻结 `candidate_sha` + 同 SHA 完整 CI | 冻结本次改动提交 SHA，跑 `dd-workflow-runtime/tests/` 与 `dd-feature-development-workflow/tests/` 全部合同测试 + `git diff --check` |
+| 冻结 `candidate_sha` + 同 SHA 完整 CI | 冻结本次改动提交 SHA，跑 `wrt/tests/` 与 `fdev/tests/` 全部合同测试 + `git diff --check` |
 | 独立强审 | 按 §3.1，走独立强审，不降级 |
 | 动作授权 | commit / push 仍需用户当前明确授权，本设计不授权任何 Git 或远端动作 |
 | Host Close | 按宿主合同执行 |
@@ -105,30 +105,30 @@ GitHub Issue
 
 | # | 文件 | 位置 | 改动 |
 |---|---|---|---|
-| 1 | `dd-workflow-runtime/references/task-tracking.md` | 新增 | §5 合同全文 |
-| 2 | `dd-workflow-runtime/references/runtime-contract.md` | §3 State Schema，`next_safe_action`（第 121 行）之后 | 只追加 `tracking: null` 一行 + 一句"子对象语义由 task-tracking.md 拥有"（借鉴第 126 行 `routing`/`review`/`external_review` 的语义属主分离原则；tracking 进一步把嵌套字段形状与枚举也统一下沉至 task-tracking.md）。**不在此定义嵌套字段** |
+| 1 | `wrt/references/task-tracking.md` | 新增 | §5 合同全文 |
+| 2 | `wrt/references/runtime-contract.md` | §3 State Schema，`next_safe_action`（第 121 行）之后 | 只追加 `tracking: null` 一行 + 一句"子对象语义由 task-tracking.md 拥有"（借鉴第 126 行 `routing`/`review`/`external_review` 的语义属主分离原则；tracking 进一步把嵌套字段形状与枚举也统一下沉至 task-tracking.md）。**不在此定义嵌套字段** |
 | 3 | 同上 | §5 Recovery（第 181-190 段之后） | 追加一条：tracking 指向的 Issue checkpoint 仅作定位与恢复提示，工作流事实必须重新验证仓库证据 |
-| 4 | `dd-workflow-runtime/SKILL.md` | 调用合同代码块（第 28-40 行） | 追加可选入参 `tracking: null` |
+| 4 | `wrt/SKILL.md` | 调用合同代码块（第 28-40 行） | 追加可选入参 `tracking: null` |
 | 5 | 同上 | Preflight 第 3 步（第 62 行） | 追加一句：存在 `tracking` 时按 task-tracking 取定位元数据，工作流事实仍以仓库证据为准 |
-| 6 | `dd-workflow-runtime/references/state.md` | 写入时机表 | 只追加一行"绑定 `tracking` 后按 task-tracking 写 checkpoint"，**不复制字段定义** |
-| 7 | `dd-feature-development-workflow/SKILL.md` | 按需读取清单（第 119-125 行） | 追加一行路由到 `task-tracking.md` |
-| 8 | `dd-feature-development-workflow/references/intake-and-environment.md` | §2 Environment「选定后」清单，第 64 行之后 | 追加一条：Environment Gate 前绑定或确认 `tracking`，绑定失败按 §5.4 失败矩阵处置，不阻塞本 Stage |
-| 9 | `dd-feature-development-workflow/references/state-and-handoff.md` | — | **不改**。不加 `tracking` 字段（属 runtime），最多加一句指向 |
-| 10 | `dd-bug-fix-workflow/SKILL.md` | 状态字段段（第 94 行）之后 | 追加一句：`bug_id` 不重载为 Issue 号，绑定用共享 `tracking` 字段 |
-| 11 | `dd-bug-fix-workflow/references/diagnosis-and-verification.md` | §2 Environment 记录块（第 58-63 行）之后 | 追加与第 8 条同一绑定规则：worktree 与分支确定后、Environment Gate 之前。**Bug 必须有与 Feature 对等的绑定 hook** |
-| 12 | `dd-bug-fix-workflow/references/state.md` | — | **不改字段** |
-| 13 | `dd-project-bootstrap-workflow`（`SKILL.md` 或 `references/execution-contract.md`） | 适当位置 | 追加一句声明：runtime 通用 schema 容忍 `tracking`；**第一阶段 Bootstrap 不自动创建、不自动绑定、不自动投影** |
+| 6 | `wrt/references/state.md` | 写入时机表 | 只追加一行"绑定 `tracking` 后按 task-tracking 写 checkpoint"，**不复制字段定义** |
+| 7 | `fdev/SKILL.md` | 按需读取清单（第 119-125 行） | 追加一行路由到 `task-tracking.md` |
+| 8 | `fdev/references/intake-and-environment.md` | §2 Environment「选定后」清单，第 64 行之后 | 追加一条：Environment Gate 前绑定或确认 `tracking`，绑定失败按 §5.4 失败矩阵处置，不阻塞本 Stage |
+| 9 | `fdev/references/state-and-handoff.md` | — | **不改**。不加 `tracking` 字段（属 runtime），最多加一句指向 |
+| 10 | `bug/SKILL.md` | 状态字段段（第 94 行）之后 | 追加一句：`bug_id` 不重载为 Issue 号，绑定用共享 `tracking` 字段 |
+| 11 | `bug/references/diagnosis-and-verification.md` | §2 Environment 记录块（第 58-63 行）之后 | 追加与第 8 条同一绑定规则：worktree 与分支确定后、Environment Gate 之前。**Bug 必须有与 Feature 对等的绑定 hook** |
+| 12 | `bug/references/state.md` | — | **不改字段** |
+| 13 | `boot`（`SKILL.md` 或 `references/execution-contract.md`） | 适当位置 | 追加一句声明：runtime 通用 schema 容忍 `tracking`；**第一阶段 Bootstrap 不自动创建、不自动绑定、不自动投影** |
 | 14 | 目标项目 `AGENTS.md`（Macim / CPDF / CNote 等） | 新增段落 | §5.8 授权模板；**不在本仓库** |
 
 测试改动见 §6。
 
-不改：`dd-git-workflow`（worktree 路径与 branch 推导规则不变）、`dd-later-tracking`、`multi-agent-branch-integration`（边界见 §5.11）。
+不改：`git`（worktree 路径与 branch 推导规则不变）、`later`、`brch`（边界见 §5.11）。
 
 ---
 
 ## 5. `task-tracking.md` 合同全文
 
-> 以下为待落盘全文，路径 `dd-workflow-runtime/references/task-tracking.md`。
+> 以下为待落盘全文，路径 `wrt/references/task-tracking.md`。
 
 ---
 
@@ -236,7 +236,7 @@ Design: ...
 Plan: ...
 ```
 
-**禁止写入 worktree 绝对路径。** Issue 是跨机器的，路径换电脑即失效。worktree 路径由 branch 按 `dd-git-workflow` 的布局推导。
+**禁止写入 worktree 绝对路径。** Issue 是跨机器的，路径换电脑即失效。worktree 路径由 branch 按 `git` 的布局推导。
 
 ## 6. 进度用 checkpoint 评论
 
@@ -324,7 +324,7 @@ none
 
 Issue 评论里写 `CI PASS` 不等于 `full_ci_run=PASS`。接管方必须按调用方合同重新核对 Run ID、Head SHA、Conclusion 与 `candidate_sha`。
 
-`dd-feature-development-workflow` 的候选不变量（`candidate_review.sha == full_spec_gap.sha == full_ci_run.head_sha == candidate_sha`）语义仍由其属主拥有，本文件不复制，也不因 Issue 内容放松。
+`fdev` 的候选不变量（`candidate_review.sha == full_spec_gap.sha == full_ci_run.head_sha == candidate_sha`）语义仍由其属主拥有，本文件不复制，也不因 Issue 内容放松。
 
 仅 §1.1 的定位元数据可从 Issue 取用。
 
@@ -360,7 +360,7 @@ Issue 评论里写 `CI PASS` 不等于 `full_ci_run=PASS`。接管方必须按�
   → 只取定位元数据：repository / branch / workflow_id / source checkpoint ref
   → 判断 remote 字段：sha-reachable 才可能跨机恢复工作内容
   → git fetch
-  → 按 dd-git-workflow 创建或定位 worktree
+  → 按 git 创建或定位 worktree
   → 从 Git / 文档 / CI 重建并验证 runtime state
   → 取得写入租约
   → 从仓库证据推出 next_safe_action 并继续
@@ -371,7 +371,7 @@ Issue 评论里写 `CI PASS` 不等于 `full_ci_run=PASS`。接管方必须按�
 - checkpoint 的 `remote=local-only` 时，该 checkpoint 明确为**仅定位，不可跨机恢复**，不得宣称 handoff-ready；
 - 只有 `remote=sha-reachable` 且必要修改均已持久化，才可声明跨机 handoff ready；
 - push 是否发生仍由原 delivery 授权边界决定，**tracking 不得扩大 push 授权**；
-- Issue 只提供 branch locator。分支的私有 / 共享可见性与同步方式仍完全由 `dd-git-workflow/references/branch.md` 重判（`branch.<分支名>.agentShared` 未知即未知），不得因 Issue 上有该分支就推定为 shared。
+- Issue 只提供 branch locator。分支的私有 / 共享可见性与同步方式仍完全由 `git/references/branch.md` 重判（`branch.<分支名>.agentShared` 未知即未知），不得因 Issue 上有该分支就推定为 shared。
 
 ### 9.3 接管规则（碰撞检测，不是互斥）
 
@@ -435,11 +435,11 @@ bug-fix
 
 | Skill | 拥有什么 | 本文件不做什么 |
 |---|---|---|
-| `dd-workflow-runtime` | state schema、Stage Gate、Recovery、Host Close、`host` 与 `status` 的 canonical 取值 | 不改其语义，只加可选字段；不重列其枚举 |
-| `dd-git-workflow` | 分支模型、worktree 布局、私有/共享可见性与清理 | 不复制路径推导，不在 Issue 里存绝对路径，不推定分支可见性 |
-| `dd-project-bootstrap-workflow` | 项目治理与基础环境 | **第一阶段不自动创建、不自动绑定、不自动投影**；runtime schema 容忍 `tracking` 不等于默认覆盖 |
-| `multi-agent-branch-integration` | 多 Agent 分支可见性、同步与集成门禁 | 不管分支集成，只管任务索引与恢复定位 |
-| `dd-later-tracking` | LATER 项的文件即 ID 体系 | **不改 LATER**。LATER 提升为开发任务时，Issue 正文引用 LATER 文件路径，不搬运内容 |
+| `wrt` | state schema、Stage Gate、Recovery、Host Close、`host` 与 `status` 的 canonical 取值 | 不改其语义，只加可选字段；不重列其枚举 |
+| `git` | 分支模型、worktree 布局、私有/共享可见性与清理 | 不复制路径推导，不在 Issue 里存绝对路径，不推定分支可见性 |
+| `boot` | 项目治理与基础环境 | **第一阶段不自动创建、不自动绑定、不自动投影**；runtime schema 容忍 `tracking` 不等于默认覆盖 |
+| `brch` | 多 Agent 分支可见性、同步与集成门禁 | 不管分支集成，只管任务索引与恢复定位 |
+| `later` | LATER 项的文件即 ID 体系 | **不改 LATER**。LATER 提升为开发任务时，Issue 正文引用 LATER 文件路径，不搬运内容 |
 
 ## 13. 红线
 
@@ -464,13 +464,13 @@ bug-fix
 
 ## 6. 测试矩阵
 
-新增 `dd-workflow-runtime/tests/test_task_tracking.py`，沿用 `test_ci_contracts.py` 的 `unittest` 风格，但**不得停留在"关键词存在即绿"**。实施顺序：先写测试（红），再落文档（绿）。
+新增 `wrt/tests/test_task_tracking.py`，沿用 `test_ci_contracts.py` 的 `unittest` 风格，但**不得停留在"关键词存在即绿"**。实施顺序：先写测试（红），再落文档（绿）。
 
 ### 6.1 属主与结构断言
 
 | # | 用例 | 断言方式 |
 |---|---|---|
-| 1 | `test_task_tracking_linked_from_runtime_skill` | `dd-workflow-runtime/SKILL.md` 直接链接 `references/task-tracking.md` |
+| 1 | `test_task_tracking_linked_from_runtime_skill` | `wrt/SKILL.md` 直接链接 `references/task-tracking.md` |
 | 2 | `test_tracking_nested_schema_single_owner` | 解析 `runtime-contract.md` §3 的 State Schema fenced block：只允许出现 `tracking: null` 与属主链接，**不得**出现嵌套字段；`references/state.md`、两份 workflow `state.md` / `state-and-handoff.md` 同样不得出现嵌套定义 |
 | 3 | `test_no_duplicated_runtime_enums` | `task-tracking.md` 不得硬编码 `host` 或 `status` 取值词表；改为断言其引用 `runtime-contract.md` §2 / §3 的属主 |
 
@@ -496,7 +496,7 @@ bug-fix
 | 14 | `test_old_holder_stops_after_takeover` | 旧宿主恢复后必须检查更新接管声明并停止写入 |
 | 15 | `test_no_mutual_exclusion_claim` | 合同不得把冲突检测描述为"锁"；反向断言：不得出现"互斥"字样作为能力承诺 |
 | 16 | `test_local_only_not_handoff_ready` | `remote=local-only` 不得宣称 handoff-ready |
-| 17 | `test_branch_visibility_not_inferred` | 恢复节必须写明分支可见性由 `dd-git-workflow` 重判 |
+| 17 | `test_branch_visibility_not_inferred` | 恢复节必须写明分支可见性由 `git` 重判 |
 
 ### 6.4 投影与路由断言
 
@@ -505,7 +505,7 @@ bug-fix
 | 18 | `test_stage_projection_covers_all_stages` | 机械提取 Feature / Bug 的 canonical Stage 列表，与合同 §10 映射表做集合比对：每个适用 Stage 恰好映射一次，无遗漏、无未知项 |
 | 19 | `test_projection_table_single_owner` | 阶段 → 看板列映射表在本仓库只出现一份 |
 | 20 | `test_feature_and_bug_both_have_binding_hook` | **分别**解析 `intake-and-environment.md` 与 `diagnosis-and-verification.md` 的 Environment 节：绑定规则必须位于 worktree/branch 记录之后、Environment Gate 之前。只检查"文件含链接"视为假绿，必须按节区间断言 |
-| 21 | `test_bootstrap_opt_out_declared` | `dd-project-bootstrap-workflow` 必须声明第一阶段不自动绑定/投影 |
+| 21 | `test_bootstrap_opt_out_declared` | `boot` 必须声明第一阶段不自动绑定/投影 |
 
 ### 6.5 Feature 侧追加（`test_feature_workflow_contracts.py`）
 
@@ -550,7 +550,7 @@ bug-fix
 
 ## 10. 后续变更：tracking 绑定尝试改为强制（2026-10-02）
 
-用户在 F3.3 增量交付后要求把 Issue 从"逐次授权才建"改为**硬要求**。现行合同语义以 `dd-workflow-runtime/references/task-tracking.md` 为唯一属主，本节只记录变更理由与验证证据，不复制规则。
+用户在 F3.3 增量交付后要求把 Issue 从"逐次授权才建"改为**硬要求**。现行合同语义以 `wrt/references/task-tracking.md` 为唯一属主，本节只记录变更理由与验证证据，不复制规则。
 
 **语义边界（重要）**：硬约束是"**必须尝试并记录结果**"，不是"绑定必须成功"。provider 故障、用户拒绝创建、绑定歧义等情形下工作流照常推进，不得把本规则实现成阻塞 Gate。
 

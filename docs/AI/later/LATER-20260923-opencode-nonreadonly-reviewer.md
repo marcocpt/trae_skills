@@ -20,7 +20,7 @@ trigger: OpenCode 免费档（或改用付费档/其他非 Zen Provider 后）�
   - 无限制 agent（默认 build、显式 allow-all）→ 正常；
   - 付费档模型 `opencode/muse-spark-1.3` → `402 Insufficient account funds`（账户无余额）。
 - 该限制出现在 2026-09-08（当时 L6 取证仍可用受限 agent）与 2026-09-19（首次 403）之间，属 provider 侧策略变化，本地不可解。
-- 完整实测矩阵见 `dd-workflow-runtime/tests/evidence/opencode-nonreadonly-decision-20260923.yaml`。
+- 完整实测矩阵见 `wrt/tests/evidence/opencode-nonreadonly-decision-20260923.yaml`。
 
 ## 用户裁决（2026-09-23）
 
@@ -33,7 +33,7 @@ trigger: OpenCode 免费档（或改用付费档/其他非 Zen Provider 后）�
 - `agents/dispatch-review.py`：新增 `none` 词汇与"成对校验 + 决策记录"规则；豁免后端免 L6 证据，但其结果携带显式非只读标记 `readonly_confirmation = {confirmed: false, evidence: "not-required:<backend>:readonly-waived-by-decision"}`；stateful 候选序对豁免后端不要求续接只读取证。
 - `agents/validate-bindings.py`：profile 权限块与 registry `readonly_required` 声明做跨产物一致性校验（豁免形态下 profile 不得再含权限限制块）。
 - `agents/opencode-review`（adapter）：新增 `_frozen_baseline_failure`，在**准入**与**轮后**（含超时回退前）各复验一次冻结基线——豁免后端不经 Router 直调时也能机械作废被改动的轮次（RV-004 路线裁决，见下）。
-- `gpt-grilling-review/references/transport.md`：opencode-cli 分节与 FR-MB-004 通用条款记录例外与"不得 CLOSED"约束；并新增「直调 adapter」合规边界（准入 + 轮后双重复验、请求字段约束）。
+- `gpt/references/transport.md`：opencode-cli 分节与 FR-MB-004 通用条款记录例外与"不得 CLOSED"约束；并新增「直调 adapter」合规边界（准入 + 轮后双重复验、请求字段约束）。
 
 ## 未恢复的路径（也在本项范围内）
 

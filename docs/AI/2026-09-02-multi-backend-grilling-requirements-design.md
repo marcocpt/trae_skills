@@ -1,7 +1,7 @@
 # 多后端强审 Grilling 闭环：需求与草案设计
 
 > 起草：2026-09-02 | 版本：v0.15-DRAFT（六轮 ChatGPT 复核 + 九次 targeted 复核；MB-GRILL-001~033 **全部 CLOSED**；DEC-MB-04 双层架构裁决落定；剩余：分支并入 develop）
-> 适用范围：让 `gpt-grilling-review` 的强审闭环支持多个复审后端可选，而不复制 finding 生命周期与关闭权规则。
+> 适用范围：让 `gpt` 的强审闭环支持多个复审后端可选，而不复制 finding 生命周期与关闭权规则。
 > 修订说明：
 > - v0.1 复核返回 14 个 finding（8 HIGH / 5 MEDIUM / 1 LOW）；3 条架构项经用户裁决落地（DEC-MB-01~03），11 条 FINDING 在 v0.2 处置，并回填真机实测。
 > - v0.2 复审返回 `STATUS: REOPEN`——5 条原 finding 未真正解决（001 / 004 / 008 / 011 / 012），另新增 4 个 finding（015、016 HIGH；017、018 MEDIUM）。v0.3 处置全部 9 项。
@@ -9,7 +9,7 @@
 > - v0.4 之后补登 v0.1 阶段的本地审核意见（MB-REVIEW-001~013）：该命名空间**此前从未进入任何复核台账**，v0.2~v0.4 只处置了 MB-GRILL 命名空间，属静默遗漏。逐条核对后：10 条已在 v0.2~v0.4 落地，3 条（005 / 011 / 012）未处置。本版 v0.5 新增 FR-MB-019 / FR-MB-020、改写 NFR-MB-001、§10 补 2 条红线，并在 §11.5 登记核对结论与新增阻塞项。
 > - 版本状态：v0.9-DRAFT。v0.6 第六轮 PASS（§11.8）；v0.7 方案 A 落地 CLOSED（§11.9）；v0.8 落地 021/020（§11.10）经**第七轮 targeted 复核返回 `REOPEN`**：MB-GRILL-021 CLOSED、MB-GRILL-020 修复不完整（chatgpt-tunnel 不满足 FR-MB-001 三项资格即入序列，validator 无资格校验）、**新增 MB-GRILL-028**（router_selectable: false 对 external 无通用禁令，introduced_by=021）。v0.9 处置经**第八轮确认（§11.12）**：**MB-GRILL-028 CLOSED、MB-GRILL-021 维持 CLOSED、MB-GRILL-020 维持 REOPEN（空序列过渡态合规，无额外缺口）**，零新 finding。MB-GRILL-019 与文档已 commit（`ec8844f` / `f6a8f11`）并推送；028 修复与 020 过渡态经主审确认后 commit。**批准仍阻塞于**：MB-GRILL-020 完全闭合（FR-MB-015/016 runtime 会话标识合同 + adapter initial/resume 形态 + 续接形态只读取证）与 §8 两处 VERIFICATION_REQUIRED 取证。
 > - v0.5 第五轮复审返回 `STATUS: REOPEN`：1 HIGH（022，§0 表述与 worktree 状态矛盾）+ 4 MEDIUM。v0.6 处置全部 5 项；**本地核对另发现 2 项主审未识别的问题**（027 HIGH / 024 补充）：runtime 已存在 `_verify_frozen_baseline` 与 `baseline_mismatch`（`dispatch-review.py:567`），FR-MB-019 的"现状无此机制"陈述有误、新造的 `baseline_drift` 与既有状态名冲突、且既有机制要求工作树干净与 grilling 多轮语义冲突；FR-MB-020 的阻塞状态清单漏列 12 个 runtime 既有 `failure_category`。详见 §11.7。
-> - **FR-MB-004 修正案（2026-09-23 用户裁决）**：OpenCode Zen 免费档拒绝一切能力受限 agent（403 FreeTierError，`opencode 1.18.32` 为最新版无升级可解），机械只读不可达；用户裁决为 opencode-cli 引入显式非只读豁免（`readonly_mode: none` + 决策记录 + 不得 CLOSED + 每轮 baseline 复验兜底）。落地清单与恢复条件见 `docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md`，实测矩阵见 `dd-workflow-runtime/tests/evidence/opencode-nonreadonly-decision-20260923.yaml`。
+> - **FR-MB-004 修正案（2026-09-23 用户裁决）**：OpenCode Zen 免费档拒绝一切能力受限 agent（403 FreeTierError，`opencode 1.18.32` 为最新版无升级可解），机械只读不可达；用户裁决为 opencode-cli 引入显式非只读豁免（`readonly_mode: none` + 决策记录 + 不得 CLOSED + 每轮 baseline 复验兜底）。落地清单与恢复条件见 `docs/AI/later/LATER-20260923-opencode-nonreadonly-reviewer.md`，实测矩阵见 `wrt/tests/evidence/opencode-nonreadonly-decision-20260923.yaml`。
 
 ---
 
@@ -20,24 +20,24 @@
 | DEC-MB-01 | **续接能力由 canonical adapter 提供**：扩展 `codex-review` / `opencode-review`（及 ChatGPT 通道）使其具备 `initial` 与 `resume` 两种调用形态；grilling 只编排轮次，不自行拼装 provider 命令行 | FR-MB-015、§7.1 |
 | DEC-MB-02 | **两个 ChatGPT 通道拆名各归其位**：grilling 使用 `chatgpt-tunnel`（审核方经 Tunnel 自读 + 多轮续接），Router 单跳使用 `mcp-review`（快照发送、无读取能力）。行为不变，只对齐名字与事实 | FR-MB-001、FR-MB-004、FR-MB-005 |
 | DEC-MB-03 | **结果合同双层分离**：后端一轮只返回 `dd-review-result/1`；grilling 在其上定义从属的 closure 合同，并写死转换规则；关闭权仍归 grilling。**2026-09-07 advisory extension（LATER-20260907）**：「一轮只返回 `dd-review-result/1`」限定为 finding 权威审查轮次；决策建议审查是非关闭型独立结果合同（`dd-advisory-result/1`，`ADVISORY`/`BLOCKED`），同样属 runtime，同样不进入关闭层 | FR-MB-013 |
-| DEC-MB-04 | **传输双层架构（2026-09-03 用户裁决）**：`chatgpt-tunnel` 归 grilling 传输层（`gpt-grilling-review/references/transport.md`）直连自管——会话身份（`conversation_id`）与 Tunnel 只读规则均属 transport 合同；runtime registry 名册只登记 **Router 可程序化派发**的后端。**`chatgpt-tunnel` 不入 registry stateful 名册**，不需要 registry 侧 continuation 只读取证；将来若让多轮候选顺序改由 registry 消费，再按届时形态补建档（DEC-MB-04 不排斥该演进） | FR-MB-018、§11.14 |
+| DEC-MB-04 | **传输双层架构（2026-09-03 用户裁决）**：`chatgpt-tunnel` 归 grilling 传输层（`gpt/references/transport.md`）直连自管——会话身份（`conversation_id`）与 Tunnel 只读规则均属 transport 合同；runtime registry 名册只登记 **Router 可程序化派发**的后端。**`chatgpt-tunnel` 不入 registry stateful 名册**，不需要 registry 侧 continuation 只读取证；将来若让多轮候选顺序改由 registry 消费，再按届时形态补建档（DEC-MB-04 不排斥该演进） | FR-MB-018、§11.14 |
 
 ---
 
 ## 1. Background（背景）
 
-`gpt-grilling-review` 当前把"强审闭环协议"与"ChatGPT 传输"写在同一 skill 内：
+`gpt` 当前把"强审闭环协议"与"ChatGPT 传输"写在同一 skill 内：
 
 - 协议层（backend 中立，可复用）：finding 生命周期、SEVERITY / CLASSIFICATION / CHANGE_RISK 三字段、CLOSED 判据、DISPUTED 反证、HARD-GATE 逐条裁决、关闭权。
 - 传输层（当前硬绑定 ChatGPT）：`references/transport.md` 的 `chatgpt_send` / `chatgpt_get_result`、`conversation_id` 复用、Tunnel `work/<相对路径>` 命名。
 
 用户希望在保持同一套 grilling 协议的前提下，把复审后端换成 OpenCode 或 Codex 等其他 agent app，并要求"多后端可选"。
 
-现有 `dd-workflow-runtime` 的 Generic Review Backend Router v1（`2026-08-25-review-backend-router-v1-design.md`）只做**单跳、无状态、一次性**派发（`max_hops=1`、`dispatch_boundary=single-backend`），明确**不关闭 finding、不持有会话**。本方案不要求 Router 承担多轮闭环，但仍受其 backend 调用、只读与结果合同的约束。
+现有 `wrt` 的 Generic Review Backend Router v1（`2026-08-25-review-backend-router-v1-design.md`）只做**单跳、无状态、一次性**派发（`max_hops=1`、`dispatch_boundary=single-backend`），明确**不关闭 finding、不持有会话**。本方案不要求 Router 承担多轮闭环，但仍受其 backend 调用、只读与结果合同的约束。
 
 ## 2. Problem Statement（问题定义）
 
-1. `gpt-grilling-review` 的传输层写死 ChatGPT，换后端需改协议层或另起炉灶，易产生第二套 finding 规则。
+1. `gpt` 的传输层写死 ChatGPT，换后端需改协议层或另起炉灶，易产生第二套 finding 规则。
 2. grilling 闭环依赖"多轮续接句柄"，而各后端的续接机制不同（`conversation_id` / `--session` / `exec resume`），现有 transport 没有抽象。
 3. 现有 canonical adapter（`codex-review`、`opencode-review`）只有一次性调用形态，**不含续接参数**（本地 grep 零命中），无法直接承载多轮闭环。
 4. ChatGPT 通道是"审核方经 Tunnel 自读、本地不发送代码内容"；换成可触工作树的本地 CLI 后，只读约束必须由权限/沙箱机械强制。
@@ -46,7 +46,7 @@
 
 ## 3. Goals（目标）
 
-1. 保持 `gpt-grilling-review` 作为"外部 finding 生命周期与多轮编排"的唯一属主（`AGENTS.md` §8），多后端只是传输层变体。
+1. 保持 `gpt` 作为"外部 finding 生命周期与多轮编排"的唯一属主（`AGENTS.md` §8），多后端只是传输层变体。
 2. 同一套 grilling 协议对用户可见的所有后端一致生效。
 3. 复审后端可配置、可选，默认仍走 ChatGPT 通道以兼容现状。
 4. 任何后端必须提供可**校验**的续接句柄——拿到句柄还不够，必须证明恢复的确实是那个会话。
@@ -57,7 +57,7 @@
 
 包含：
 
-- `gpt-grilling-review/SKILL.md` 增加"后端选择"输入项与后端中立化约束；
+- `gpt/SKILL.md` 增加"后端选择"输入项与后端中立化约束；
 - `transport.md` 重构为后端中立传输合同（编排合同 + 各后端分节）；
 - 续接句柄抽象与身份校验；
 - 只读强制矩阵（按 canonical backend ID）；
@@ -76,7 +76,7 @@
 
 ### FR-MB-001：后端选择参数与 ID 纪律
 
-1. `gpt-grilling-review` 接受 `backend` 输入项，取值必须是 `review-backends.yaml` 中的 canonical backend ID，**且该 backend 必须同时满足 grilling 的三项能力条件**：
+1. `gpt` 接受 `backend` 输入项，取值必须是 `review-backends.yaml` 中的 canonical backend ID，**且该 backend 必须同时满足 grilling 的三项能力条件**：
    - 具备有状态续接能力（adapter 提供 `resume` 调用形态，见 FR-MB-015）；
    - 具备结构化会话标识输出合同（见 FR-MB-016）；
    - 具备与本次调用形态匹配的有效只读证明（见 FR-MB-012）。
@@ -122,7 +122,7 @@ SKILL.md 的 finding 生命周期、三字段、CLOSED 判据、DISPUTED、HARD-
 3. **续接属于新的调用形态**：只有现有 backend-bound 只读证据明确覆盖该续接形态时才能沿用旧证据，否则必须重新取证（FR-MB-012、第 8 节）。
 4. 任何后端无法机械强制只读时，该后端本次不可用；**唯一例外**见修正案。
 
-**修正案（2026-09-23 用户裁决，FR-MB-004 amendment）**：OpenCode Zen 免费档拒绝一切带能力限制的 agent（403 FreeTierError，实测矩阵见 `dd-workflow-runtime/tests/evidence/opencode-nonreadonly-decision-20260923.yaml`），机械只读在可用套餐内不可达。经用户裁决：
+**修正案（2026-09-23 用户裁决，FR-MB-004 amendment）**：OpenCode Zen 免费档拒绝一切带能力限制的 agent（403 FreeTierError，实测矩阵见 `wrt/tests/evidence/opencode-nonreadonly-decision-20260923.yaml`），机械只读在可用套餐内不可达。经用户裁决：
 
 - 新增豁免形态：registry 可以显式声明 `readonly_required: false` + `readonly_mode: none` + `readonly_exception`（决策记录路径）；三者必须成对出现，缺一即 `configuration_invalid`（`dispatch-review.py` 机械校验），静默放开只读仍是配置错误。
 - 豁免后端的轮次仅用于 finding 发现与复审参考，**不得作为 finding CLOSED 依据**（CLOSED 仍须由只读合规后端落地）；结果携带 `readonly_confirmation = {confirmed: false, evidence: "not-required:<backend>:readonly-waived-by-decision"}`。
@@ -141,12 +141,12 @@ SKILL.md 的 finding 生命周期、三字段、CLOSED 判据、DISPUTED、HARD-
 
 | 事实 | canonical 属主 | grilling 的角色 |
 |---|---|---|
-| backend 调用命令、能力、只读模式、可用性/临时退出码分类、`result_schema` | `dd-workflow-runtime/agents/review-backends.yaml` | 引用 |
-| 候选顺序、允许降级的失败分类 | `dd-workflow-runtime/agents/routing-policy.yaml` | 引用 |
-| 幂等键、提交状态机、返工计数 | `dd-workflow-runtime/references/runtime-contract.md` | 复用其合同 |
-| finding 三字段的枚举语义 | `gpt-grilling-review` | 拥有（结果合同须机械兼容，见 FR-MB-017） |
-| stateful grilling 候选序列（区别于 Router 单跳链） | `dd-workflow-runtime/agents/routing-policy.yaml` | 引用（见 FR-MB-018） |
-| 多轮编排、finding 生命周期、关闭权、续接与读取模板 | `gpt-grilling-review` | 拥有 |
+| backend 调用命令、能力、只读模式、可用性/临时退出码分类、`result_schema` | `wrt/agents/review-backends.yaml` | 引用 |
+| 候选顺序、允许降级的失败分类 | `wrt/agents/routing-policy.yaml` | 引用 |
+| 幂等键、提交状态机、返工计数 | `wrt/references/runtime-contract.md` | 复用其合同 |
+| finding 三字段的枚举语义 | `gpt` | 拥有（结果合同须机械兼容，见 FR-MB-017） |
+| stateful grilling 候选序列（区别于 Router 单跳链） | `wrt/agents/routing-policy.yaml` | 引用（见 FR-MB-018） |
+| 多轮编排、finding 生命周期、关闭权、续接与读取模板 | `gpt` | 拥有 |
 
 `transport.md` **不得**复制上述任何表格或命令清单，只写"引用哪个属主的哪个字段"与本 skill 自有的编排规则。
 
@@ -166,8 +166,8 @@ SKILL.md 的 finding 生命周期、三字段、CLOSED 判据、DISPUTED、HARD-
 
 ### FR-MB-008：不改名、不新建顶层 skill、属主措辞收窄
 
-1. 保留 `gpt-grilling-review` 名称与属主身份；多后端不新建成顶层 skill。
-2. `AGENTS.md` §8 表述改为："外部强审 finding 闭环及其多轮编排：`gpt-grilling-review`"——**收窄措辞**，不写"与传输"以免被读成 grilling 拥有全部 backend 传输事实。
+1. 保留 `gpt` 名称与属主身份；多后端不新建成顶层 skill。
+2. `AGENTS.md` §8 表述改为："外部强审 finding 闭环及其多轮编排：`gpt`"——**收窄措辞**，不写"与传输"以免被读成 grilling 拥有全部 backend 传输事实。
 
 对应 finding：MB-GRILL-014。
 
@@ -211,7 +211,7 @@ SKILL.md 的 finding 生命周期、三字段、CLOSED 判据、DISPUTED、HARD-
 ### FR-MB-013：结果合同双层分离（DEC-MB-03）
 
 1. **传输层结果**：finding 权威审查轮次的后端一轮只返回 `dd-review-result/1`（`PASS` / `FINDINGS` / `BLOCKED`），属主为 runtime。**2026-09-07 advisory extension（LATER-20260907）**：决策建议审查轮次返回 `dd-advisory-result/1`（`ADVISORY` / `BLOCKED`），同为 runtime 属主、同为非关闭型；`ADVISORY` 不是 `PASS`，不取得任何关闭权。
-2. **关闭层结果**：grilling 在其上定义从属 closure 合同（`CLOSED` / `REOPEN` / `VERIFICATION_REQUIRED` / `HUMAN_DECISION_REQUIRED`），属主为 `gpt-grilling-review`。
+2. **关闭层结果**：grilling 在其上定义从属 closure 合同（`CLOSED` / `REOPEN` / `VERIFICATION_REQUIRED` / `HUMAN_DECISION_REQUIRED`），属主为 `gpt`。
 3. 转换规则（写死）：
    - `BLOCKED` → **永不得** CLOSED；
    - `FINDINGS` → 必须逐条分流处置，不得整体视为 CLOSED；
@@ -248,11 +248,11 @@ SKILL.md 的 finding 生命周期、三字段、CLOSED 判据、DISPUTED、HARD-
 
 ### FR-MB-017：finding 三字段的机械语义兼容
 
-1. grilling 的三字段枚举语义（`SEVERITY`、`CLASSIFICATION` 的 F/V/H、`CHANGE_RISK` 的 LOW/MEDIUM/HIGH）由 `gpt-grilling-review` 拥有；本文不复制枚举定义。
+1. grilling 的三字段枚举语义（`SEVERITY`、`CLASSIFICATION` 的 F/V/H、`CHANGE_RISK` 的 LOW/MEDIUM/HIGH）由 `gpt` 拥有；本文不复制枚举定义。
 2. 对可用于 grilling 的 backend，runtime 拥有的 `dd-review-result/1` finding 合同必须**机械保证** `severity`、`classification`、`change_risk` 与上述 canonical 语义一致，**不得允许 provider 定义另一套枚举含义**。
 3. **主审裁决（2026-09-02，runtime targeted 复查 + 2026-09-03 争议复核，见 §11.6）**：`STATUS: CLOSED`——原 finding 已真正解决、未越权、无新增 finding、CHANGE_RISK 保持 HIGH 未降级。**尚未 commit**，commit 需单独授权。
 4. **落地状态（2026-09-02 二次核实，如实记录）**：
-   - **已实现但未提交**：`dispatch-review.py` 的 `_validate_finding` 已加三字段 canonical 枚举校验（`SEVERITY_VALUES` / `CLASSIFICATION_VALUES` / `CHANGE_RISK_VALUES`，与 `gpt-grilling-review/SKILL.md` 三个独立字段的定义逐项一致，且 `_validate_finding` 是 findings 归一化的**唯一**路径，无旁路）；配套 `test_dispatch_review.py` 新增 `FindingEnumContractTests`（5 项）与 1 项归一化入口测试；`codex/strong-reviewer.toml`、`opencode/strong-reviewer-cli.md` 的示例已从 `behavioral-correctness` / `behavioral` 改为 canonical 值。全量 `test_*.py` **170 项通过**（baseline `ba2df3d` 为 **164 项**），`validate-review-routing.py` 与 `validate-bindings.py` 通过。
+   - **已实现但未提交**：`dispatch-review.py` 的 `_validate_finding` 已加三字段 canonical 枚举校验（`SEVERITY_VALUES` / `CLASSIFICATION_VALUES` / `CHANGE_RISK_VALUES`，与 `gpt/SKILL.md` 三个独立字段的定义逐项一致，且 `_validate_finding` 是 findings 归一化的**唯一**路径，无旁路）；配套 `test_dispatch_review.py` 新增 `FindingEnumContractTests`（5 项）与 1 项归一化入口测试；`codex/strong-reviewer.toml`、`opencode/strong-reviewer-cli.md` 的示例已从 `behavioral-correctness` / `behavioral` 改为 canonical 值。全量 `test_*.py` **170 项通过**（baseline `ba2df3d` 为 **164 项**），`validate-review-routing.py` 与 `validate-bindings.py` 通过。
    - **完整性缺口已补齐**：`tests/test_codex_review.py:41-42`、`tests/test_opencode_review.py:38-39` 的"合法输出"fixture 已改为 `FINDING` / `MEDIUM`（此前与 router 新校验给出两个互相矛盾的"合法 finding"答案）。**保留** `test_opencode_review.py:89` 与 `:166` 中的 `"x"` / `"y"` 占位值——前者测 tool 事件与文本提取、后者测 PASS 带 findings 被拒，均不经过枚举校验，与合同无关。
    - `tests/evidence/*-l7-evidence.yaml` 中的旧值**保持不变**：属历史取证记录，不得回溯改写；主审已确认它们不是当前 runtime 归一化入口的输入，不会绕过新校验。
 5. 枚举与 schema 校验的实现由 runtime 属主完成；在该机械校验落地前，多后端 finding 的 F/V/H 分流不得视为已保证。
@@ -308,7 +308,7 @@ SKILL.md 的 finding 生命周期、三字段、CLOSED 判据、DISPUTED、HARD-
 ### 7.1 分层结构（替代 v0.1 的两层）
 
 ```
-gpt-grilling-review
+gpt
 ├─ grilling 协议层（后端中立）
 │  finding 生命周期 / 三字段 / CLOSED 判据 / DISPUTED / HARD-GATE / 关闭权
 ├─ 有状态会话编排层（本 skill 拥有）
@@ -325,20 +325,20 @@ gpt-grilling-review
 
 | 文件 | 改动 |
 |---|---|
-| `gpt-grilling-review/SKILL.md` | 新增后端选择输入项；协议层术语去 ChatGPT 化（保留"同一强审身份/同一闭环上下文"语义，不做机械全局替换）；引用重构后的 transport |
-| `gpt-grilling-review/references/transport.md` | 重构成后端中立合同：编排合同 + 续接句柄与身份校验 + 只读矩阵（引用，不复制）+ 各后端分节 + 降级与阻塞 |
-| `dd-workflow-runtime/agents/review-backends.yaml` | 按 DEC-MB-01 增加 `initial` / `resume` 调用形态与会话标识输出约定；按 DEC-MB-02 **新增 `chatgpt-tunnel` canonical backend，并保留 `mcp-review` 原单跳快照语义不变**（属 runtime） |
-| `dd-workflow-runtime/agents/dispatch-review.py` | 按 FR-MB-017 把 finding 三字段从"非空字符串"校验升级为 canonical 枚举校验（属 runtime，需连带其测试） |
-| `dd-workflow-runtime/agents/routing-policy.yaml` | 按 FR-MB-018 增加/扩展与 Router 单跳链相区分的 stateful grilling 候选序列（属 runtime） |
-| `dd-workflow-runtime` reviewer 合同（`strong-reviewer-cli.md`、`strong-reviewer.toml` 等） | 按 FR-MB-017 对齐 canonical 三字段枚举，移除 `behavioral-correctness` 一类 provider 自定义取值（属 runtime） |
-| `dd-workflow-runtime/agents/codex-review`、`opencode-review` | 实现 `resume` 子形态（属 runtime，需连带其测试） |
+| `gpt/SKILL.md` | 新增后端选择输入项；协议层术语去 ChatGPT 化（保留"同一强审身份/同一闭环上下文"语义，不做机械全局替换）；引用重构后的 transport |
+| `gpt/references/transport.md` | 重构成后端中立合同：编排合同 + 续接句柄与身份校验 + 只读矩阵（引用，不复制）+ 各后端分节 + 降级与阻塞 |
+| `wrt/agents/review-backends.yaml` | 按 DEC-MB-01 增加 `initial` / `resume` 调用形态与会话标识输出约定；按 DEC-MB-02 **新增 `chatgpt-tunnel` canonical backend，并保留 `mcp-review` 原单跳快照语义不变**（属 runtime） |
+| `wrt/agents/dispatch-review.py` | 按 FR-MB-017 把 finding 三字段从"非空字符串"校验升级为 canonical 枚举校验（属 runtime，需连带其测试） |
+| `wrt/agents/routing-policy.yaml` | 按 FR-MB-018 增加/扩展与 Router 单跳链相区分的 stateful grilling 候选序列（属 runtime） |
+| `wrt` reviewer 合同（`strong-reviewer-cli.md`、`strong-reviewer.toml` 等） | 按 FR-MB-017 对齐 canonical 三字段枚举，移除 `behavioral-correctness` 一类 provider 自定义取值（属 runtime） |
+| `wrt/agents/codex-review`、`opencode-review` | 实现 `resume` 子形态（属 runtime，需连带其测试） |
 | `AGENTS.md` §8 | 措辞按 FR-MB-008 收窄 |
 | 测试 | 续接身份校验、未知 backend fail-closed、双层结果转换、返工上限等合同测试 |
 
 ### 7.3 职责边界（与 Router）
 
-- `gpt-grilling-review`：多轮编排、finding 生命周期、关闭权、逐条裁决。
-- `dd-workflow-runtime` Router v1：单跳、无状态、不关闭 finding。
+- `gpt`：多轮编排、finding 生命周期、关闭权、逐条裁决。
+- `wrt` Router v1：单跳、无状态、不关闭 finding。
 - 两者共享 backend registry 与只读证据，各自只引用不复制。
 
 ## 8. Open Questions（实测回填后）
@@ -353,14 +353,14 @@ gpt-grilling-review
      - 已实测（codex-cli 0.153.4，宿主终端非嵌套沙箱，环境健全性由 initial `--sandbox workspace-write` 写成功佐证）：T0——read-only initial 后 resume（无 sandbox 参数）写被拒（agent 自报 + 父进程文件系统验证）且正向读取与 token 回忆连续；T1——workspace-write initial 后 resume（同形态）写**成功**（事件级 `command_execution` exit=0 + 文件落盘）。T0/T1 同形态只差 initial 沙箱 → **resume 沙箱 = initial 沙箱（机械继承）**。
      - T2 对照（两组均 resume、只改 `-c sandbox=` 值）：`read-only` 与 `workspace-write` **双双写被拒** → `-c sandbox=` 覆盖在 resume 上**不生效**（:339 的设想不成立），按轮重申只读不可行。
      - 结论：resume 形态的安全性只能落在**句柄来源**上。adapter（`codex-review`）落地**只读 thread 来源登记**：initial 成功即登记 thread_id，resume 仅接受登记为 read-only 的句柄，否则 `session_resume_mismatch` fail-closed（provider 调用前拦截）。
-     - 证据：`dd-workflow-runtime/tests/evidence/codex-resume-readonly-evidence.yaml`（T0/T1/T2 + sanity，6 份原始事件流）；`codex-cli-l6-evidence.yaml` 已按 0.153.4 重取（FR-MB-012 版本失效触发器）。
+     - 证据：`wrt/tests/evidence/codex-resume-readonly-evidence.yaml`（T0/T1/T2 + sanity，6 份原始事件流）；`codex-cli-l6-evidence.yaml` 已按 0.153.4 重取（FR-MB-012 版本失效触发器）。
 2. **OpenCode 会话续接身份与权限合同连续性：CLOSED（2026-09-03，主审终确认）**
    - 已实测（2026-09-02，opencode 1.18.25）：`opencode run --format json` 输出 `sessionID`；`opencode run --session <sessionID> --format json` **续接有效**（恢复首轮埋点 4826，sessionID 一致）。
    - 第一轮取证（2026-09-03）：同 agent、只差 `--session` 的写探测——write 工具在两轮中均不存在于可用工具集（agent 自报）；主审核实为 `VERIFICATION_REQUIRED`：**agent 自述不构成引擎级证据**（无 tool schema、无拒绝事件、无成功 read 事件），evidence 中 "engine-enforced" 标注被点名为过度断言并已修正。
    - 第二轮补证（2026-09-03，按主审最小补证方案）：initial 与 resume 各执行一次真实 read——**两轮均产生事件级 `tool_use: read, state.status=completed`**，输出与本地独立核对一致（`# AGENTS.md`）；resume 轮 sessionID 与首轮一致（`ses_f9af604f…`）且准确复述上轮探测编号（`MB-OC-C0903`）；全程无写工具暴露。
    - **主审终确认（STATUS: CLOSED）**，边界声明（原文引用）：
      > 真机取证确认，在 `opencode-cli` + `strong-reviewer-cli`、OpenCode **1.18.25**、调用形态 `opencode run --session <sessionID> --agent strong-reviewer-cli --format json` 下，initial 与 resume 两轮保持同一 `sessionID`，且两轮均产生实际 `read` tool event 并以 `state.status=completed` 成功读取同一 repo 文件，证明 allow-side 只读工具能力在 resume 形态连续；write 能力在两轮均未暴露，但该部分证据等级为 agent-self-reported-consistent，而非 engine-denial-event-backed。该结论**仅覆盖上述 backend / agent / OpenCode 版本 / resume 调用形态，不外推到其他 agent、版本、backend 或调用形态**。
-   - 证据：`dd-workflow-runtime/tests/evidence/opencode-resume-readonly-evidence.yaml`（4 份原始事件流）。
+   - 证据：`wrt/tests/evidence/opencode-resume-readonly-evidence.yaml`（4 份原始事件流）。
 3. **只读证据覆盖面**：任何新增调用形态（尤其是带会话标识的续接形态）是否仍被现有 backend-bound 只读证据覆盖？未被覆盖的调用形态须重新取证，不得沿用。
 4. **后端选择策略归属**：已裁决——grilling 不另设独立 backend-selection policy，候选顺序与降级分类引用 `routing-policy.yaml`。
 
@@ -457,8 +457,8 @@ v0.4 相对 v0.3 的改动已逐项覆盖第三轮主审给出的最小修改集
 **纪律**
 
 - 上述三项**以及 §11.5 登记的 MB-REVIEW-005（FR-MB-019）**未处置前，本文档不得视为已批准。
-- 处置涉及 runtime 生产代码与测试语义时，须按 `gpt-grilling-review` 的关闭权规则送回主审返回 `CLOSED`，本地不得自行关闭。
-- 在用户裁决前，**不改动** `gpt-grilling-review/SKILL.md`、`references/transport.md`、`AGENTS.md` 及任何 runtime 文件。
+- 处置涉及 runtime 生产代码与测试语义时，须按 `gpt` 的关闭权规则送回主审返回 `CLOSED`，本地不得自行关闭。
+- 在用户裁决前，**不改动** `gpt/SKILL.md`、`references/transport.md`、`AGENTS.md` 及任何 runtime 文件。
 
 ### 11.5 本地审核意见补登（MB-REVIEW 命名空间）
 
@@ -476,7 +476,7 @@ v0.1 阶段曾产生一份针对本文的本地审核意见（MB-REVIEW-001~013�
 - FR-MB-019 属跨属主实现，须经用户裁决；未落地前本地 CLI 后端的多轮形态按 fail-closed 不可用，本文不得视为已批准。
 - FR-MB-020 的转化现状属 VERIFICATION_REQUIRED（不阻塞批准，但阻塞"transport 状态未被污染 finding 命名空间"这一断言）。
 - 本命名空间此后必须纳入台账：任何审核意见（无论来自主审还是本地审核）都须登记 finding ID 与处置位置，不得只留在会话里。
-- **§11 各节（含 §11.5 / §11.6 / §11.7）仅记录复核历史与处置状态，不替代 canonical 属主**：backend 调用与 `failure_category` 属 `dd-workflow-runtime`；finding 三字段语义与关闭权属 `gpt-grilling-review`；候选顺序与降级分类属 `routing-policy.yaml`。台账不得被反向当作事实源引用（FR-MB-006）。
+- **§11 各节（含 §11.5 / §11.6 / §11.7）仅记录复核历史与处置状态，不替代 canonical 属主**：backend 调用与 `failure_category` 属 `wrt`；finding 三字段语义与关闭权属 `gpt`；候选顺序与降级分类属 `routing-policy.yaml`。台账不得被反向当作事实源引用（FR-MB-006）。
 
 ### 11.6 MB-GRILL-019 runtime 修复后针对性复查（2026-09-02，代码级 targeted，**不占 §11.1 文档轮次编号**）
 
@@ -595,7 +595,7 @@ FR-MB-019 采用哪种基线模型：
 
 **021——registry 收编 `chatgpt-tunnel`（`review-backends.yaml`）**
 
-- 新条目：`type: mcp`、`execution: external`、`router_selectable: false`、`readonly_mode: tunnel-self-read-only`、`capabilities: [strong-review]`、result_schema 不变；注释写明 Tunnel 自读模型与 transport 合同属主（`gpt-grilling-review/references/transport.md`）。
+- 新条目：`type: mcp`、`execution: external`、`router_selectable: false`、`readonly_mode: tunnel-self-read-only`、`capabilities: [strong-review]`、result_schema 不变；注释写明 Tunnel 自读模型与 transport 合同属主（`gpt/references/transport.md`）。
 - `tunnel-self-read-only` 为 registry 新定义的只读模式类别（属 runtime 拥有），语义 = "审核方经授权 Tunnel 按 `work/<相对路径>` repo 名自读；本地不发送绝对路径与文件内容"——与 `snapshot-send-only`（本地发快照）是两个类别，对应 FR-MB-004 表格两行。
 - **校验器配套改动（`dispatch-review.py`）**：
   1. 新增 `KNOWN_READONLY_MODES` 白名单（5 值：snapshot-send-only / tunnel-self-read-only / codex-read-only-transport / agent-read-only-contract / codex-route-guard），所有 backend 的 `readonly_mode` 必须属于该集合；
@@ -622,7 +622,7 @@ FR-MB-019 采用哪种基线模型：
 
 ### 11.11 第七轮：020/021 落地 targeted 复查返回 REOPEN 与 v0.9 处置（2026-09-03）
 
-**第七轮主审结论（同会话 targeted）**：`STATUS: REOPEN`——MB-GRILL-021 **CLOSED**；MB-GRILL-020 修复不完整；**新增 MB-GRILL-028**（MEDIUM / FINDING，`introduced_by=MB-GRILL-021`）。三项事实断言已经本地逐条核实**属实**：`review_session_handle` 在 dd-workflow-runtime 零命中；`conversation_id` 仅存在于 registry 注释与 mcp-review adapter 内部；stateful validator 不校验成员资格（连 `role_spec.capability` 与 backend `capabilities` 的对照都没有）。
+**第七轮主审结论（同会话 targeted）**：`STATUS: REOPEN`——MB-GRILL-021 **CLOSED**；MB-GRILL-020 修复不完整；**新增 MB-GRILL-028**（MEDIUM / FINDING，`introduced_by=MB-GRILL-021`）。三项事实断言已经本地逐条核实**属实**：`review_session_handle` 在 wrt 零命中；`conversation_id` 仅存在于 registry 注释与 mcp-review adapter 内部；stateful validator 不校验成员资格（连 `role_spec.capability` 与 backend `capabilities` 的对照都没有）。
 
 | finding | 结论 | 要点 |
 |---|---|---|

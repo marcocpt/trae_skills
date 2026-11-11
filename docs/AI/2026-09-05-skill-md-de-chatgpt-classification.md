@@ -2,7 +2,7 @@
 
 > 起草：2026-09-05 | 版本：v0.2-DRAFT（未批准）
 > 依据：[多后端强审 Grilling 闭环需求与草案设计](2026-09-02-multi-backend-grilling-requirements-design.md) 的 FR-MB-002、FR-MB-008 与 §7.2。
-> 评审对象：本文件（分类方案）+ 同分支已完成的 `gpt-grilling-review/references/transport.md` 重构。
+> 评审对象：本文件（分类方案）+ 同分支已完成的 `gpt/references/transport.md` 重构。
 >
 > v0.1 → v0.2 修订依据：ChatGPT 首轮复核（MB-SKILL-CLASS-001~005）。
 > - **001**：本方案原以"31 行含 `ChatGPT` 字符串"为审计全集，漏掉 `backend` 输入项这一结构性改动；
@@ -13,7 +13,7 @@
 
 ## 1. 目标
 
-把 `gpt-grilling-review/SKILL.md` 中把"谁是主审、谁有权关闭 finding"写成 `ChatGPT` 的表述，改为后端中立的角色名，使同一套闭环语义对 `chatgpt-tunnel`、`opencode-cli` 及未来后端一致成立。
+把 `gpt/SKILL.md` 中把"谁是主审、谁有权关闭 finding"写成 `ChatGPT` 的表述，改为后端中立的角色名，使同一套闭环语义对 `chatgpt-tunnel`、`opencode-cli` 及未来后端一致成立。
 
 设计文档 §7.2 的原文约束：
 
@@ -23,7 +23,7 @@
 
 - **不是**字符串全局替换：`conversation_id` → `review_session_handle` 是续接句柄的抽象，重点是保留"同一"这个不变式，不是把词换掉。
 - **不是**删除 ChatGPT：`chatgpt-tunnel` 仍是默认后端，指向传输的部分照旧引用 `transport.md`。
-- **不是**给 skill 改名：FR-MB-008 明确保留 `gpt-grilling-review` 名称与属主身份（`dd-workflow-runtime/references/model-routing.md`、`review-gate.md`、`dd-xctest-newbie-grilling-review/SKILL.md` 均硬引用）。
+- **不是**给 skill 改名：FR-MB-008 明确保留 `gpt` 名称与属主身份（`wrt/references/model-routing.md`、`review-gate.md`、`xtst/SKILL.md` 均硬引用）。
 - **不是**改 finding 生命周期语义：三字段、CLOSED 判据、DISPUTED、HARD-GATE 一个字不动。
 
 ## 2. 统计与三层清单
@@ -104,7 +104,7 @@
 | 行 | 处 | 内容 | 处置 |
 |---|---|---|---|
 | 3 | 3 | description 触发词「ChatGPT 文件审核 / 让 ChatGPT 自行读取」 | **保留**（用户实际用词，删除会影响触发）；建议**补充**一个多后端触发词 |
-| 6 | 1 | 标题 `# ChatGPT 文件 Grilling 审核` | **已裁决（2026-09-05，采纳主审建议）**：改为「强审 Grilling 审核」；`name: gpt-grilling-review` 不变；description 以「外部强审/多后端强审」描述能力并保留 `ChatGPT` 触发词作兼容别名 |
+| 6 | 1 | 标题 `# ChatGPT 文件 Grilling 审核` | **已裁决（2026-09-05，采纳主审建议）**：改为「强审 Grilling 审核」；`name: gpt` 不变；description 以「外部强审/多后端强审」描述能力并保留 `ChatGPT` 触发词作兼容别名 |
 
 ## 7. 第二层：隐式 transport 绑定（MB-SKILL-CLASS-002）
 
@@ -144,7 +144,7 @@
 
 ## 9. 待评审确认的问题
 
-1. 「强审者（strong-reviewer）」是否为最合适的统一角色名？与 `dd-workflow-runtime/references/model-routing.md` 的 `strong-reviewer` 角色、以及 `agents/opencode/strong-reviewer-cli.md` 等既有命名是否一致、会不会产生歧义。
+1. 「强审者（strong-reviewer）」是否为最合适的统一角色名？与 `wrt/references/model-routing.md` 的 `strong-reviewer` 角色、以及 `agents/opencode/strong-reviewer-cli.md` 等既有命名是否一致、会不会产生歧义。
 2. A 类 25 行的替换是否**逐处语义等价**？是否存在某处的 `ChatGPT` 实际承载了"默认后端"含义而非"角色"含义，替换后会丢失信息。
 3. B 类改成「同一强审者 + `review_session_handle`」后，与 `transport.md` 新版「续接句柄与身份校验」一节的措辞是否一致（应引用同一套术语，不得各说一套）。
 4. C 类第 87 行改为"引用 transport.md 对应分节"后，SKILL.md 是否仍具备足够的可执行性（Agent 只读 SKILL.md 时能否知道该怎么做），还是需要在 SKILL.md 保留一句后端中立的最小规则。
@@ -158,7 +158,7 @@
 
 - 不得为缩短文件删除必要规则（AGENTS.md §5.8）。
 - 不得借"去 ChatGPT 化"改动 finding 生命周期、三字段语义、CLOSED 判据或关闭权归属。
-- 不得改名 `gpt-grilling-review` skill 或文件路径（FR-MB-008）。
+- 不得改名 `gpt` skill 或文件路径（FR-MB-008）。
 - 不得在 SKILL.md 复制 `transport.md` 或 runtime registry 的内容（FR-MB-006：只引用）。
 - 不得为通过测试加入无语义关键词。
 

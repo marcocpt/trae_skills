@@ -10,7 +10,7 @@
 2. 目标 Skill 的 `SKILL.md`；
 3. 该 `SKILL.md` 实际引用、且与当前修改有关的 `references/`；
 4. 目标 Skill 的现有测试（若有）；
-5. 若修改涉及共享状态、恢复、审查、验证、CI、证据或交付语义，再读取 `dd-workflow-runtime` 对应 reference。
+5. 若修改涉及共享状态、恢复、审查、验证、CI、证据或交付语义，再读取 `wrt` 对应 reference。
 
 不要默认预加载整个仓库、全部 reference、历史计划或无关 Skill。
 
@@ -32,7 +32,7 @@
 * 状态或恢复机制；
 * Git 原子操作；
 * CI 通用规则；
-* 工作流内部的审查协议或传输协议（面向用户独立触发的审核闭环 Skill，如 `gpt-grilling-review`，不在此列）；
+* 工作流内部的审查协议或传输协议（面向用户独立触发的审核闭环 Skill，如 `gpt`，不在此列）；
 * 模板；
 * 仅供其他 Skill 调用的局部实现步骤。
 
@@ -147,7 +147,7 @@ reference 负责：
 
 能用机械 validator、schema 或测试强制执行的规则，优先机械化；文档主要约束需要判断的行为。
 
-详细 Skill 编写和测试方法使用 `writing-skills/SKILL.md`。
+详细 Skill 编写和测试方法使用 `skl/SKILL.md`。
 
 ---
 
@@ -210,15 +210,15 @@ reference 负责：
 
 以下通用语义应继续由现有属主维护，不在其他 Skill 中重新定义：
 
-* 状态、恢复、Stage Contract、Host Close：`dd-workflow-runtime`；
-* 通用 artifact 来源、验证、生命周期合同：`dd-workflow-runtime/references/artifact-contract.md` 及其分文件；
-* A/B/C 审查语义和风险路由：`dd-workflow-runtime/references/review-gate.md`；
-* 审查等级与强弱模型路由：`dd-workflow-runtime/references/model-routing.md`；
-* ChatGPT 外部审核闭环与传输：`gpt-grilling-review`；
-* 通用 CI / test-location：`dd-workflow-runtime/references/` 对应文件；
-* Git 操作：`dd-git-workflow`；
-* Requirements / Design / Visual / Test Matrix 写作语义：`dd-writing-specs`；
-* Skill 编写方法和 Skill TDD：`writing-skills`。
+* 状态、恢复、Stage Contract、Host Close：`wrt`；
+* 通用 artifact 来源、验证、生命周期合同：`wrt/references/artifact-contract.md` 及其分文件；
+* A/B/C 审查语义和风险路由：`wrt/references/review-gate.md`；
+* 审查等级与强弱模型路由：`wrt/references/model-routing.md`；
+* ChatGPT 外部审核闭环与传输：`gpt`；
+* 通用 CI / test-location：`wrt/references/` 对应文件；
+* Git 操作：`git`；
+* Requirements / Design / Visual / Test Matrix 写作语义：`spec`；
+* Skill 编写方法和 Skill TDD：`skl`。
 
 领域 Skill 只增加自己的领域规则，不复制这些共享合同。
 

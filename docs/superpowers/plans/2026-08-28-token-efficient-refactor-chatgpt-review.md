@@ -1,39 +1,39 @@
-# ChatGPT 复核送审材料 — dd-feature-development-workflow token-efficient refactor
+# ChatGPT 复核送审材料 — fdev token-efficient refactor
 
 > 目的：给 ChatGPT 对本次重构做针对性审核。**只发审核要求与文件清单，不粘贴代码**——ChatGPT 应按 Tunnel 工具以 `work/skills` 为 repo 读取本地文件。
 >
-> 说明：当前执行环境无 `chatgpt_send`/`chatgpt_get_result`/Tunnel MCP 工具，无法由 agent 自动发起外部审核。此材料供你把内容粘贴到 ChatGPT 审核，并把意见带回后由 agent 按 gpt-grilling-review 闭环处置（本地核对 → F/V/H 分流 → 修复 → 针对性复查）。
+> 说明：当前执行环境无 `chatgpt_send`/`chatgpt_get_result`/Tunnel MCP 工具，无法由 agent 自动发起外部审核。此材料供你把内容粘贴到 ChatGPT 审核，并把意见带回后由 agent 按 gpt 闭环处置（本地核对 → F/V/H 分流 → 修复 → 针对性复查）。
 
 ## 送审 content 模板（可直接粘贴）
 
 ```
 请使用 Tunnel 工具按仓库名读取仓库 "work/skills"（repo 名 = work 下相对路径，Tunnel 会解析到真实目录；不要猜绝对路径）。
 
-这是一次 dd-feature-development-workflow 的 token-efficient 重构，目标是在不降低来源可信度、验证有效性、独立审查、UI 证据、exact-SHA CI 和 Delivery 授权边界的前提下，压缩重复读取/重复字段/重复审查，并修复 Candidate/Documentation/Delivery 与共享 CI 的合同冲突。
+这是一次 fdev 的 token-efficient 重构，目标是在不降低来源可信度、验证有效性、独立审查、UI 证据、exact-SHA CI 和 Delivery 授权边界的前提下，压缩重复读取/重复字段/重复审查，并修复 Candidate/Documentation/Delivery 与共享 CI 的合同冲突。
 
 请逐文件审核以下改动（相对仓库根的路径）：
-dd-feature-development-workflow/SKILL.md
-dd-feature-development-workflow/references/candidate.md
-dd-feature-development-workflow/references/documentation.md
-dd-feature-development-workflow/references/implementation.md
-dd-feature-development-workflow/references/intake-and-environment.md
-dd-feature-development-workflow/references/planning-stage.md
-dd-feature-development-workflow/references/specification.md
-dd-feature-development-workflow/references/state-and-handoff.md
-dd-feature-development-workflow/references/planning.md
-dd-feature-development-workflow/references/delivery-and-closure.md
-dd-workflow-runtime/references/artifact-contract.md
-dd-workflow-runtime/references/ci.md
-dd-workflow-runtime/references/test-location.md
-dd-workflow-runtime/references/ci-xcode.md
-dd-ai-refactor-workflow/SKILL.md
-dd-ai-refactor-workflow/references/verification-and-delivery.md
-dd-feature-development-workflow/tests/test_feature_workflow_contracts.py
-dd-workflow-runtime/tests/test_ci_contracts.py
-dd-feature-development-workflow/tests/baseline-7-candidate-before-delivery.md
-dd-feature-development-workflow/tests/baseline-8-phase-anchor-loading.md
-dd-feature-development-workflow/tests/baseline-9-compact-verification.md
-dd-feature-development-workflow/tests/baseline-10-frozen-candidate-review.md
+fdev/SKILL.md
+fdev/references/candidate.md
+fdev/references/documentation.md
+fdev/references/implementation.md
+fdev/references/intake-and-environment.md
+fdev/references/planning-stage.md
+fdev/references/specification.md
+fdev/references/state-and-handoff.md
+fdev/references/planning.md
+fdev/references/delivery-and-closure.md
+wrt/references/artifact-contract.md
+wrt/references/ci.md
+wrt/references/test-location.md
+wrt/references/ci-xcode.md
+rfct/SKILL.md
+rfct/references/verification-and-delivery.md
+fdev/tests/test_feature_workflow_contracts.py
+wrt/tests/test_ci_contracts.py
+fdev/tests/baseline-7-candidate-before-delivery.md
+fdev/tests/baseline-8-phase-anchor-loading.md
+fdev/tests/baseline-9-compact-verification.md
+fdev/tests/baseline-10-frozen-candidate-review.md
 
 重点审核：
 1. 主 SKILL.md 是否只做 Router（AC-01），每个 Stage reference 是否一层可达（AC-02）；

@@ -3,7 +3,7 @@
 > 归属：Task Tracking 投影改造设计 §8 待取证项 L-02（`docs/AI/2026-10-02-task-tracking-projection-design.md`）
 > 取证日期：2026-10-02 ｜ 执行环境：gh CLI（marcocpt），真实 GitHub REST API v3
 > 探针仓库：`marcocpt/dd-checkpoint-probe-20261002`（私有一次性 scratch repo，issue #1，取证后可整体删除；删除属 owner 动作）
-> 结果：**PASS——冻结规则已写入 `dd-workflow-runtime/references/task-tracking.md` §6.1**
+> 结果：**PASS——冻结规则已写入 `wrt/references/task-tracking.md` §6.1**
 >
 > 产物三件套（可复现闭环）：
 > 1. 本文档（结论 + 设计 + 更正记录）；
@@ -75,7 +75,7 @@ negative_sample_5_sha_in_current_body_canonical_order_violation_valid=false
 - **B-R-02 收口**：raw-output v1 节的"编辑稳定"旧结论已标注为历史初稿结论、被 B-M-02 推翻；本文档不再把三字段 jq 称为"生产语义"（§2.2 已替换为八字段规则实现）。
 - **B-H-01 收口**：全部改动落位于 `docs/task-tracking-projection` worktree（分支 `docs/task-tracking-projection`），`develop` 工作树保持干净。
 - **补强（计数）**：§6.1 第 7 条要求输出 `fetched_total / marker_candidates / malformed / after_workflow_filter / duplicates` 五计数（探针脚本初稿只有 parsed / filtered 两档，不足以判断静默丢失）。
-- **补强（合同测试）**：`dd-workflow-runtime/tests/test_task_tracking.py` 新增 §6.1 section-scoped 断言与变异测试（`TestSection61Selection` + `TestMutations` 三条 §6.1 变异），把翻页/禁 sort+since/完整字段校验/workflow 过滤/去重/最新选取/append-only/计数/证据脚本语义固定进测试。
+- **补强（合同测试）**：`wrt/tests/test_task_tracking.py` 新增 §6.1 section-scoped 断言与变异测试（`TestSection61Selection` + `TestMutations` 三条 §6.1 变异），把翻页/禁 sort+since/完整字段校验/workflow 过滤/去重/最新选取/append-only/计数/证据脚本语义固定进测试。
 - **样本量边界**：5 条 / 单 issue；>100 条真实多页场景未触发（Link 语义已用 per_page=2 验证），实现侧在超长 issue 上重验。
 
 ## 5. 复核与清理

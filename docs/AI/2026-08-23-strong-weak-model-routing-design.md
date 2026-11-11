@@ -29,9 +29,9 @@
 
 ### 1.2 权威依据
 
-- 公共 A/B/C 审查语义：[共享审查规则](../../dd-workflow-runtime/references/review-gate.md)
-- 外部 ChatGPT finding 生命周期与关闭权：[ChatGPT 文件 Grilling 审核](../../gpt-grilling-review/SKILL.md)
-- 外部审核传输合同：[ChatGPT 审核闭环](../../gpt-grilling-review/references/transport.md)
+- 公共 A/B/C 审查语义：[共享审查规则](../../wrt/references/review-gate.md)
+- 外部 ChatGPT finding 生命周期与关闭权：[ChatGPT 文件 Grilling 审核](../../gpt/SKILL.md)
+- 外部审核传输合同：[ChatGPT 审核闭环](../../gpt/references/transport.md)
 - Skill 收敛与事实属主原则：[Skill 目录收敛迁移映射](../migrations/2026-08-23-skill-consolidation.md)
 
 ## 2. 架构总览
@@ -505,7 +505,7 @@ stateDiagram-v2
 | R-006 | 多个 App 同时修改同一工作区 | 产生竞态和不可审查变更 | 写入前取得跨宿主共享租约；冲突入口保持只读、转隔离环境或停止；恢复陈旧租约前重新核对持有者和工作环境。 |
 | R-007 | “强/弱”仅按模型名称静态判断 | 成本和质量可能不符合预期 | 路由策略同时考虑任务风险、推理强度、实际证据和失败历史。 |
 | R-008 | 配置存在被误报为集成可用 | Gate 可能调用失败 | 分开记录配置、连接、工具发现、真实调用和结果验证。 |
-| R-009 | 外部 finding 状态与公共审查状态重复维护 | 产生关闭权冲突 | 每个外部后端继续拥有自身 finding 生命周期；当前 ChatGPT finding 由 `gpt-grilling-review` 拥有，运行时只保存引用。 |
+| R-009 | 外部 finding 状态与公共审查状态重复维护 | 产生关闭权冲突 | 每个外部后端继续拥有自身 finding 生命周期；当前 ChatGPT finding 由 `gpt` 拥有，运行时只保存引用。 |
 | R-010 | 中立 Router 过早建设 | 在合同未稳定前增加维护成本 | 先验证公共语义和原生适配；Router 是否实现留给后续 Implementation Plan。 |
 | R-011 | 宿主不提供统一的 Skill 版本字段或缓存状态 | 可能把同版本号、旧缓存或漏文件误报为一致 | 以合同版本、canonical 内容摘要和宿主真实发现证据组成分发报告，不依赖宿主原生版本字段。 |
 

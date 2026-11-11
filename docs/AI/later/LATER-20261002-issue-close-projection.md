@@ -4,11 +4,11 @@ title: task-tracking 合同缺 Issue close 时机规则——外部关 Issue 造
 status: closed
 closed_at: 2026-10-02
 closed_by_commits: [2388d1a, f42ca27]
-evidence: dd-workflow-runtime/references/task-tracking.md §6.2/§6.5/§10/§13/§8；dd-workflow-runtime/tests/test_task_tracking.py TestCloseRule + TestMutations（§6.5 三条变异门）；dd-workflow-runtime/references/state.md 状态词表修正；runtime 346 + feature 32 合同测试全绿；git diff --check 通过
+evidence: wrt/references/task-tracking.md §6.2/§6.5/§10/§13/§8；wrt/tests/test_task_tracking.py TestCloseRule + TestMutations（§6.5 三条变异门）；wrt/references/state.md 状态词表修正；runtime 346 + feature 32 合同测试全绿；git diff --check 通过
 created: 2026-10-02
 source: Macim #111 实测（用户在其他会话直接关闭已绑定 Issue，看板未同步；工作流实为 in-progress）
 tags: [task-tracking, projection, macim]
-related: [dd-workflow-runtime/references/task-tracking.md]
+related: [wrt/references/task-tracking.md]
 target_phase: task-tracking 分支（docs/task-tracking-projection）合入 develop 后的第一次合同修订
 trigger: 用户批准对该分支的合同修订，或再次出现外部关闭 Issue 导致投影漂移时
 ---
@@ -36,5 +36,5 @@ trigger: 用户批准对该分支的合同修订，或再次出现外部关闭 I
 
 ## 复核方式
 
-- 修订后跑 `dd-workflow-runtime/tests/test_task_tracking.py` 全量；
+- 修订后跑 `wrt/tests/test_task_tracking.py` 全量；
 - 以 Macim 两个真实 Issue（#111 未完成、#112 已完成）作为语义复核样本。

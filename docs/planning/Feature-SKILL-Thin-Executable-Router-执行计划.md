@@ -1,4 +1,4 @@
-# 执行计划：dd-feature-development-workflow 主 SKILL.md 重构为 Thin Executable Router
+# 执行计划：fdev 主 SKILL.md 重构为 Thin Executable Router
 
 > **执行前提**：本计划已由强模型于 2026-08-29 完成仓库事实核查（主 SKILL.md、9 个 feature reference、runtime 合同、24+164 项合同测试均基线全绿）。执行时**不需要重新调查仓库**，直接按本计划修改、跑测试、看差异。若执行中发现与本计划描述不符的仓库事实，停止并报告，不要自行改设计。
 
@@ -6,7 +6,7 @@
 
 ## 0. 范围
 
-- 本任务**只修改** `dd-feature-development-workflow/SKILL.md`。
+- 本任务**只修改** `fdev/SKILL.md`。
 - 只有当防重复检查（第十一节）或验证（第十二节）发现确属本任务的问题时，才允许触碰对应 reference，且必须在最终报告中单独说明原因。
 - 禁止重新设计工作流；禁止顺手做与本任务无关的重构。
 - 运行时 YAML 调用块（`workflow_type`、`required_exit_stages`、`delivery_policy` 等字段）**原位保留，不改内容**；Gate/Stage 图的 Stage 顺序与"五个对外 Gate 聚合十个 Stage"的语义不得改动（措辞可微调）。
@@ -14,7 +14,7 @@
 
 ## 一、目标
 
-当前 `dd-feature-development-workflow/SKILL.md` 为了节省 token 和渐进式加载，已经被压缩成偏"路由器"的形式，但抽象程度过高：第一次阅读时能看到很多 Stage、Gate、状态和术语，却不能快速理解"这个工作流实际要做什么"。
+当前 `fdev/SKILL.md` 为了节省 token 和渐进式加载，已经被压缩成偏"路由器"的形式，但抽象程度过高：第一次阅读时能看到很多 Stage、Gate、状态和术语，却不能快速理解"这个工作流实际要做什么"。
 
 本次重构目标是：
 
@@ -71,7 +71,7 @@
 
 1. 收集并确认 Feature 需求，复用已有 Handoff 和已解决事实；
 2. 固定工作环境并确认基线；
-3. 调用 `dd-writing-specs` 生成并批准 Requirements、Design、Test Matrix，UI 功能按需包含 Visual；
+3. 调用 `spec` 生成并批准 Requirements、Design、Test Matrix，UI 功能按需包含 Visual；
 4. 从已批准规格拆出 Phase 和可执行 Task；
 5. 按 Phase → Task → TDD 实现，每个 Phase 必须通过 Local Gate；
 6. 根据真实实现同步受影响文档；
@@ -106,7 +106,7 @@
 - 完成：工作环境与状态一致，可安全进入规格阶段。
 
 ### Specification
-- 做什么：调用 `dd-writing-specs`，生成并批准 Requirements、Design、Test Matrix；UI 功能按需生成 Visual。
+- 做什么：调用 `spec`，生成并批准 Requirements、Design、Test Matrix；UI 功能按需生成 Visual。
 - 完成：canonical spec 已批准，并有当前内容指纹和批准依据。
 
 ### Planning
@@ -203,7 +203,7 @@
 - 冻结候选版本/冻结候选 SHA，而不是 frozen candidate；
 - 交付授权，而不是 delivery authorization；
 - 审查者，而不是 Reviewer，但代码字段 `candidate_review` 保持原样；
-- 运行时，而不是 runtime，但 Skill 名 `dd-workflow-runtime` 保持原样。
+- 运行时，而不是 runtime，但 Skill 名 `wrt` 保持原样。
 
 以下内容必须保持原始标识，不翻译：文件名；Skill 名；字段名；枚举值；CLI 命令；YAML/JSON schema 字段；`candidate_sha`、`full_ci_run`、`delivery_authorization` 等现有合同标识。
 
@@ -240,11 +240,11 @@
 
 1. 主 `SKILL.md` 是否只讲"整体怎么走"和"每 Stage 做什么"；
 2. Stage 的详细规则是否仍只有对应 reference 一个属主；
-3. A/B/C 语义是否仍只取 `dd-workflow-runtime/references/review-gate.md`；
+3. A/B/C 语义是否仍只取 `wrt/references/review-gate.md`；
 4. `artifact-contract.md` 是否仍只作为共享合同路由器；来源／执行包／授权是否只取 `artifact-source-and-packet.md`，验证证据是否只取 `artifact-verification.md`，生命周期／同步是否只取 `artifact-lifecycle.md`，主文件不得复制这些详细合同；
 5. CI 细节是否仍只由 runtime CI reference 负责；
 6. 状态恢复通用语义是否仍由 runtime 负责；
-7. `dd-writing-specs` 已拥有的规格语义检查是否没有在 Feature 主 Skill 中重新完整复制。
+7. `spec` 已拥有的规格语义检查是否没有在 Feature 主 Skill 中重新完整复制。
 
 如果发现主文件与 reference 同时定义同一规则，优先保留 reference 作为唯一详细属主，主文件改为一句话概述并链接。
 
@@ -253,8 +253,8 @@
 ### 命令
 
 ```bash
-python3 -m unittest discover -s dd-feature-development-workflow/tests -p 'test_*.py'
-python3 -m unittest discover -s dd-workflow-runtime/tests -p 'test_*.py'
+python3 -m unittest discover -s fdev/tests -p 'test_*.py'
+python3 -m unittest discover -s wrt/tests -p 'test_*.py'
 git diff --check
 ```
 

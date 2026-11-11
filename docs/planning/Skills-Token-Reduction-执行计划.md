@@ -4,7 +4,7 @@
 
 在不降低可执行性与质量门禁的前提下，降低 Skill 每次触发时的加载 token 成本。手段仅限四类：
 去重复（回归单一事实源）、细节下沉 reference、消费方一句话概述＋路由、英文叙述中文化。
-遵循 AGENTS.md 全部纪律；以 `dd-feature-development-workflow/SKILL.md`（thin executable router，
+遵循 AGENTS.md 全部纪律；以 `fdev/SKILL.md`（thin executable router，
 commit e0aeb7d）为形态样板。所有省 token 结论只报告 `wc -c` 实测数字。
 
 ## 范围
@@ -13,29 +13,29 @@ commit e0aeb7d）为形态样板。所有省 token 结论只报告 `wc -c` 实�
 
 跳过理由：
 
-- `dd-feature-development-workflow`：刚完成同型重构（e0aeb7d），本任务将其作为样板；
-- `dd-git-workflow`（56 行）：已是目标形态的最薄入口；
-- `dd-project-docs`（44 行）：已是目标形态的最薄入口。
+- `fdev`：刚完成同型重构（e0aeb7d），本任务将其作为样板；
+- `git`（56 行）：已是目标形态的最薄入口；
+- `pdoc`（44 行）：已是目标形态的最薄入口。
 
 ## 分类与分批（≤3 worktree 并行）
 
 | 批次 | worktree 分支 | Skill | 主要问题点（动手前需逐条核实属主） |
 |---|---|---|---|
-| 1 | `refactor/skills-runtime` | dd-workflow-runtime | 「询问与执行预算」两条巨型 adapter 路由子弹与 model-routing.md 重复（已核实 model-routing.md 拥有全部细节）；其余保守 |
-| 1 | `refactor/skills-bugfix-specs` | dd-bug-fix-workflow、dd-writing-specs | 核心原则英文；Host Close 协议重复（属主=runtime 宿主结束合同）；bug-fix 状态 schema＋legacy 映射内联；specs Git 授权长论述与 runtime 重复 |
-| 1 | `refactor/skills-refactor-bootstrap` | dd-ai-refactor-workflow、dd-project-bootstrap-workflow | Host Close 协议重复；核心原则英文；bootstrap Handoff 12 项清单与 execution-contract.md 疑似重复；受 test_ci_contracts.py 两条断言约束 |
-| 2 | `refactor/skills-gpt-review` | gpt-grilling-review | 基线失败表／红线表／禁止事项三段大面积语义重叠；模板与字段不动 |
-| 2 | `refactor/skills-xctest` | dd-xctest-newbie-grilling-review | ChatGPT 传输机制与 gpt-grilling-review 重复（传输属主=后者）；A/B/C 四段模板重复 |
-| 2 | `refactor/skills-later-docreview` | dd-later-tracking、dd-docreview-grilling | later：TodoWrite 边界三处重复、INDEX 规则两处重复、借口表与红线重叠；docreview 轻度 |
-| 3 | `refactor/skills-writing-skills` | writing-skills | 红-绿-重构循环五处重复表述；CSO 示例块过多；测试类型四段可压缩 |
-| 3 | `refactor/skills-tools` | detailed-log、workflow-runner、mcp-builder | detailed-log 四语言示例违反单示例原则（另两个仅轻度） |
+| 1 | `refactor/skills-runtime` | wrt | 「询问与执行预算」两条巨型 adapter 路由子弹与 model-routing.md 重复（已核实 model-routing.md 拥有全部细节）；其余保守 |
+| 1 | `refactor/skills-bugfix-specs` | bug、spec | 核心原则英文；Host Close 协议重复（属主=runtime 宿主结束合同）；bug-fix 状态 schema＋legacy 映射内联；specs Git 授权长论述与 runtime 重复 |
+| 1 | `refactor/skills-refactor-bootstrap` | rfct、boot | Host Close 协议重复；核心原则英文；bootstrap Handoff 12 项清单与 execution-contract.md 疑似重复；受 test_ci_contracts.py 两条断言约束 |
+| 2 | `refactor/skills-gpt-review` | gpt | 基线失败表／红线表／禁止事项三段大面积语义重叠；模板与字段不动 |
+| 2 | `refactor/skills-xctest` | xtst | ChatGPT 传输机制与 gpt 重复（传输属主=后者）；A/B/C 四段模板重复 |
+| 2 | `refactor/skills-later-docreview` | later、drev | later：TodoWrite 边界三处重复、INDEX 规则两处重复、借口表与红线重叠；docreview 轻度 |
+| 3 | `refactor/skills-writing-skills` | skl | 红-绿-重构循环五处重复表述；CSO 示例块过多；测试类型四段可压缩 |
+| 3 | `refactor/skills-tools` | dlog、flow、mcp | dlog 四语言示例违反单示例原则（另两个仅轻度） |
 
 ## 流程（每批）
 
 1. 从 develop 建 worktree 与分支；
 2. 并行 subagent 修改：每个 Skill 单独 commit，message 含 `wc -c` 前后字节数；
 3. 主线程程序化检查：相对链接有效性、`git diff --check`、相关自动化测试；
-4. 按 `gpt-grilling-review` 送 ChatGPT 审核，循环处置直到本批 finding 全部关闭；
+4. 按 `gpt` 送 ChatGPT 审核，循环处置直到本批 finding 全部关闭；
 5. merge 回 develop（本地，不 push）；
 6. 进入下一批。
 
@@ -59,8 +59,8 @@ commit e0aeb7d）为形态样板。所有省 token 结论只报告 `wc -c` 实�
 runtime-contract.md -584、todo-later-and-batch-repair.md -313；bug-fix 新增 references/state.md
 （+1090，为主文件下沉内容）。逐文件实测见各 commit message。
 
-- 未修改 4 个：dd-feature-development-workflow（样板）、dd-git-workflow、workflow-runner、
-  mcp-builder（操作性/参考性正文，无重复属主，ChatGPT 复核认可）；
+- 未修改 4 个：fdev（样板）、git、flow、
+  mcp（操作性/参考性正文，无重复属主，ChatGPT 复核认可）；
 - 计划外追加：版本记录规则归属（docs-governance §9 权威定义 + 各 writer 一句话，截断式，
   用户裁决），批次 1 完成；
 - 处置 finding：BEBE-001~004、RB-001~002、GPTREV-001、XCTEST-001、LATERDOC-001~002、

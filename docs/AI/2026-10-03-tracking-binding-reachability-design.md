@@ -14,15 +14,15 @@
 
 ```text
 入口层（首次读取面）
-├── dd-feature-development-workflow/SKILL.md   ← 补 Environment Stage 义务 + 红线
-├── dd-bug-fix-workflow/SKILL.md               ← 补 Environment Stage 义务 + 红线
-└── dd-workflow-runtime/SKILL.md               ← 补 Preflight 义务 + 调用契约字段语义
+├── fdev/SKILL.md   ← 补 Environment Stage 义务 + 红线
+├── bug/SKILL.md               ← 补 Environment Stage 义务 + 红线
+└── wrt/SKILL.md               ← 补 Preflight 义务 + 调用契约字段语义
 
 状态表示层
-└── dd-workflow-runtime/references/state.md    ← 通用字段表示补 tracking 预留位
+└── wrt/references/state.md    ← 通用字段表示补 tracking 预留位
 
 判定层（既有 validate-* 家族新增成员）
-└── dd-workflow-runtime/agents/validate-tracking-binding.py
+└── wrt/agents/validate-tracking-binding.py
 ```
 
 **为什么这样切分**：入口层解决"义务不可见"，判定层解决"跳过无代价"。两者缺一则前次失效重演——只有判定层，Agent 不会运行它；只有入口层，Agent 可无视红线直接通过。
@@ -178,18 +178,18 @@ feature-fast-track / bug-fast-track（判定范围，但入口不由本 Feature 
 
 与既有 `owner` 子对象并列，注释指向 owner 合同。不在 `state.md` 出现 `provider` / `issue_number` / `sync` / `sync_reason` 等子字段名。
 
-**为什么 `state.md` 而不是调用契约 YAML**：`dd-workflow-runtime/SKILL.md` 的调用契约已有 `tracking: null`（该字段名已由 runtime-contract §3 声明为可选）。缺口在 `state.md` 的持久化模板——执行者照模板首次写状态时产出的 JSON 里根本没有 `tracking` 键。这是实际缺陷点。
+**为什么 `state.md` 而不是调用契约 YAML**：`wrt/SKILL.md` 的调用契约已有 `tracking: null`（该字段名已由 runtime-contract §3 声明为可选）。缺口在 `state.md` 的持久化模板——执行者照模板首次写状态时产出的 JSON 里根本没有 `tracking` 键。这是实际缺陷点。
 
 ## 6. 入口层改动清单
 
 | 文件 | 位置 | 改动 |
 |---|---|---|
-| `dd-feature-development-workflow/SKILL.md` | Stage 路由表 Environment 行 | Stage 义务写入"实际要做什么"与"完成标志"两列 |
-| `dd-feature-development-workflow/SKILL.md` | 红线 → 阶段纪律 | 新增一条：未完成绑定尝试并通过判定就过 Environment Gate |
-| `dd-bug-fix-workflow/SKILL.md` | Stage 路由 → Environment 段 | 段内补义务句与判定要求（该文件用分段而非表格） |
-| `dd-bug-fix-workflow/SKILL.md` | 红线 | 同上 |
-| `dd-workflow-runtime/SKILL.md` | Preflight | 新增一条：以 Environment Gate 为绑定 Gate 的 Feature/Bug 两类工作流在 Environment Gate 前必须完成尝试。两个速通工作流的绑定 Gate 是 Intake Gate，由其自身 Skill 在 Intake 提供调用点，本条不代为声明 |
-| `dd-workflow-runtime/SKILL.md` | 调用契约字段说明 | 明确 `tracking` 字段语义为"尝试结果"，非仅"已绑定时用于定位" |
+| `fdev/SKILL.md` | Stage 路由表 Environment 行 | Stage 义务写入"实际要做什么"与"完成标志"两列 |
+| `fdev/SKILL.md` | 红线 → 阶段纪律 | 新增一条：未完成绑定尝试并通过判定就过 Environment Gate |
+| `bug/SKILL.md` | Stage 路由 → Environment 段 | 段内补义务句与判定要求（该文件用分段而非表格） |
+| `bug/SKILL.md` | 红线 | 同上 |
+| `wrt/SKILL.md` | Preflight | 新增一条：以 Environment Gate 为绑定 Gate 的 Feature/Bug 两类工作流在 Environment Gate 前必须完成尝试。两个速通工作流的绑定 Gate 是 Intake Gate，由其自身 Skill 在 Intake 提供调用点，本条不代为声明 |
+| `wrt/SKILL.md` | 调用契约字段说明 | 明确 `tracking` 字段语义为"尝试结果"，非仅"已绑定时用于定位" |
 
 **为什么写两处（Stage 行 + 红线）**：Stage 行保证"做什么"可见，红线保证"跳过会被判违规"。只有 Stage 行，Agent 可能读作建议；只有红线，Agent 不知道该做什么。
 
@@ -206,7 +206,7 @@ feature-fast-track / bug-fast-track（判定范围，但入口不由本 Feature 
 | `test_task_tracking.py::check_consumers_delegate_tracking` 的 `## Bug State` 段落约束 | 该段落要求 canonical router 句**逐字**且**独占一段**，并禁止段内出现 `新建`／`创建`／`远端工单`／`任务卡`。因此义务表述**不得**写进 bug SKILL.md 的 `## Bug State` 节，只能写进 `## Stage 路由 → ### Environment` 与 `## 红线` |
 | `test_feature_workflow_contracts.py::test_environment_owns_only_call_site` | 限定 Environment reference 段只含调用点与 Gate 条款两个 tracking 行（结构性计数 + 逐字锁定）。只读 `references/intake-and-environment.md`，**入口层 SKILL.md 不受此约束** |
 
-**新增测试的落点**：判定层测试放 `dd-workflow-runtime/tests/test_validate_tracking_binding.py`（与 `test_validate_workflow_artifact.py` 同族）；入口层与漂移断言放 `test_task_tracking.py`（它已是 owner 合同的测试属主）。
+**新增测试的落点**：判定层测试放 `wrt/tests/test_validate_tracking_binding.py`（与 `test_validate_workflow_artifact.py` 同族）；入口层与漂移断言放 `test_task_tracking.py`（它已是 owner 合同的测试属主）。
 
 ## 8. FR 映射
 
@@ -214,7 +214,7 @@ feature-fast-track / bug-fast-track（判定范围，但入口不由本 Feature 
 |---|---|
 | FR-1 | §6 入口层 Stage 行 |
 | FR-2 | §6 入口层义务句直接指称创建 Issue |
-| FR-3 | §6 `dd-workflow-runtime/SKILL.md` Preflight + 字段语义 |
+| FR-3 | §6 `wrt/SKILL.md` Preflight + 字段语义 |
 | FR-4 | §5 `state.md` 预留位 |
 | FR-5 | §3.1 判定层 CLI |
 | FR-6 | §3.2 判定算法（配对化 + legacy 精确集）+ §3.3 不做对账 |

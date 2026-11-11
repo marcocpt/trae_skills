@@ -4,7 +4,7 @@
 
 ## Skill 正文映射（旧路径 → 新路径）
 
-### → dd-git-workflow
+### → git
 
 | 旧路径 | 新路径 |
 |---|---|
@@ -19,7 +19,7 @@
 | `dd-git-worktree/SKILL.md` | `references/worktree.md` |
 | `dd-ai-git-workflow/scripts/*.sh`（6 个） | `scripts/`（原名保留） |
 
-### → dd-project-docs
+### → pdoc
 
 | 旧路径 | 新路径 |
 |---|---|
@@ -32,7 +32,7 @@
 | `dd-write-roadmap/SKILL.md` | `references/roadmap.md` |
 | `dd-write-phase-contract/tests/*` | `tests/dd-write-phase-contract/` |
 
-### → dd-workflow-runtime（由 `dd-shared-workflow-runtime` 更名）
+### → wrt（由 `dd-shared-workflow-runtime` 更名）
 
 | 旧路径 | 新路径 |
 |---|---|
@@ -45,7 +45,7 @@
 | `dd-shared-workflow-runtime/references/runtime-contract.md` | `references/runtime-contract.md`（同结构迁移） |
 | `dd-shared-workflow-runtime/tests/*`、`dd-shared-ci/tests/*` | `tests/`（后者在 `tests/dd-shared-ci/`） |
 
-### → dd-writing-specs
+### → spec
 
 | 旧路径 | 新路径 |
 |---|---|
@@ -53,14 +53,14 @@
 | `dd-write-design/SKILL.md` | `references/design-writer.md` |
 | 两者的 `tests/*` | `tests/dd-write-requirements/`、`tests/dd-write-design/` |
 
-### → dd-feature-development-workflow
+### → fdev
 
 | 旧路径 | 新路径 |
 |---|---|
 | `writing-plans/SKILL.md` | `references/planning.md` |
 | `writing-plans/plan-document-reviewer-prompt.md` | `references/planning-reviewer-prompt.md` |
 
-### → gpt-grilling-review
+### → gpt
 
 | 旧路径 | 新路径 |
 |---|---|
@@ -72,7 +72,7 @@
 
 Superpowers 系重复流程与工具 skill：`brainstorming`、`dispatching-parallel-agents`、`executing-plans`、`finishing-a-development-branch`、`gh-cli`、`github-issue-create`、`github-issues-do`、`github-mr`、`github-pull`、`grilling`、`my-test-driven-debug`、`requesting-code-review`、`subagent-driven-development`、`systematic-debugging`、`test-driven-development`、`using-git-worktrees`、`using-superpowers`、`verification-before-completion`、`find-skills`（符号链接）、`shared/scripts/sync-ai-test-worktree.sh`。
 
-例外：`brainstorming` 的 HTML server 脚本（start/stop-server.sh + server.cjs + helper.js + frame-template.html，字节不变）迁移到 `dd-docreview-grilling/scripts/`，供文档审核可视化使用。
+例外：`brainstorming` 的 HTML server 脚本（start/stop-server.sh + server.cjs + helper.js + frame-template.html，字节不变）迁移到 `drev/scripts/`，供文档审核可视化使用。
 
 ## 历史文档原则
 

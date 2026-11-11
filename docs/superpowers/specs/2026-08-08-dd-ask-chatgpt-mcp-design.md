@@ -4,11 +4,11 @@
 
 ## 目标
 
-把「查询 ChatGPT」从 `dd-xctest-newbie-grilling-review` 技能内嵌的浏览器编排逻辑中提取出来，做成一个独立的 MCP 服务器，供 Trae、opencode、WorkBuddy、Claude Code、Cursor 等所有支持 MCP 标准的应用跨 app 复用。
+把「查询 ChatGPT」从 `xtst` 技能内嵌的浏览器编排逻辑中提取出来，做成一个独立的 MCP 服务器，供 Trae、opencode、WorkBuddy、Claude Code、Cursor 等所有支持 MCP 标准的应用跨 app 复用。
 
 ## 背景与问题
 
-当前「查询 ChatGPT」逻辑内嵌在 `dd-xctest-newbie-grilling-review/references/risk-review-and-ask.md`，依赖 Trae 的 `integrated_browser`（内置浏览器）MCP 工具。这套逻辑已验证可用，但：
+当前「查询 ChatGPT」逻辑内嵌在 `xtst/references/risk-review-and-ask.md`，依赖 Trae 的 `integrated_browser`（内置浏览器）MCP 工具。这套逻辑已验证可用，但：
 
 - 被某个技能内嵌，其他技能/项目无法直接复用。
 - 依赖宿主 app 私有的内置浏览器 MCP，无法跨 app 复用。
@@ -271,7 +271,7 @@ RESPONSE_NOT_FOUND / DOM_CHANGED / NETWORK_ERROR / ASK_TIMEOUT
 
 ## 范围外（Out of Scope）
 
-- 不替换/不删除 `dd-xctest-newbie-grilling-review` 现有的内置浏览器路径；MCP 作为独立可复用的通用能力提供。技能在 MCP 可用时优先调用，内置浏览器作为回退。
+- 不替换/不删除 `xtst` 现有的内置浏览器路径；MCP 作为独立可复用的通用能力提供。技能在 MCP 可用时优先调用，内置浏览器作为回退。
 - 不支持多账号并行会话（单 profile 单 owner）。
 - 不实现 ChatGPT 网页端之外的任何后端 API 调用（与「部署前置条件」构成必须裁决的合规边界）。
 - 第一版不实现「cancel 时点击 Stop generation」等增强。

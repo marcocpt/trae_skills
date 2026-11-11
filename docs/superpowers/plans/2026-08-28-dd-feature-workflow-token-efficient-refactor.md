@@ -2,7 +2,7 @@
 
 > **面向 AI 代理的工作者：** 由主 Agent 按任务顺序调度 `luna-worker` 执行；Luna 只修改当前任务的 Write scope，不得自宣 Gate PASS。主 Agent 在每个任务后核对 diff、命令输出和停止条件。不要并行执行共享文件任务。
 
-**目标：** 在不降低来源可信度、验证有效性、独立审查、UI 证据、exact-SHA CI 和 Delivery 授权边界的前提下，减少 `dd-feature-development-workflow` 的重复读取、重复字段和重复审查，并修复当前 Candidate/Documentation/Delivery 与共享 CI 的合同冲突。
+**目标：** 在不降低来源可信度、验证有效性、独立审查、UI 证据、exact-SHA CI 和 Delivery 授权边界的前提下，减少 `fdev` 的重复读取、重复字段和重复审查，并修复当前 Candidate/Documentation/Delivery 与共享 CI 的合同冲突。
 
 **架构：** 保留十个可恢复 Stage 作为内部状态机，把对外质量语义收敛为五个 Gate；主 `SKILL.md` 只做路由，Stage 细节按需读取。Phase 只消费当前 requirement anchors 和全局约束，Final Candidate 在冻结基线上执行一次独立 A/B/C 审查并产出完整 spec gap。共享 Artifact Contract 采用“一份 source manifest + Task 引用”和“两块 verification + 四个不变量”。
 
@@ -81,64 +81,64 @@ Gate 结果与 Delivery 状态分开持久化：Candidate 可以 `PASS`，而 De
 
 | Ref | 路径 | SHA-256 | 用途 |
 |---|---|---|---|
-| S01 | `dd-feature-development-workflow/SKILL.md` | `1aec4eb68e3aa1511339404a1ce49e8ef5298a6a0ed3c0ee3b67574338b0cc02` | 当前 Router、Stage Graph、state/handoff、Gate |
-| S02 | `dd-feature-development-workflow/references/specification-and-planning.md` | `f66cbd601a38c2db35b3a9c07de4798dffab620151d0a9a733073549e53e8d5d` | Intake/Environment/Specification/Planning 原始正文 |
-| S03 | `dd-feature-development-workflow/references/planning.md` | `6ab79f87c4045308ec63be36efc054620b3c42ae9c95e5ada6dc1eb4b09c0b50` | 弱模型计划包模板和粒度规则 |
-| S04 | `dd-feature-development-workflow/references/implementation-and-verification.md` | `f35c601b9febe6f78ebf7203ce6aa82d601058f447b045db57959006a9b51fbc` | Phase、Local Gate、Candidate 原始正文 |
-| S05 | `dd-feature-development-workflow/references/delivery-and-closure.md` | `8e6ea5b46f109be267db7ef189626bab7c302f89c4d5fa97e8390833e22667ea` | Documentation/Delivery/Closure 原始正文 |
-| S06 | `dd-feature-development-workflow/references/planning-reviewer-prompt.md` | `e48509e5bfc1dc62eee080721263ee20cdfca563320f352d6fb26a904fec1d11` | 待退休的孤儿模板 |
-| S07 | `dd-workflow-runtime/SKILL.md` | `baa42470305d0a72959806b186129e530a08291e0883d55e97e9c5fe76fd0052` | 共享 runtime 和 Delivery 授权优先级 |
-| S08 | `dd-workflow-runtime/references/artifact-contract.md` | `b22d7c472af3a3ef00eec68e65860e0d9115c5eceb38789ffde3e51474f63cd7` | Source、执行包、verification 唯一属主 |
-| S09 | `dd-workflow-runtime/references/review-gate.md` | `76f7e07970d250c7f9ed16ce9e0b6f403d8afa74d2baf7c7ec827c994ddc8665` | A/B/C、风险升级和冻结基线 |
-| S10 | `dd-workflow-runtime/references/model-routing.md` | `d14e8b23b06d22dea5c45132ed2baab250d740e3250e50eb47ae7b576bf205ad` | 独立审查执行与 fail-closed 路由 |
-| S11 | `dd-workflow-runtime/references/ci.md` | `10e3b18672398e09df6eda93eede8b9658664b897f79cc42222a2a3977a76bb2` | 当前共享 CI 合同 |
-| S12 | `dd-workflow-runtime/references/test-location.md` | `cf65ef0c3b00362e6b466c5072534df73ac8799fdf33aa28479670d4af634413` | 当前测试位置合同 |
+| S01 | `fdev/SKILL.md` | `1aec4eb68e3aa1511339404a1ce49e8ef5298a6a0ed3c0ee3b67574338b0cc02` | 当前 Router、Stage Graph、state/handoff、Gate |
+| S02 | `fdev/references/specification-and-planning.md` | `f66cbd601a38c2db35b3a9c07de4798dffab620151d0a9a733073549e53e8d5d` | Intake/Environment/Specification/Planning 原始正文 |
+| S03 | `fdev/references/planning.md` | `6ab79f87c4045308ec63be36efc054620b3c42ae9c95e5ada6dc1eb4b09c0b50` | 弱模型计划包模板和粒度规则 |
+| S04 | `fdev/references/implementation-and-verification.md` | `f35c601b9febe6f78ebf7203ce6aa82d601058f447b045db57959006a9b51fbc` | Phase、Local Gate、Candidate 原始正文 |
+| S05 | `fdev/references/delivery-and-closure.md` | `8e6ea5b46f109be267db7ef189626bab7c302f89c4d5fa97e8390833e22667ea` | Documentation/Delivery/Closure 原始正文 |
+| S06 | `fdev/references/planning-reviewer-prompt.md` | `e48509e5bfc1dc62eee080721263ee20cdfca563320f352d6fb26a904fec1d11` | 待退休的孤儿模板 |
+| S07 | `wrt/SKILL.md` | `baa42470305d0a72959806b186129e530a08291e0883d55e97e9c5fe76fd0052` | 共享 runtime 和 Delivery 授权优先级 |
+| S08 | `wrt/references/artifact-contract.md` | `b22d7c472af3a3ef00eec68e65860e0d9115c5eceb38789ffde3e51474f63cd7` | Source、执行包、verification 唯一属主 |
+| S09 | `wrt/references/review-gate.md` | `76f7e07970d250c7f9ed16ce9e0b6f403d8afa74d2baf7c7ec827c994ddc8665` | A/B/C、风险升级和冻结基线 |
+| S10 | `wrt/references/model-routing.md` | `d14e8b23b06d22dea5c45132ed2baab250d740e3250e50eb47ae7b576bf205ad` | 独立审查执行与 fail-closed 路由 |
+| S11 | `wrt/references/ci.md` | `10e3b18672398e09df6eda93eede8b9658664b897f79cc42222a2a3977a76bb2` | 当前共享 CI 合同 |
+| S12 | `wrt/references/test-location.md` | `cf65ef0c3b00362e6b466c5072534df73ac8799fdf33aa28479670d4af634413` | 当前测试位置合同 |
 | S13 | `docs/migrations/2026-08-23-skill-consolidation.md` | `3b91e2784c9ae415f871f9fe8c9685a3088d5cf49e343490ad139bf3102822db` | 历史迁移边界；只读，不追改 |
 
 ## 5. 文件职责与精确范围
 
 ### 创建
 
-- `dd-feature-development-workflow/references/state-and-handoff.md` — Bootstrap Handoff、Feature state、legacy mapping、恢复补充。
-- `dd-feature-development-workflow/references/intake-and-environment.md` — Intake 与 Environment。
-- `dd-feature-development-workflow/references/specification.md` — Specification 调用合同与 Gate。
-- `dd-feature-development-workflow/references/planning-stage.md` — Planning Stage、Phase 拆分和 `planning.md` 调用合同。
-- `dd-feature-development-workflow/references/implementation.md` — Phase Loop、TDD、Local Gate、风险 Smoke/Review。
-- `dd-feature-development-workflow/references/documentation.md` — 候选冻结前的 impact-based 文档同步。
-- `dd-feature-development-workflow/references/candidate.md` — frozen candidate、独立 review/full gap、Full CI。
-- `dd-workflow-runtime/references/ci-xcode.md` — 仅在 Xcode 项目需要本地诊断时读取的通用 adapter；不含项目名或固定 scheme。
-- `dd-feature-development-workflow/tests/test_feature_workflow_contracts.py` — Feature 文档结构与合同断言。
-- `dd-workflow-runtime/tests/test_ci_contracts.py` — CI/Test Location 通用性和授权断言。
-- `dd-feature-development-workflow/tests/baseline-7-candidate-before-delivery.md` — 候选顺序压力场景。
-- `dd-feature-development-workflow/tests/baseline-8-phase-anchor-loading.md` — Phase 选择性读取与 drift 场景。
-- `dd-feature-development-workflow/tests/baseline-9-compact-verification.md` — compact schema 下 stale evidence 场景。
-- `dd-feature-development-workflow/tests/baseline-10-frozen-candidate-review.md` — 独立审查冻结基线场景。
-- `dd-feature-development-workflow/tests/evidence/2026-08-28-token-efficient-refactor-red.md` — 实际红测输出；禁止预填或伪造。
-- `dd-feature-development-workflow/tests/evidence/2026-08-28-token-efficient-refactor-green.md` — 实际绿测输出；禁止预填或伪造。
+- `fdev/references/state-and-handoff.md` — Bootstrap Handoff、Feature state、legacy mapping、恢复补充。
+- `fdev/references/intake-and-environment.md` — Intake 与 Environment。
+- `fdev/references/specification.md` — Specification 调用合同与 Gate。
+- `fdev/references/planning-stage.md` — Planning Stage、Phase 拆分和 `planning.md` 调用合同。
+- `fdev/references/implementation.md` — Phase Loop、TDD、Local Gate、风险 Smoke/Review。
+- `fdev/references/documentation.md` — 候选冻结前的 impact-based 文档同步。
+- `fdev/references/candidate.md` — frozen candidate、独立 review/full gap、Full CI。
+- `wrt/references/ci-xcode.md` — 仅在 Xcode 项目需要本地诊断时读取的通用 adapter；不含项目名或固定 scheme。
+- `fdev/tests/test_feature_workflow_contracts.py` — Feature 文档结构与合同断言。
+- `wrt/tests/test_ci_contracts.py` — CI/Test Location 通用性和授权断言。
+- `fdev/tests/baseline-7-candidate-before-delivery.md` — 候选顺序压力场景。
+- `fdev/tests/baseline-8-phase-anchor-loading.md` — Phase 选择性读取与 drift 场景。
+- `fdev/tests/baseline-9-compact-verification.md` — compact schema 下 stale evidence 场景。
+- `fdev/tests/baseline-10-frozen-candidate-review.md` — 独立审查冻结基线场景。
+- `fdev/tests/evidence/2026-08-28-token-efficient-refactor-red.md` — 实际红测输出；禁止预填或伪造。
+- `fdev/tests/evidence/2026-08-28-token-efficient-refactor-green.md` — 实际绿测输出；禁止预填或伪造。
 
 ### 修改
 
-- `dd-feature-development-workflow/SKILL.md`
-- `dd-feature-development-workflow/references/planning.md`
-- `dd-feature-development-workflow/references/delivery-and-closure.md`
-- `dd-feature-development-workflow/tests/baseline-1-state-not-updated.md`
-- `dd-feature-development-workflow/tests/baseline-2-state-deleted-before-merge.md`
-- `dd-feature-development-workflow/tests/baseline-3-trae-completion.md`
-- `dd-feature-development-workflow/tests/baseline-4-planning-phase-split.md`
-- `dd-feature-development-workflow/tests/baseline-5-original-source-and-evidence.md`
-- `dd-feature-development-workflow/tests/verify-scenario-feature-dev.md`
-- `dd-workflow-runtime/references/artifact-contract.md`
-- `dd-workflow-runtime/references/ci.md`
-- `dd-workflow-runtime/references/test-location.md`
-- `dd-workflow-runtime/tests/dd-shared-ci/baseline-1-xcode-signing.md`
-- `dd-ai-refactor-workflow/SKILL.md`
-- `dd-ai-refactor-workflow/references/verification-and-delivery.md`
+- `fdev/SKILL.md`
+- `fdev/references/planning.md`
+- `fdev/references/delivery-and-closure.md`
+- `fdev/tests/baseline-1-state-not-updated.md`
+- `fdev/tests/baseline-2-state-deleted-before-merge.md`
+- `fdev/tests/baseline-3-trae-completion.md`
+- `fdev/tests/baseline-4-planning-phase-split.md`
+- `fdev/tests/baseline-5-original-source-and-evidence.md`
+- `fdev/tests/verify-scenario-feature-dev.md`
+- `wrt/references/artifact-contract.md`
+- `wrt/references/ci.md`
+- `wrt/references/test-location.md`
+- `wrt/tests/dd-shared-ci/baseline-1-xcode-signing.md`
+- `rfct/SKILL.md`
+- `rfct/references/verification-and-delivery.md`
 
 ### 精确删除清单：另需用户授权
 
-- `dd-feature-development-workflow/references/specification-and-planning.md`
-- `dd-feature-development-workflow/references/implementation-and-verification.md`
-- `dd-feature-development-workflow/references/planning-reviewer-prompt.md`
+- `fdev/references/specification-and-planning.md`
+- `fdev/references/implementation-and-verification.md`
+- `fdev/references/planning-reviewer-prompt.md`
 
 如果删除未获授权，执行者必须保留这三份文件、在文件首行标记 `retired-reference: not-routed`，并报告未完成的清理；不得扩大删除范围。
 
@@ -146,7 +146,7 @@ Gate 结果与 Delivery 状态分开持久化：Candidate 可以 `PASS`，而 De
 
 - `docs/superpowers/plans/2026-08-28-dd-feature-workflow-token-efficient-refactor.md` — 本计划是执行输入；执行阶段只读并保留。
 - `docs/migrations/2026-08-23-skill-consolidation.md` 及其他历史 plan/spec。
-- `dd-workflow-runtime/references/model-routing.md` 和 review adapter/路由脚本。
+- `wrt/references/model-routing.md` 和 review adapter/路由脚本。
 - 任何项目仓库的 CI workflow、scheme、证书、runner 或真实数据。
 - Git 历史、远端分支、PR 和 worktree。
 
@@ -190,18 +190,18 @@ test -z "$(git status --porcelain | grep -v '^?? docs/superpowers/plans/2026-08-
 
 ```bash
 shasum -a 256 \
-  dd-feature-development-workflow/SKILL.md \
-  dd-feature-development-workflow/references/specification-and-planning.md \
-  dd-feature-development-workflow/references/planning.md \
-  dd-feature-development-workflow/references/implementation-and-verification.md \
-  dd-feature-development-workflow/references/delivery-and-closure.md \
-  dd-feature-development-workflow/references/planning-reviewer-prompt.md \
-  dd-workflow-runtime/SKILL.md \
-  dd-workflow-runtime/references/artifact-contract.md \
-  dd-workflow-runtime/references/review-gate.md \
-  dd-workflow-runtime/references/model-routing.md \
-  dd-workflow-runtime/references/ci.md \
-  dd-workflow-runtime/references/test-location.md \
+  fdev/SKILL.md \
+  fdev/references/specification-and-planning.md \
+  fdev/references/planning.md \
+  fdev/references/implementation-and-verification.md \
+  fdev/references/delivery-and-closure.md \
+  fdev/references/planning-reviewer-prompt.md \
+  wrt/SKILL.md \
+  wrt/references/artifact-contract.md \
+  wrt/references/review-gate.md \
+  wrt/references/model-routing.md \
+  wrt/references/ci.md \
+  wrt/references/test-location.md \
   docs/migrations/2026-08-23-skill-consolidation.md
 ```
 
@@ -210,11 +210,11 @@ shasum -a 256 \
 - [ ] **步骤 3：记录实际规模和引用者**
 
 ```bash
-wc -c dd-feature-development-workflow/SKILL.md \
-  dd-feature-development-workflow/references/*.md \
-  dd-workflow-runtime/references/ci.md \
-  dd-workflow-runtime/references/test-location.md
-rg -n "specification-and-planning|implementation-and-verification|planning-reviewer-prompt|dd-workflow-runtime/(ci|test-location)|references/(ci|test-location)\.md" \
+wc -c fdev/SKILL.md \
+  fdev/references/*.md \
+  wrt/references/ci.md \
+  wrt/references/test-location.md
+rg -n "specification-and-planning|implementation-and-verification|planning-reviewer-prompt|wrt/(ci|test-location)|references/(ci|test-location)\.md" \
   dd-* docs --glob '*.md'
 ```
 
@@ -266,7 +266,7 @@ ci.md 明确 external Git action requires delivery_authorization
 ci.md 明确 CI evidence binds exact SHA
 ci.md 明确 local diagnosis cannot close required remote CI Gate
 ci-xcode.md 存在且优先项目文档/项目脚本，不固定 workspace/project/scheme
-dd-ai-refactor-workflow 不再无条件要求每个 Commit push
+rfct 不再无条件要求每个 Commit push
 ```
 
 - [ ] **步骤 3：创建四个压力场景**
@@ -282,8 +282,8 @@ dd-ai-refactor-workflow 不再无条件要求每个 Commit push
 
 ```bash
 python3 -m unittest \
-  dd-feature-development-workflow/tests/test_feature_workflow_contracts.py \
-  dd-workflow-runtime/tests/test_ci_contracts.py -v
+  fdev/tests/test_feature_workflow_contracts.py \
+  wrt/tests/test_ci_contracts.py -v
 ```
 
 预期：非零退出，失败至少覆盖 AC-03、AC-04、AC-05、AC-07、AC-08、AC-09、AC-10。
@@ -310,9 +310,9 @@ python3 -m unittest \
 
 **Write scope：**
 
-- 修改 `dd-workflow-runtime/references/artifact-contract.md`
-- 修改 `dd-feature-development-workflow/references/planning.md`
-- 修改 `dd-feature-development-workflow/tests/baseline-5-original-source-and-evidence.md`
+- 修改 `wrt/references/artifact-contract.md`
+- 修改 `fdev/references/planning.md`
+- 修改 `fdev/tests/baseline-5-original-source-and-evidence.md`
 - 修改任务 1 创建的 Feature contract test
 
 - [ ] **步骤 1：定义唯一 source manifest**
@@ -373,7 +373,7 @@ Gate 规则：必需 coverage 无 `partial|missing|unverified`；必需 run 全�
 - [ ] **步骤 4：运行定向测试和消费者扫描**
 
 ```bash
-python3 -m unittest dd-feature-development-workflow/tests/test_feature_workflow_contracts.py -v
+python3 -m unittest fdev/tests/test_feature_workflow_contracts.py -v
 rg -n "verification_plan|existing_coverage|run_result|evidence_validity|逐项路径、稳定 ID、版本" \
   dd-* docs --glob '*.md'
 ```
@@ -416,10 +416,10 @@ rg -n "verification_plan|existing_coverage|run_result|evidence_validity|逐项�
 for file in \
   state-and-handoff.md intake-and-environment.md specification.md planning-stage.md \
   implementation.md documentation.md candidate.md; do
-  test -s "dd-feature-development-workflow/references/$file" || exit 1
+  test -s "fdev/references/$file" || exit 1
 done
 rg -n "Bootstrap Handoff|Feature State|Intake|Environment|Specification|Planning|Phase Loop|TDD|Local Gate|Documentation|Final Candidate" \
-  dd-feature-development-workflow/references
+  fdev/references
 ```
 
 预期：每个主题在新文件中有且只有一个属主；旧文件仅作为待退休对照造成的重复必须列明，不能被误判为新结构重复。
@@ -442,10 +442,10 @@ rg -n "Bootstrap Handoff|Feature State|Intake|Environment|Specification|Planning
 
 **Write scope：**
 
-- 修改 `dd-feature-development-workflow/SKILL.md`
+- 修改 `fdev/SKILL.md`
 - 修改任务 3 创建的七份 reference
-- 修改 `dd-feature-development-workflow/references/delivery-and-closure.md`
-- 修改 `dd-feature-development-workflow/references/planning.md`
+- 修改 `fdev/references/delivery-and-closure.md`
+- 修改 `fdev/references/planning.md`
 
 - [ ] **步骤 1：把主 Skill 缩为 Router**
 
@@ -481,7 +481,7 @@ Delivery 检查 confirmation、action-specific authorization 和 `review_sha == 
 - [ ] **步骤 7：运行 Feature tests**
 
 ```bash
-python3 -m unittest dd-feature-development-workflow/tests/test_feature_workflow_contracts.py -v
+python3 -m unittest fdev/tests/test_feature_workflow_contracts.py -v
 git diff --check
 ```
 
@@ -505,13 +505,13 @@ git diff --check
 
 **Write scope：**
 
-- 修改 `dd-workflow-runtime/references/ci.md`
-- 修改 `dd-workflow-runtime/references/test-location.md`
-- 创建 `dd-workflow-runtime/references/ci-xcode.md`
-- 修改 `dd-workflow-runtime/tests/dd-shared-ci/baseline-1-xcode-signing.md`
-- 修改任务 1 创建的 `dd-workflow-runtime/tests/test_ci_contracts.py`
-- 修改 `dd-ai-refactor-workflow/SKILL.md`
-- 修改 `dd-ai-refactor-workflow/references/verification-and-delivery.md`
+- 修改 `wrt/references/ci.md`
+- 修改 `wrt/references/test-location.md`
+- 创建 `wrt/references/ci-xcode.md`
+- 修改 `wrt/tests/dd-shared-ci/baseline-1-xcode-signing.md`
+- 修改任务 1 创建的 `wrt/tests/test_ci_contracts.py`
+- 修改 `rfct/SKILL.md`
+- 修改 `rfct/references/verification-and-delivery.md`
 
 - [ ] **步骤 1：明确唯一职责**
 
@@ -532,10 +532,10 @@ git diff --check
 - [ ] **步骤 5：运行共享测试和消费者扫描**
 
 ```bash
-python3 -m unittest dd-workflow-runtime/tests/test_ci_contracts.py -v
-python3 -m unittest discover -s dd-workflow-runtime/tests -p 'test_*.py' -v
+python3 -m unittest wrt/tests/test_ci_contracts.py -v
+python3 -m unittest discover -s wrt/tests -p 'test_*.py' -v
 rg -n "1\.2\.5|4\.5b|5\.5|8\.2\.1|Macim|MacimApp|macos-ci\.yml|macos-xcuitest\.yml|每个 Commit 后.*push" \
-  dd-workflow-runtime dd-ai-refactor-workflow --glob '*.md'
+  wrt rfct --glob '*.md'
 ```
 
 预期：tests PASS；扫描只允许 baseline 的“旧行为”引用，现行 contract 为零。
@@ -556,7 +556,7 @@ rg -n "1\.2\.5|4\.5b|5\.5|8\.2\.1|Macim|MacimApp|macos-ci\.yml|macos-xcuitest\.y
 
 **Produces：** 现行 Stage 测试、零 active legacy links、经授权时删除三份旧 reference。
 
-**Write scope：** §5“修改”中的 Feature baseline/verify 文件；`dd-feature-development-workflow/SKILL.md`；精确删除清单仅在本任务取得授权后可写。
+**Write scope：** §5“修改”中的 Feature baseline/verify 文件；`fdev/SKILL.md`；精确删除清单仅在本任务取得授权后可写。
 
 - [ ] **步骤 1：更新旧 baseline 术语**
 
@@ -566,7 +566,7 @@ rg -n "1\.2\.5|4\.5b|5\.5|8\.2\.1|Macim|MacimApp|macos-ci\.yml|macos-xcuitest\.y
 
 ```bash
 rg -n "specification-and-planning|implementation-and-verification|planning-reviewer-prompt" \
-  dd-feature-development-workflow --glob '*.md'
+  fdev --glob '*.md'
 ```
 
 预期：除旧文件自身、测试中明确标注的历史字符串外，active Router/reference 为零。
@@ -582,9 +582,9 @@ rg -n "specification-and-planning|implementation-and-verification|planning-revie
 - [ ] **步骤 5：运行所有 Feature tests**
 
 ```bash
-python3 -m unittest dd-feature-development-workflow/tests/test_feature_workflow_contracts.py -v
+python3 -m unittest fdev/tests/test_feature_workflow_contracts.py -v
 rg -n "步骤 (0|1|2|3|4|5|6|7|8|9)(\.|：| )|9\.1-merging" \
-  dd-feature-development-workflow/tests --glob '*.md'
+  fdev/tests --glob '*.md'
 git diff --check
 ```
 
@@ -620,11 +620,11 @@ git status --short
 - [ ] **步骤 2：运行确定性全套验证**
 
 ```bash
-python3 -m unittest dd-feature-development-workflow/tests/test_feature_workflow_contracts.py -v
-python3 -m unittest dd-workflow-runtime/tests/test_ci_contracts.py -v
-python3 -m unittest discover -s dd-workflow-runtime/tests -p 'test_*.py' -v
-python3 dd-workflow-runtime/agents/validate-bindings.py
-python3 dd-workflow-runtime/agents/validate-review-routing.py
+python3 -m unittest fdev/tests/test_feature_workflow_contracts.py -v
+python3 -m unittest wrt/tests/test_ci_contracts.py -v
+python3 -m unittest discover -s wrt/tests -p 'test_*.py' -v
+python3 wrt/agents/validate-bindings.py
+python3 wrt/agents/validate-review-routing.py
 git diff --check
 ```
 
@@ -634,9 +634,9 @@ git diff --check
 
 ```bash
 rg -n "2–5 分钟|四层验证证据|完整读取该包引用的批准原始规格|每个 Commit 后.*push|Macim|MacimApp" \
-  dd-feature-development-workflow dd-workflow-runtime dd-ai-refactor-workflow --glob '*.md'
+  fdev wrt rfct --glob '*.md'
 rg -n "specification-and-planning|implementation-and-verification|planning-reviewer-prompt" \
-  dd-feature-development-workflow --glob '*.md'
+  fdev --glob '*.md'
 ```
 
 预期：现行合同命中为零；baseline 中的历史引用必须明确标为 historical。
