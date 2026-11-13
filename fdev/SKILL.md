@@ -111,7 +111,7 @@ intake → environment → specification → planning → implementation
 | Stage | 实际要做什么 | 完成标志 | 详细规则 |
 |---|---|---|---|
 | Intake | **目标/范围/成功标准不清或存在冲突时，先用通俗语言复述需求并取得用户确认**（目标已清楚且无未解决决定时不机械复述再等一次确认，记录确认依据；恢复任务状态已含有效确认则复用，不重复 ASK），再确认 Feature 的目标、范围、成功标准、失败路径、兼容性及可验证 AC，只补尚未解决的 blocker；同时判定 `change_tier`（默认full）并写 `tier_rationale`（`small` 逐条证明原准入条件），并建立或复用持久任务入口（见[看板与接手入口](#看板与接手入口)） | 目标/范围/成功标准已确认或确认依据已记录，档位与理由已持久化，持久任务入口已建立或复用 | [intake-and-environment.md](references/intake-and-environment.md)／[small-change-track.md](references/small-change-track.md) |
-| Environment | **首次建立执行环境时默认新建隔离 worktree，且在修改项目产物之前完成**；恢复任务、有效 Handoff 或父工作流已提供的 worktree 必须复用并验证；仅用户明确要求时才允许在当前工作区并记录原因。验证基线和并发状态。**worktree 与分支确定后、Environment Gate 前，必须按 [task-tracking](../wrt/references/task-tracking.md) §3 完成一次外部任务绑定尝试——需要建立首张绑定时该尝试包含创建并绑定一张 GitHub Issue，具体复用还是创建由 §3 唯一规定；并在该 Gate 前运行 `wrt/agents/validate-tracking-binding.py --state <state_file>` 通过** | worktree 已新建或已复用并验证，工作环境与状态一致，绑定尝试结果已按 owner 合同记录且判定器通过，可安全进入规格阶段 | [intake-and-environment.md](references/intake-and-environment.md) |
+| Environment | **首次建立执行环境时默认新建隔离 worktree，且在修改项目产物之前完成**；恢复任务、有效 Handoff 或父工作流已提供的 worktree 必须复用并验证；仅用户明确要求时才允许在当前工作区并记录原因。验证基线和并发状态。**worktree 与分支确定后、Environment Gate 前，必须按 [task-tracking](../wrt/references/task-tracking.md) §3 完成 provider 路由的外部任务绑定尝试并建立绑定：`provider=github` 创建并绑定一张 GitHub Issue，`provider=devboard` 创建或复用并绑定一个 Devboard task（`task_id`）；复用还是创建由 §3 唯一规定；并在该 Gate 前运行 `wrt/agents/validate-tracking-binding.py --state <state_file>` 通过** | worktree 已新建或已复用并验证，工作环境与状态一致，绑定尝试结果已按 owner 合同记录且判定器通过，可安全进入规格阶段 | [intake-and-environment.md](references/intake-and-environment.md) |
 | Specification | 两档默认复用一个持久任务包；明确消费者只补对应合同，完整套件仅按明确要求产出 | 目标/范围/验收条件与关键决定有有效批准依据 | [specification.md](references/specification.md) |
 | Planning | 从已批准规格生成 Phase 和可执行 Task 包，建立 AC → Task → Test/Evidence 映射（紧凑表达于计划内，不维护独立追溯表），并判定 tracer（required/skipped，按 tracer-contract §3 风险判定）；Phase 数量与计划文件组织按 planning-stage 拆分档位规则（`small` 档同样适用） | 所有 Phase/Task 输入输出、写入范围、验证方式和停止条件都明确，tracer 决策已记录 | [planning-stage.md](references/planning-stage.md)／[small-change-track.md](references/small-change-track.md) |
 | Implementation | 按当前 Task 的 `anchors`、全局约束、Out of Scope、失败路径及必要集成输入选择性读取规格（不完整重读）；按 Phase 执行 Task 并采用 TDD；每个 Phase 通过 Local Gate 并完成按风险路由的紧凑 Phase 复核（命中风险触发器时升级独立强审）；高风险 UI 按风险触发远程 Smoke CI；Local Gate 未通过不得进入下一 Phase | 全部 Phase 已验证，无未解释的当前 Phase 缺口 | [implementation.md](references/implementation.md) |
@@ -128,7 +128,7 @@ intake → environment → specification → planning → implementation
 - A/B/C 审查与风险升级：[review-gate](../wrt/references/review-gate.md)；
 - 测试位置与 CI：[test-location](../wrt/references/test-location.md) 和 [ci](../wrt/references/ci.md)；
 - Tracer 贯穿式最小闭环（Phase 0 触发/证据/恢复三态）：[tracer-contract](../wrt/references/tracer-contract.md)；
-- 外部任务绑定与投影（GitHub Issue 索引、checkpoint、跨机器定位与看板规则）：[task-tracking](../wrt/references/task-tracking.md)。
+- 外部任务绑定与投影（按 provider 路由的 Issue / Devboard task 索引、checkpoint、跨机器定位与看板规则）：[task-tracking](../wrt/references/task-tracking.md)。
 
 ## 通用质量 Gate
 
@@ -160,7 +160,7 @@ intake → environment → specification → planning → implementation
 
 - 目标/范围/成功标准不清、存在冲突或涉及行为变更/高风险决策时未澄清确认就开始收集规格或修改项目产物（目标已清楚且无未解决决定时不机械复述等待，但确认依据必须记录；恢复任务状态已含有效确认的除外）；
 - 首次建立执行环境时未新建 worktree 就修改项目产物（恢复/Handoff/用户明确要求的例外除外）；
-- Environment Gate 前未按 [task-tracking](../wrt/references/task-tracking.md) §3 完成外部任务 Issue 的绑定尝试并把结果落盘，或未让 `validate-tracking-binding.py` 通过就推进——只登记调用点不执行，等同未尝试；
+- Environment Gate 前未按 [task-tracking](../wrt/references/task-tracking.md) §3 完成外部任务的绑定尝试并把结果落盘，或未让 `validate-tracking-binding.py` 通过就推进——只登记调用点不执行，等同未尝试；
 - 未通过 Phase Local Gate 就进入下一 Phase；
 - Phase ≥ 3 时只用一个总计划文件包含所有 Phase，或使用 planning reference 不传 `split_mode` 与 `phase_list`；
 - 项目要求 CI 但未绑定被交付版本、未执行或未经授权就放行合并，或用本地结果冒充必需 CI、自行豁免；

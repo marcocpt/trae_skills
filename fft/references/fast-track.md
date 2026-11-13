@@ -29,7 +29,7 @@
 
 工作环境确定后立即持久化状态，写入 `fast_track=true`、`track_phase=fast-track`、`requirement_confirmed=true`。
 
-**tracking 绑定（Intake Gate 前，速通工作流的绑定 Gate 就是 Intake）**：按 [task-tracking](../../wrt/references/task-tracking.md) §3 执行一次绑定尝试，并把结果按该合同落盘。绑定语义、失败矩阵与重试策略完全由该合同定义；绑定失败**不阻塞本 Stage**，也不因此向用户发问（速通阶段唯一询问点仍是需求复述）。
+**tracking 绑定（Intake Gate 前，速通工作流的绑定 Gate 就是 Intake）**：按 [task-tracking](../../wrt/references/task-tracking.md) §3 的 provider 路由执行一次绑定尝试——`provider=github` 绑定一张 Issue，`provider=devboard` 在同一 `dataset` / `project_id` 内绑定一个 Devboard task（`task_id`）——并把结果按该合同落盘。绑定语义、失败矩阵与重试策略完全由该合同定义；绑定失败**不阻塞本 Stage**，也不因此向用户发问（速通阶段唯一询问点仍是需求复述）。
 
 Intake Gate：需求复述已获用户确认、工作环境已持久化、tracking 绑定结果已按 owner 合同落盘。
 

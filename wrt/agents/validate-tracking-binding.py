@@ -46,6 +46,8 @@ SYNC_REASONS = frozenset({
     "create-outcome-unknown",
     "legacy-tracking-unknown",
     "no-issue-capable-remote",
+    "dataset-unresolvable",
+    "task-missing",
     "provider-unavailable",
 })
 
@@ -64,6 +66,8 @@ RECORDED_OUTCOMES = frozenset({
     ("not-synced", "create-outcome-unknown"),
     ("not-synced", "legacy-tracking-unknown"),
     ("not-synced", "no-issue-capable-remote"),
+    ("not-synced", "dataset-unresolvable"),
+    ("not-synced", "task-missing"),
     ("not-synced", "provider-unavailable"),
 })
 
@@ -74,11 +78,12 @@ SELF_RECORDING_SYNC = frozenset(
     sync for sync, reason in RECORDED_OUTCOMES if reason is None)
 
 # task-tracking §2: providers registered in this contract.
-SUPPORTED_PROVIDERS = frozenset({"github"})
+SUPPORTED_PROVIDERS = frozenset({"github", "devboard"})
 
 # task-tracking §2: the only nested fields of the tracking object.
 TRACKING_FIELDS = frozenset({
     "provider", "repository", "issue_number",
+    "dataset", "project_id", "task_id",
     "sync", "sync_reason", "pending_checkpoint", "last_checkpoint_ref",
 })
 
@@ -153,6 +158,23 @@ def _issue_number_of(tracking: dict):
     return value
 
 
+def _task_id_of(tracking: dict, provider: str | None) -> str | None:
+    """Return a complete Devboard locator's task_id, or None.
+
+    task-tracking §2/§3: a Devboard binding is complete only when the record
+    states provider=devboard and carries a non-empty dataset, project_id and
+    task_id. Falling back to any one field would let a record claim a task it
+    never located, and accepting task_id under another provider would silently
+    create a second ledger.
+    """
+    if provider != "devboard":
+        return None
+    values = (tracking.get("dataset"), tracking.get("project_id"), tracking.get("task_id"))
+    if all(isinstance(v, str) and v.strip() for v in values):
+        return tracking["task_id"]
+    return None
+
+
 def _string_field(tracking: dict, name: str) -> str | None:
     """Read an optional string field, rejecting other types as malformed.
 
@@ -180,10 +202,16 @@ def evaluate(state: dict) -> tuple[int, str]:
       3. schema_version non-integer (incl. bool) or negative -> MalformedState
       4. schema_version in legacy set {missing,0,1} -> pass, whatever tracking holds
       5. tracking is not an object                 -> fail
-      6. provider / sync / sync_reason present but not a string or null
+      6. any string field present but not a string or null
                                                      -> MalformedState
       7. provider present but unregistered          -> fail
-      8. issue_number is a positive int (not bool)  -> pass (bound)
+      8. provider-routed binding:
+           provider=github (or null) + positive int issue_number -> pass
+           provider=devboard + non-empty dataset/project_id/task_id -> pass
+                                                     -> otherwise continue
+      8b. synced claims are locator-consistent (task-tracking §2.1/§13):
+           devboard locator fields without provider=devboard -> fail
+           provider=devboard + synced + incomplete locator   -> fail
       9. (sync, sync_reason) is an owner-defined §4 pair -> pass (recorded)
      10. sync or sync_reason outside its vocabulary -> fail
      11. otherwise                                  -> fail (attempt not recorded)
@@ -219,13 +247,41 @@ def evaluate(state: dict) -> tuple[int, str]:
     provider = _string_field(tracking, "provider")
     sync = _string_field(tracking, "sync")
     reason = _string_field(tracking, "sync_reason")
+    # Devboard locator fields are read even when the provider is not devboard:
+    # a stray non-string there is still a malformed record, not a passable one.
+    for field in ("dataset", "project_id", "task_id"):
+        _string_field(tracking, field)
 
     if provider is not None and provider not in SUPPORTED_PROVIDERS:
         return EXIT_FAIL, f"provider={provider!r} is not a registered provider (task-tracking §2)"
 
     issue_number = _issue_number_of(tracking)
-    if issue_number is not None:
+    if provider in (None, "github") and issue_number is not None:
         return EXIT_PASS, f"bound to issue #{issue_number}"
+
+    task_id = _task_id_of(tracking, provider)
+    if task_id is not None:
+        return EXIT_PASS, f"bound to devboard task {task_id!r}"
+
+    # task-tracking §2.1 routes locators by the record's own provider, and §13
+    # forbids the task_id-in-issue_number direction. A `synced` record claims its
+    # last write-back succeeded, so it may only lean on the locator its declared
+    # provider owns: devboard locator fields without provider=devboard would let
+    # a second ledger claim success, and provider=devboard + synced without the
+    # complete triple claims success on a locator that does not exist. Legacy
+    # provider-less records without devboard fields keep the §4 pair branch.
+    if sync == "synced":
+        stray_devboard = any(
+            isinstance(tracking.get(field), str) and tracking.get(field).strip()
+            for field in ("dataset", "project_id", "task_id"))
+        if stray_devboard and provider != "devboard":
+            return EXIT_FAIL, (
+                "devboard locator fields without provider=devboard cannot back a "
+                "synced record (task-tracking §2.1)")
+        if provider == "devboard" and task_id is None:
+            return EXIT_FAIL, (
+                "provider=devboard claims synced without a complete "
+                "dataset/project_id/task_id locator (task-tracking §2/§3)")
 
     if (sync, reason) in RECORDED_OUTCOMES:
         if reason is None:

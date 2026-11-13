@@ -473,6 +473,124 @@ class TestFastTrackWorkflowsAreCovered(unittest.TestCase):
                 self.assertEqual(code, EXIT_PASS)
 
 
+class TestDevboardProvider(unittest.TestCase):
+    """M5-RUNTIME: provider is routed by the record, not by the field names.
+
+    A Devboard binding is locator-complete only when provider=devboard carries a
+    non-empty dataset / project_id / task_id. The GitHub locator keeps working
+    unchanged, and neither locator may stand in for the other: a task_id in
+    issue_number is not a binding, and an issue_number under provider=devboard
+    is not a Devboard binding.
+    """
+
+    BOUND = {
+        "provider": "devboard",
+        "dataset": "central:local",
+        "project_id": "devboard",
+        "task_id": "6f6f0f9a-2b4e-4a9e-9f6a-4a0f0f9a2b4e",
+        "sync": "synced",
+        "sync_reason": None,
+    }
+
+    def test_t82_bound_devboard_passes(self):
+        code, out, err = run_validator(tracked(dict(self.BOUND)))
+        assert_clean_run(self, code, out, err)
+        self.assertEqual(code, EXIT_PASS)
+
+    def test_t83_attempted_unbound_devboard_passes(self):
+        # provider=devboard with no task yet is the Devboard analogue of
+        # "attempted, not bound": the recorded outcome must never block.
+        for reason in ("provider-unavailable", "dataset-unresolvable", "task-missing"):
+            with self.subTest(sync_reason=reason):
+                code, out, err = run_validator(tracked({
+                    "provider": "devboard", "project_id": "devboard",
+                    "dataset": None, "task_id": None,
+                    "sync": "not-synced", "sync_reason": reason}))
+                assert_clean_run(self, code, out, err)
+                self.assertEqual(code, EXIT_PASS)
+
+    def test_t84_old_schema_null_stays_legacy(self):
+        code, out, err = run_validator(make_state(schema_version=1, tracking=None))
+        assert_clean_run(self, code, out, err)
+        self.assertEqual(code, EXIT_PASS,
+                         "the new provider must not narrow the legacy exemption")
+
+    def test_t85_old_github_binding_still_passes(self):
+        code, out, err = run_validator(tracked({
+            "provider": "github", "repository": "o/r", "issue_number": 8,
+            "sync": "synced"}))
+        assert_clean_run(self, code, out, err)
+        self.assertEqual(code, EXIT_PASS,
+                         "adding Devboard must not change the GitHub provider")
+
+    def test_t86_devboard_issue_number_is_not_a_binding(self):
+        # The forbidden direction: a task_id in issue_number, or an issue_number
+        # alone under provider=devboard, would create a second ledger.
+        cases = (
+            {"provider": "devboard", "issue_number": 8, "sync": "synced"},
+            {"provider": "devboard", "dataset": "central:local",
+             "project_id": "devboard", "issue_number": 8, "sync": "synced"},
+            {"provider": "devboard", "issue_number": "6f6f0f9a-2b4e-4a9e-9f6a-4a0f0f9a2b4e",
+             "sync": "synced"},
+        )
+        for payload in cases:
+            with self.subTest(payload=payload):
+                code, out, err = run_validator(tracked(payload))
+                assert_clean_run(self, code, out, err)
+                self.assertEqual(code, EXIT_FAIL,
+                                 "issue_number only binds provider=github")
+
+    def test_t87_github_task_id_is_not_a_binding(self):
+        code, out, err = run_validator(tracked({
+            "provider": "github", "dataset": "central:local",
+            "project_id": "devboard", "task_id": "task-1", "sync": "synced"}))
+        assert_clean_run(self, code, out, err)
+        self.assertEqual(code, EXIT_FAIL,
+                         "task_id only binds an explicit provider=devboard record")
+
+    def test_t88_incomplete_devboard_locator_fails(self):
+        for missing in ("dataset", "project_id", "task_id"):
+            with self.subTest(missing=missing):
+                payload = dict(self.BOUND)
+                payload[missing] = None
+                code, out, err = run_validator(tracked(payload))
+                assert_clean_run(self, code, out, err)
+                self.assertEqual(code, EXIT_FAIL,
+                                 f"provider=devboard requires {missing}")
+
+    def test_t89_devboard_task_id_without_provider_fails(self):
+        # A record that never states its provider cannot be routed; guessing
+        # Devboard from task_id would make the validator a second source.
+        code, out, err = run_validator(tracked({
+            "dataset": "central:local", "project_id": "devboard",
+            "task_id": "task-1", "sync": "synced"}))
+        assert_clean_run(self, code, out, err)
+        self.assertEqual(code, EXIT_FAIL,
+                         "provider must be explicit for a Devboard binding")
+
+    def test_t90_devboard_locator_fields_are_type_checked(self):
+        for field in ("dataset", "project_id", "task_id"):
+            for bogus in ([], {}, 7, [1, 2], True):
+                with self.subTest(field=field, value=bogus):
+                    payload = dict(self.BOUND)
+                    payload[field] = bogus
+                    code, out, err = run_validator(tracked(payload))
+                    self.assertNotIn("Traceback", err,
+                                     f"tracking.{field}={bogus!r} crashed:\n{err}")
+                    self.assertEqual(
+                        code, EXIT_USAGE,
+                        f"tracking.{field}={bogus!r} must be malformed input (exit 2)")
+
+    def test_t91_explicit_projection_may_carry_both_locators(self):
+        # §3: a Devboard project may project to an Issue only after an explicit
+        # additional choice; the record is still bound by task_id.
+        payload = dict(self.BOUND)
+        payload["issue_number"] = 8
+        code, out, err = run_validator(tracked(payload))
+        assert_clean_run(self, code, out, err)
+        self.assertEqual(code, EXIT_PASS)
+
+
 class TestValidatorIsOffline(unittest.TestCase):
     FORBIDDEN = ("socket", "urllib", "requests", "http.client", "httpx",
                  "subprocess", "os.system", "gh\x20", "git\x20")

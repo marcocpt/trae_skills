@@ -794,7 +794,7 @@ class TestBehavioralContracts(unittest.TestCase):
         self.assertIn("pending_checkpoint", h2_section(tt, "2. 状态字段"))
 
     def test_checkpoint_template_fields(self):
-        sec = h2_section(read(TASK_TRACKING), "6. 进度用 checkpoint 评论")
+        sec = h2_section(read(TASK_TRACKING), "6. 进度用 checkpoint")
         block = re.search(r"```text\n(.*?)```", sec, re.S).group(1)
         for field in (
             "workflow_id:",
@@ -934,6 +934,85 @@ class TestProjectionAndRouting(unittest.TestCase):
         text = read(BOOTSTRAP_SKILL)
         for token in ("不自动创建", "不自动绑定", "不自动投影", "task-tracking"):
             self.assertIn(token, text)
+
+
+class TestDevboardProvider(unittest.TestCase):
+    """M5-RUNTIME: Devboard is a second registered provider, not a second system.
+
+    GitHub stays the unchanged default when neither the user nor the project
+    policy selects Devboard. Devboard records carry the minimum locator
+    (dataset / project_id / task_id); provider choice, no-double-ledger and the
+    reconciliation rules live in the owner contract, and consumers only route.
+    """
+
+    def _sec(self, heading: str) -> str:
+        return h2_section(read(TASK_TRACKING), heading)
+
+    def test_provider_is_chosen_by_user_or_project_policy(self):
+        sec = self._sec("2. 状态字段")
+        for token in ("provider 由用户", "项目政策决定", "不自动探测"):
+            self.assertIn(token, sec, f"§2 must state provider selection: {token}")
+        policy = self._sec("8. 授权")
+        self.assertIn("Devboard task tracking policy", policy,
+                      "§8 must give projects a Devboard policy template")
+        self.assertIn("GitHub task tracking policy", policy,
+                      "§8 must keep the existing GitHub policy template")
+
+    def test_devboard_locator_never_reuses_issue_number(self):
+        sec = self._sec("2. 状态字段")
+        for field in ("dataset:", "project_id:", "task_id:"):
+            self.assertIn(field, sec, f"§2 tracking schema must declare {field}")
+        self.assertIn("task_id` 不得填进 `issue_number", sec,
+                      "§2 must forbid overloading issue_number with a task_id")
+        self.assertIn("issue_number", sec)
+        sec13 = self._sec("13. 红线")
+        self.assertIn("把 `task_id` 写入 `issue_number`", sec13)
+
+    def test_selected_devboard_project_does_not_create_a_second_issue(self):
+        sec = self._sec("3. 绑定规则")
+        self.assertIn("不再默认创建第二张 tracking Issue", sec)
+        self.assertIn("只有额外明确选择时才投影到 Issue", sec)
+        self.assertIn("provider=devboard", sec)
+        self.assertIn("task_id", sec)
+
+    def test_old_github_binding_is_not_migrated_or_closed(self):
+        sec = self._sec("3. 绑定规则")
+        for token in ("只读恢复", "不自动重建为 Devboard 任务", "不自动关闭 Issue"):
+            self.assertIn(token, sec, f"§3 must keep the old GitHub binding read-only: {token}")
+        close = h3_section(read(TASK_TRACKING), "6.5 Issue 关闭规则")
+        self.assertIn("不因改用 Devboard 自动关闭", close)
+
+    def test_unknown_create_outcome_reconciles_before_any_retry(self):
+        sec = h3_section(read(TASK_TRACKING), "3.1 创建的幂等与崩溃恢复")
+        for token in ("request_id", "禁止跳过查证直接重试", "第二账本", "不得静默重试"):
+            self.assertIn(token, sec, f"§3.1 must cover the Devboard create path: {token}")
+
+    def test_provider_failure_never_unlocks_exclusive_execution(self):
+        sec = self._sec("9. 跨机器恢复与接管")
+        for token in ("任务租约", "claim_task", "不得开始独占任务", "另行验证"):
+            self.assertIn(token, sec, f"§9 must separate tracking from the lease: {token}")
+        # The failure matrix still keeps every workflow running; the separate
+        # lease rule is what stops exclusive execution, not a Gate.
+        check_failure_matrix_allows_workflow(read(TASK_TRACKING))
+
+    def test_four_consumers_route_by_provider(self):
+        fdev_skill = read(REPO_ROOT / "fdev" / "SKILL.md")
+        self.assertIn("provider 路由", fdev_skill,
+                      "feature Environment row must route the binding by provider")
+        bug_skill = read(REPO_ROOT / "bug" / "SKILL.md")
+        self.assertIn("provider 路由", bug_skill,
+                      "bug Environment section must route the binding by provider")
+        for skill_dir in ("fft", "bfix"):
+            intake = read(REPO_ROOT / skill_dir / "references" / "fast-track.md")
+            self.assertIn("provider 路由", intake,
+                          f"{skill_dir} Intake must route the binding by provider")
+
+    def test_onboarding_skill_points_at_the_owner_binding(self):
+        dvb = read(REPO_ROOT / "dvb" / "SKILL.md")
+        for token in ("task-tracking.md", "provider=devboard", "task_id",
+                      "不自动再开 Issue"):
+            self.assertIn(token, dvb,
+                          f"dvb must route the provider binding to its owner: {token}")
 
 
 class TestFastTrackWorkflowsCarryTheBindingCallSite(unittest.TestCase):
@@ -1566,11 +1645,11 @@ class TestVocabularyDrift(unittest.TestCase):
         return pairs
 
     def owner_providers(self) -> set[str]:
-        """§2: the provider value the contract registers."""
+        """§2: the provider values the contract registers."""
         block = _slice_section(read(TASK_TRACKING), 2, "2. 状态字段")
-        m = re.search(r"^\s*provider:\s*(\S+)", block, re.M)
+        m = re.search(r"^\s*provider:\s*([^\n#]+)", block, re.M)
         self.assertIsNotNone(m, "§2 must declare a provider value — guard must FAIL")
-        return {m.group(1).strip("`")}
+        return {p.strip().strip("`") for p in m.group(1).split("|") if p.strip()}
 
     def owner_tracking_fields(self) -> set[str]:
         """§2 yaml block declaring the nested schema."""
@@ -1830,8 +1909,9 @@ class TestVocabularyDriftMutations(unittest.TestCase):
                         "M6 not caught — an unlisted cross-pair must be rejected")
 
     def test_m7_validator_drops_a_provider(self):
-        mutated = self.v_src.replace('SUPPORTED_PROVIDERS = frozenset({"github"})',
-                                     'SUPPORTED_PROVIDERS = frozenset()')
+        mutated = self.v_src.replace(
+            'SUPPORTED_PROVIDERS = frozenset({"github", "devboard"})',
+            'SUPPORTED_PROVIDERS = frozenset({"github"})')
         self.assertNotEqual(mutated, self.v_src, "mutation target must exist")
         self.assertTrue(self._guard_fails(mutated, self.tt_src, ("test_t75",)), "M7 not caught")
     def test_m8_owner_gains_an_extra_mandatory_workflow_type(self):
