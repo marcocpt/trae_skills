@@ -114,7 +114,7 @@ Bug 工作流与 Feature 对等：在 Environment（worktree 与分支确定后�
 
 读取 [diagnosis-and-verification.md](references/diagnosis-and-verification.md) 的 Environment。
 
-**首次建立执行环境时默认新建隔离 fix worktree，且必须在修改任何项目产物（代码、测试、规格、项目文档等交付范围内文件）之前完成**；恢复任务、有效 Handoff 或父工作流已提供的 worktree 必须复用并验证，不重新创建。仅当用户明确要求在当前工作区修改时才例外，并把例外原因写入状态；不允许默认就在当前工作区改代码。runtime 状态文件与工作流内部证据文件按 runtime 合同处理，不属于项目产物修改。**worktree 与分支确定后、Environment Gate 前，必须按 [task-tracking](../wrt/references/task-tracking.md) §3 完成 provider 路由的外部任务绑定尝试并建立绑定：`provider=github` 创建并绑定一张 GitHub Issue，`provider=devboard` 创建或复用并绑定一个 Devboard task（`task_id`）；复用还是创建由 §3 唯一规定——并在该 Gate 前运行 `wrt/agents/validate-tracking-binding.py --state <state_file>` 通过。** Gate：worktree 已新建或已复用并验证、路径固定、无并发工作流、工作区与基线证据有效、Bug state 已原子写入、绑定尝试结果已按 owner 合同记录且判定器通过。
+**首次建立执行环境时默认新建隔离 fix worktree，且必须在修改任何项目产物（代码、测试、规格、项目文档等交付范围内文件）之前完成**；恢复任务、有效 Handoff 或父工作流已提供的 worktree 必须复用并验证，不重新创建。仅当用户明确要求在当前工作区修改时才例外，并把例外原因写入状态；不允许默认就在当前工作区改代码。runtime 状态文件与工作流内部证据文件按 runtime 合同处理，不属于项目产物修改。**worktree 与分支确定后、Environment Gate 前，必须按 [task-tracking](../wrt/references/task-tracking.md) §3 完成 provider 路由的外部任务绑定尝试并持久化其结果——成功绑定 GitHub Issue 或 Devboard task，或按该合同记录合法失败结果（`sync` / `sync_reason`）——`provider=github` 创建并绑定一张 GitHub Issue，`provider=devboard` 创建或复用并绑定一个 Devboard task（`task_id`），绑定失败不阻塞 Workflow Gate 但完全没有尝试且没有记录不得通过，复用还是创建由 §3 唯一规定——并在该 Gate 前运行 `wrt/agents/validate-tracking-binding.py --state <state_file>` 通过。** Gate：worktree 已新建或已复用并验证、路径固定、无并发工作流、工作区与基线证据有效、Bug state 已原子写入、绑定尝试结果已按 owner 合同记录且判定器通过。
 
 ### Diagnosis and Repair
 

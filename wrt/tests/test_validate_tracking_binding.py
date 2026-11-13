@@ -420,7 +420,8 @@ class TestFastTrackWorkflowsAreCovered(unittest.TestCase):
             with self.subTest(workflow_type=wf_type):
                 code, out, err = run_validator(make_state(
                     workflow_type=wf_type, schema_version=2,
-                    tracking={"provider": "github", "issue_number": 8, "sync": "synced"}))
+                    tracking={"provider": "github", "repository": "o/r",
+                              "issue_number": 8, "sync": "synced"}))
                 assert_clean_run(self, code, out, err)
                 self.assertEqual(code, EXIT_PASS)
 
@@ -607,3 +608,42 @@ class TestValidatorIsOffline(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------------------
+# T2.2 round-2 review MUST-01: the locator completeness and cross-provider
+# ownership checks precede any "bound" PASS.
+# ---------------------------------------------------------------------------
+
+
+class TestLocatorChecksPrecedeBoundPass(unittest.TestCase):
+    def test_t92_github_binding_carrying_devboard_locator_fails(self):
+        # Scenario A: a valid issue_number must not early-PASS past the
+        # cross-provider check — a GitHub primary binding holding devboard
+        # locator fields is the second-ledger direction (§2.1/§13).
+        code, out, err = run_validator(tracked({
+            "provider": "github", "repository": "o/r", "issue_number": 8,
+            "dataset": "central:local", "project_id": "devboard",
+            "task_id": "task-1", "sync": "synced"}))
+        assert_clean_run(self, code, out, err)
+        self.assertEqual(code, EXIT_FAIL,
+                         "a github primary binding must not hold devboard locators")
+
+    def test_t93_github_binding_requires_repository(self):
+        # Scenario B: issue_number alone is not a complete github locator
+        # (§2.1 requires repository + issue_number).
+        code, out, err = run_validator(tracked({
+            "provider": "github", "issue_number": 8, "sync": "synced"}))
+        assert_clean_run(self, code, out, err)
+        self.assertEqual(code, EXIT_FAIL,
+                         "an explicit github binding requires repository")
+
+    def test_t94_github_attempt_without_binding_still_records_outcomes(self):
+        # The completeness rule binds records that CLAIM a binding; a failed
+        # attempt without a locator yet still goes through §4 outcomes.
+        code, out, err = run_validator(tracked({
+            "provider": "github", "sync": "not-synced",
+            "sync_reason": "remote-unresolvable"}))
+        assert_clean_run(self, code, out, err)
+        self.assertEqual(code, EXIT_PASS,
+                         "a recorded failed attempt is not a binding claim")

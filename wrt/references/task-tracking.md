@@ -211,7 +211,18 @@ none
 
 ### 6.1 如何选最新 checkpoint（2026-10-02 真实 GitHub 探针冻结）
 
-不得只按"全文最后一次 marker"。选取算法（探针证据与完整脚本：
+checkpoint 的读取与排序按 provider 分支；两条路径共享本节字段语义与 malformed
+判据，检查点只提供定位和恢复线索，**不提供 Workflow Gate PASS**：
+
+| 环节 | GitHub | Devboard |
+|---|---|---|
+| 任务定位 | repository + issue_number | dataset + project_id + task_id |
+| checkpoint 读取 | Issue 评论接口 | Devboard 任务检查点读取（`get_task_context` 的检查点读面） |
+| 最新记录选择 | 下述 comment id 规则 | **服务端确认的检查点顺序与身份**（按服务端返回的检查点序取最新，不以本地时间或 marker 顺序重排） |
+| 丢响应查重 | checkpoint_id / digest（§6.3） | 同一 checkpoint_id / digest，按服务端权威结果对账 |
+| 读取失败 | 保守记录失败 | 同样保守失败，不推测最新状态 |
+
+不得只按"全文最后一次 marker"。GitHub 路径选取算法（探针证据与完整脚本：
 `docs/AI/task-tracking-projection-evidence/L02-checkpoint-probe.md`）：
 
 > 机械实现（canonical）：[checkpoint_select.py](../scripts/checkpoint_select.py)——本节文字拥有语义，该脚本是其唯一运行时实现，须与本节一致并由合同测试固定；探针脚本仅作取证证据。
@@ -244,7 +255,7 @@ none
 5. 下游接管
 ```
 
-恢复时若 `pending_checkpoint` 仍存在：先按 `checkpoint_id` / `digest` 查询远端是否已投递——已投递则只补 `last_checkpoint_ref` 并清除 pending；确认未投递才重试。**重复评论次数为零。**
+恢复时若 `pending_checkpoint` 仍存在：先按 `checkpoint_id` / `digest` 查询远端是否已投递——已投递则只补 `last_checkpoint_ref`，清除 pending；确认未投递才重试。**重复评论次数为零。** `provider=devboard` 时同一查重对服务端执行：按 `checkpoint_id` / `digest` 读该任务的检查点，以**服务端权威结果**为准——命中即复用服务端记录的检查点身份补 ref，不重投；查询失败按 §6.4 保守失败，不推测最新状态。
 
 该顺序镜像 runtime 对外部审查用 `client_request_id` 的"先准备、后提交、再确认"。
 
@@ -293,11 +304,17 @@ Issue 评论里写 `CI PASS` 不等于 `full_ci_run=PASS`。接管方必须按�
 ```markdown
 ## Devboard task tracking policy
 
-对于已绑定 tracking（provider=devboard）的 Feature / Bug 工作流，允许 Agent 在指定
-dataset 与 project 内创建或复用恰好一个 Devboard task、写 checkpoint、同步任务状态；
-每条记录只绑定一个 task_id，不再默认创建第二张 tracking Issue。
+对于采用本政策的项目，Feature / Bug 工作流允许 Agent：
 
-完成裁决、设备/权限管理、项目源码 commit/push/merge、CI 与发布不在本政策内。
+1. **首次绑定建单**：在指定 dataset 与 project 内，为本工作流**首次创建或复用恰好一个**
+   Devboard task 并绑定（范围限本 dataset、本 project、本 Workflow ID；创建前先按 §3.1
+   对账，重建/重试不豁免对账；每条记录只绑定一个 task_id，不另开第二账本）；
+2. 写 checkpoint（`append_checkpoint`）并同步任务状态；
+3. 更新该 workflow 绑定 task 的状态字段。
+
+每条记录只绑定一个 task_id，不再默认创建第二张 tracking Issue。完成裁决
+（request/decide completion）、设备/权限管理、项目源码 commit/push/merge、CI 与发布
+不在本政策内。
 ```
 
 额外约束：
@@ -321,6 +338,14 @@ dataset 与 project 内创建或复用恰好一个 Devboard task、写 checkpoin
 
 本节只授权"首次创建"这一个动作：重试创建（须先走 §3.1 对账）、复用既有绑定、评论、关闭与投影各自回到 §8 的既有授权路径。用户明确要求不创建 Issue 时按 §4 记 `not-authorized` + `user-declined`（授权条件变化后可重新评估）；只有用户明确关闭**全部** tracking 投影时才是 `disabled`。
 
+### 8.2 显式的 Devboard→Issue 附加投影（例外，不是授权）
+
+`provider=devboard` 的记录只有在**额外的明确选择**（项目政策或用户当次要求）下才允许
+向 Issue 做附加投影；该投影必须有独立授权，validator 对该记录 PASS **不构成**创建
+第二张 Issue 的授权；不改变 Devboard 作为主 provider 的绑定身份——定位与复用永远以
+`dataset` / `project_id` / `task_id` 为准，`issue_number` 只作只读的附加引用；不得反向
+演化为 GitHub 主绑定（GitHub 主绑定携带 devboard 任务定位属 §13 红线）。
+
 ## 9. 跨机器恢复与接管
 
 tracking 绑定与任务租约是两回事：§2 的"tracking 失败不阻塞 Gate"只表示绑定尝试可以晚点成功，**不授予任何执行权**。provider=devboard 时，需要独占任务的实现写入必须先成功 `claim_task` 取得租约；tracking 失败或租约失败时**不得开始独占任务**，只能做只读分析、本地草案或记录 `sync` / `sync_reason`。任务租约在实际执行前另行验证（认领返回的 `lease_id` / `lease_epoch` 只来自真实服务响应），不把绑定或 Gate 通过当作租约。
@@ -328,16 +353,22 @@ tracking 绑定与任务租约是两回事：§2 的"tracking 失败不阻塞 Ga
 ### 9.1 恢复流程
 
 ```text
-读 Issue
-  → 按 marker + workflow_id 定位最新 checkpoint
-  → 只取定位元数据：repository / branch / workflow_id / source checkpoint ref
+按 provider 读取最新 checkpoint（§6.1 的 provider 分支）：
+  provider=github    → 读 Issue，按 marker + workflow_id 定位最新 checkpoint
+  provider=devboard  → 读绑定 task 的检查点（dataset/project_id/task_id），
+                       按服务端确认的检查点序取最新
+  → 只取定位元数据：branch / workflow_id / source checkpoint ref
   → 判断 remote 字段：sha-reachable 才可能跨机恢复工作内容
   → git fetch
   → 按 git 创建或定位 worktree
   → 从 Git / 文档 / CI 重建并验证 runtime state
-  → 取得写入租约
+  → 取得写入租约（provider=devboard 必须先成功 claim_task）
   → 从仓库证据推出 next_safe_action 并继续
 ```
+
+读取失败（任一 provider）都保守记录失败：不推测最新 checkpoint，不把本地缓存当
+远端事实；provider=devboard 且任务读面不可用时记 `sync=not-synced` 并按 §6.4
+处理，不得改走 GitHub 路径充当替代事实源。
 
 ### 9.2 工作内容可达性（任务可发现 ≠ 工作内容可恢复）
 
@@ -412,8 +443,10 @@ bug-fast-track
 核心语义不依赖具体传输方式。
 
 ```text
-优先：项目已配置的 GitHub connector / MCP
-否则：gh CLI
+provider=github    优先：项目已配置的 GitHub connector / MCP；否则：gh CLI
+provider=devboard  优先：Devboard MCP；否则：devboard CLI；只读查询可降级到
+                   本机 HTTP（见 dvb 的 MCP→CLI→HTTP 顺序）；禁止绕过服务端
+                   直接读 SQLite 或 board 仓文件充当事实源
 ```
 
 不得把"必须支持某个 MCP"写进合同——那会让部分 Agent App 直接不可用。

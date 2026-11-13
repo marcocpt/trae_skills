@@ -256,32 +256,51 @@ def evaluate(state: dict) -> tuple[int, str]:
         return EXIT_FAIL, f"provider={provider!r} is not a registered provider (task-tracking §2)"
 
     issue_number = _issue_number_of(tracking)
-    if provider in (None, "github") and issue_number is not None:
-        return EXIT_PASS, f"bound to issue #{issue_number}"
-
     task_id = _task_id_of(tracking, provider)
-    if task_id is not None:
-        return EXIT_PASS, f"bound to devboard task {task_id!r}"
+    stray_devboard = any(
+        isinstance(tracking.get(field), str) and tracking.get(field).strip()
+        for field in ("dataset", "project_id", "task_id"))
 
     # task-tracking §2.1 routes locators by the record's own provider, and §13
-    # forbids the task_id-in-issue_number direction. A `synced` record claims its
-    # last write-back succeeded, so it may only lean on the locator its declared
-    # provider owns: devboard locator fields without provider=devboard would let
-    # a second ledger claim success, and provider=devboard + synced without the
-    # complete triple claims success on a locator that does not exist. Legacy
-    # provider-less records without devboard fields keep the §4 pair branch.
-    if sync == "synced":
-        stray_devboard = any(
-            isinstance(tracking.get(field), str) and tracking.get(field).strip()
-            for field in ("dataset", "project_id", "task_id"))
-        if stray_devboard and provider != "devboard":
+    # forbids the task_id-in-issue_number direction. Locator completeness and
+    # cross-provider ownership are checked BEFORE any "bound" PASS, so a valid
+    # locator for the record's own provider cannot sneak past the checks
+    # (T2.2 round-2 MUST-01): a github primary binding must not hold a second
+    # ledger identity, and an explicit github binding must be complete. A
+    # record that does not claim a binding (no locator yet) still goes through
+    # the §4 recorded-outcome branch below. issue_number beside a complete
+    # devboard triple is the §8.2 explicitly authorized projection; it never
+    # substitutes the locator and never authorizes a second ledger.
+    if provider == "github":
+        if stray_devboard:
             return EXIT_FAIL, (
-                "devboard locator fields without provider=devboard cannot back a "
-                "synced record (task-tracking §2.1)")
-        if provider == "devboard" and task_id is None:
+                "provider=github carries devboard task locator fields; a GitHub "
+                "primary binding must not hold a second ledger identity "
+                "(task-tracking §2.1/§13)")
+        if issue_number is not None:
+            if _string_field(tracking, "repository") is None:
+                return EXIT_FAIL, (
+                    "provider=github binding requires repository + issue_number "
+                    "(task-tracking §2.1)")
+            return EXIT_PASS, f"bound to issue #{issue_number}"
+    elif provider == "devboard":
+        if task_id is not None:
+            return EXIT_PASS, f"bound to devboard task {task_id!r}"
+        if sync == "synced":
             return EXIT_FAIL, (
                 "provider=devboard claims synced without a complete "
                 "dataset/project_id/task_id locator (task-tracking §2/§3)")
+    elif provider is None:
+        # Frozen legacy compatibility (§4): a provider-less record with a
+        # valid issue number keeps its historical binding shape, but devboard
+        # locator fields without provider=devboard may not back a synced
+        # claim (a second ledger claiming success).
+        if issue_number is not None and not stray_devboard:
+            return EXIT_PASS, f"bound to issue #{issue_number}"
+        if stray_devboard and sync == "synced":
+            return EXIT_FAIL, (
+                "devboard locator fields without provider=devboard cannot back a "
+                "synced record (task-tracking §2.1)")
 
     if (sync, reason) in RECORDED_OUTCOMES:
         if reason is None:
