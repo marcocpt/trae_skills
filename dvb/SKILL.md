@@ -29,7 +29,7 @@ Devboard 是仓库之外的协作层：项目、任务、租约、检查点与�
 ## 调用通道
 
 1. **MCP**（`devboard-mcp` 连接本机服务）：优先；工具名见「工具速查」。
-2. **CLI**（薄客户端 `devboard`）：
+2. **CLI**（薄客户端 `devboard`；能力核实、HTTP 只读查询参数与名称映射见[命令与模式](references/commands.md)）：
 
 ```sh
 export DEVBOARD_URL=http://127.0.0.1:<port> DEVBOARD_CLIENT_DIR=<0700 目录> \
