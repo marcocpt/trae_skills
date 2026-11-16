@@ -10,7 +10,7 @@
 | `central` | 经已配置设备身份访问中央服务 | `central-unavailable` 时只读旧缓存 |
 | `local-only` | 已明确使用的单机数据集与既有 MCP | 不宣称跨机认领或同步，不作为 GitHub 模式失败时的可写后备 |
 
-Devboard 的 F10 基线（`759da10`）**没有通用 `devboard` CLI**，`devboard-mcp` 的 board 模式未接写入器。该基线已配置部署中的 HTTP 写入仅有 `register_session`、`claim_task`、`heartbeat`、`release_task`、`append_checkpoint`。建单、编辑、正式交接与完成在该模式尚未接通。后续版本以核实的能力为准。
+M5 日常命令已交付并合入 develop（2026-11-16，含通用 `devboard` CLI 与 board 模式写入器）。board 模式写动作按 `BOARD_WRITE_ACTIONS` 逐动作 opt-in（服务端白名单覆盖 `register_session`、`claim_task`、`heartbeat`、`release_task`、`append_checkpoint`、`create_task`、`update_task`、`create_project`、`reconcile_worktree`、`bind_worktree`、`unbind_worktree`、`decide_task_proposal`、`pause_task`、`resume_task`、`add_dependency`、`remove_dependency`、`accept_handoff`、`request_task_completion`、`decide_task_completion`；`decide_task_completion` 另需 coordinator 凭据）。服务未启用某动作时，该写动作仍不可用。后续版本一律以 `/api/v1/capabilities` 与实际响应核实为准。
 
 没有安全写客户端仍可查询。先确认 `DEVBOARD_URL` 是配置好的本机地址，未配置时从可信本机配置查，不猜端口。**查询 `/api/v1/board` 建议带 `project_id`**：数据集只有 1 个项目时，不带参数也返回 200；多于 1 个项目时服务端返回 400（`INVALID_INPUT`）。因此始终先从项目列表取得真实 ID 再查询，既避免歧义也不依赖项目数量。实测记录（2026-11-11，单项目实验数据集）：`/api/v1/projects` → 200、`/api/v1/board?project_id=trial` → 200、`/api/v1/board` → **200**。只读例子：
 
@@ -53,9 +53,9 @@ curl --fail --silent --show-error "${DEVBOARD_URL:?}/api/v1/board?project_id=PRO
 
 本地双客户端 tracer（两个缓存 + 临时 Git bare remote）与真实双机 GitHub 链路是两道独立闸：真实演示要求 A 建单推送 → B 经 GitHub 同步后更新优先级并推送 → A 再同步看到同一 `task_id` 的新 `revision`，并分别保存两机 CLI 结果、board commit SHA、真实 `git log`/`git diff`、UI 截图与跨物理机器确认。没有第二台机器或具体授权时如实标注真实双机 `NOT_RUN` / `BLOCKED`，保留本地成果，不把本地 tracer 说成已验收，也不据此推进后续阶段。
 
-## F10 M5 规划中的 CLI
+## devboard CLI（M5 已交付）
 
-以下入口来自 Devboard 仓库 `docs/agent-tasks/F10_decentral-github-sync/m5-command-contract.md`。**它们是规划，不代表已安装。** 只有当前二进制实际提供、服务报告相应动作已启用才执行。
+以下入口已在 develop 提供并经实际二进制 `--help` 核实（2026-11-16）。**仍只有当前二进制实际提供、服务报告相应动作已启用才执行**；部署版本可能落后于 develop。
 
 ```text
 devboard status --json
@@ -66,7 +66,9 @@ devboard session register --agent AGENT --host-kind HOST --request-id KEY --json
 devboard call OP --session SESSION --request-id KEY --input-file FILE --json
 ```
 
-最小版本先在已登记项目建单/更新，两机同步后看到同一 ID 与 revision。现有 `devboard-complete` 等专项工具不等于通用 CLI。协调者调用只用已经配置的授权，参数本身不提升角色。
+CLI 建单/更新在已登记项目进行，两机同步后看到同一 ID 与 revision；`claim` 自动保存租约凭据（本机 0600），`heartbeat`/`checkpoint`/`release` 自动注入并在 stdout 脱敏。`devboard endpoint --discover-desktop` 仅 macOS、发现桌面 App 发布的端点（显式 `--endpoint`/`DEVBOARD_URL` 优先且与发现互斥）。现有 `devboard-complete` 等专项工具不等于通用 CLI。协调者调用只用已经配置的授权，参数本身不提升角色。
+
+board 模式操作员边界（§3.6.5）：操作员裁决（如 `decide_task_completion`）走专用 0600 绑定文件（`DEVBOARD_OPERATOR_TOKEN_FILE`，内含 operator 令牌与其代理的会话），未配置时一切操作员动作 fail-closed。**桌面 App 的口令登录在 board 模式是设计性关闭**（board 无口令注册表）：App 只能浏览看板，操作员动作经绑定文件由 CLI/MCP 执行；不要把 agent 会话令牌当操作员凭据，也不要试图用口令登录 board 服务。
 
 ## 换机器和 worktree
 
