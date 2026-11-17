@@ -24,6 +24,7 @@ Devboard 是仓库之外的协作层：项目、任务、租约、检查点与�
 - 权威事实 = `board` 分支提交历史；本机缓存只是重建视图。**显式 `devboard sync` 是唯一刷新入口**（写操作后服务端自动 push+sync，但跨机看到对方的改动必须 sync）。
 - 写操作 fail-closed：远端不可达时读降级缓存、写一律拒绝（`UNAVAILABLE`），不降级本地写。
 - 权威 Git 远端认证用 GitHub token（classic PAT 的 HTTPS 用户名必须是 `oauth2`）；生产部署与实验分支写授权按项目闸口另行核对。
+- 部署可选择 `BOARD_OPEN_ACCESS=1`（本机 2026-11-16 起启用）：写操作跳过设备—项目授权文件 `grants/`，App 免登录；Agent 请求仍以自身会话身份写入，不会被提升为操作员。是否启用只按服务端实际响应判断（无 `X-Operator-Token` 调 `GET /api/v1/operator/me` 返回 200 即启用），不自行假设。
 - 双机协作：每台机器独立 clone `board` 分支并起本机服务（`BOARD_LOCAL_DEVICE_ID` 不同），不做 SQLite 同步、不共享缓存目录。
 
 ## 调用通道
@@ -54,7 +55,7 @@ devboard call bind_worktree --coordinator ...            # 协调者动作加 --
    - coordinator：`create_task` 使用 `create_mode=authorized`，任务直接 open；
    - 普通 agent：使用 `create_mode=proposal`，任务进入 proposed，需 coordinator 裁决后才能认领；
    - 必填 `project_id`、`title`、`goal`、`priority`、`create_mode`、`session_id`、`request_id`；项目缺失且调用者为 coordinator 时可带 `project_name` 自动创建。
-5. **认领与执行**：确认任务可认领后 `claim_task`（带 `expected_revision`、`request_id`），定期 `heartbeat_task`，执行中 `append_checkpoint`（summary + next_safe_action）。MCP 不向模型返回租约秘密；只使用返回的 `lease_id`、`lease_epoch` 与非秘密状态。凭据不可用时停止租约写操作，不换连接绕过。
+5. **认领与执行**：确认任务可认领后 `claim_task`（带 `expected_revision`、`request_id`），定期 `heartbeat_task`，执行中 `append_checkpoint`（summary + next_safe_action）。**认领前先登记工作树并绑定**：`reconcile_worktree` 提交本机 worktree 的 `worktree_id`、`repository_id` 与真实 `branch_ref`（board 模式下新建登记**必须**带非空 `branch_ref`，除非显式 `is_detached=true`，否则服务端拒绝）→ `bind_worktree`（coordinator）把工作树绑到任务 → 再 `claim_task`。卡片分支显示与交接核验都从该绑定投影，跳过登记会导致看板无分支数据。MCP 不向模型返回租约秘密；只使用返回的 `lease_id`、`lease_epoch` 与非秘密状态。凭据不可用时停止租约写操作，不换连接绕过。
 6. **跨机正式交接（接手方）**：任务在 A 机释放后，B 机接手走 `preflight_handoff`（三项检查：绑定隔离/授权/恢复锚）→ `accept_handoff`（无活跃租约走 claim 分支，直接取得新租约与 assignment；过期未释放租约走 takeover，需 operator 隔离裁决）→ `heartbeat_task` 续期 → `append_checkpoint` 接续检查点 → `request_task_completion`。接手方的 CLI/MCP 自动携带 operator 证明（仅这三个 operator-gated 动作，且绑定文件 session 必须与当前会话一致）。preflight `ready=false` 时如实报告缺失项（如恢复锚 candidate_sha 缺失），不跳闸。
 7. **申请完成**：`request_task_completion` 提交真实 `evidence_refs` 与 `reason`；返回待核验时报告“已申请，等待裁决”，不得说任务已完成。
 8. **裁决**：`decide_task_proposal` / `decide_task_completion` 需要用户明确批准、调用者具备 coordinator 权限（后者还需 operator 凭据）、任务状态匹配；缺一不可。
@@ -101,6 +102,7 @@ devboard call bind_worktree --coordinator ...            # 协调者动作加 --
 | 申请完成 | `request_task_completion` | `call request_task_completion` |
 | 裁决 | `decide_task_proposal` / `decide_task_completion`（operator） | `call ... --coordinator` + operator 绑定文件 |
 | 绑定/解绑工作树 | `bind_worktree` / `unbind_worktree`（coordinator） | `call bind_worktree --coordinator` |
+| 登记工作树（含分支） | — | `call reconcile_worktree`（必带 `branch_ref`，除非 `is_detached=true`） |
 
 ## 典型用户请求 → 动作映射
 
@@ -118,7 +120,7 @@ devboard call bind_worktree --coordinator ...            # 协调者动作加 --
 
 ## 失败处理
 
-- `DENIED_POLICY`：可能是会话未绑定、角色不足、项目写授权不足或租约凭据不可用；按错误信息定位，不靠换角色/账号重试。
+- `DENIED_POLICY`：可能是会话未绑定、角色不足、项目写授权不足或租约凭据不可用；按错误信息定位，不靠换角色/账号重试。若部署启用了 `BOARD_OPEN_ACCESS`，错误信息仍提到项目写权限则说明该服务没开或没重载，按部署问题报告，不要让用户去补 `grants/`。
 - `CONFLICT_VERSION`：先读最新任务状态、revision 与既有结果。写入结果未知时保持原内容并复用原 request_id；确认旧请求失败且输入变化时，重新核验授权与前置条件后使用新 request_id，不得把新内容套用旧键。
 - `NOT_IMPLEMENTED` / 501：该操作在当前模式未实现；停止该操作并报告，不要当作网络故障反复重试。
 - `UNAVAILABLE`（远端 board 不可达）：github-decentralized 模式下读降级缓存、写失败关闭；稍后重试 `sync`，不换本地模式绕行。
