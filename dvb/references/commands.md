@@ -10,7 +10,7 @@
 | `central` | 经已配置设备身份访问中央服务 | `central-unavailable` 时只读旧缓存 |
 | `local-only` | 已明确使用的单机数据集与既有 MCP | 不宣称跨机认领或同步，不作为 GitHub 模式失败时的可写后备 |
 
-M5 日常命令已交付并合入 develop（2026-11-16，含通用 `devboard` CLI 与 board 模式写入器）。board 模式写动作按 `BOARD_WRITE_ACTIONS` 逐动作 opt-in（服务端白名单覆盖 `register_session`、`claim_task`、`heartbeat`、`release_task`、`append_checkpoint`、`create_task`、`update_task`、`create_project`、`reconcile_worktree`、`bind_worktree`、`unbind_worktree`、`decide_task_proposal`、`pause_task`、`resume_task`、`add_dependency`、`remove_dependency`、`accept_handoff`、`request_task_completion`、`decide_task_completion`；`decide_task_completion` 另需 coordinator 凭据）。服务未启用某动作时，该写动作仍不可用。后续版本一律以 `/api/v1/capabilities` 与实际响应核实为准。
+M5 日常命令已交付并合入 develop（2026-11-16，含通用 `devboard` CLI 与 board 模式写入器）。board 模式写动作按 `BOARD_WRITE_ACTIONS` 逐动作 opt-in（服务端白名单覆盖 `register_session`、`claim_task`、`heartbeat`、`release_task`、`append_checkpoint`、`create_task`、`update_task`、`create_project`、`reconcile_worktree`、`bind_worktree`、`unbind_worktree`、`decide_task_proposal`、`pause_task`、`resume_task`、`add_dependency`、`remove_dependency`、`accept_handoff`、`request_task_completion`）。`decide_task_completion` 已按 ADR-0012 从 board 产品移除，即使配置里列出也会返回 NOT_IMPLEMENTED；完成由 `request_task_completion` 的 `git:<sha>` 与 CI 核验自动判定。非租约动作不再要求 coordinator 凭据。服务未启用某动作时，该写动作仍不可用。后续版本一律以 `/api/v1/capabilities` 与实际响应核实为准。
 
 没有安全写客户端仍可查询。先确认 `DEVBOARD_URL` 是配置好的本机地址，未配置时从可信本机配置查，不猜端口。**查询 `/api/v1/board` 建议带 `project_id`**：数据集只有 1 个项目时，不带参数也返回 200；多于 1 个项目时服务端返回 400（`INVALID_INPUT`）。因此始终先从项目列表取得真实 ID 再查询，既避免歧义也不依赖项目数量。实测记录（2026-11-11，单项目实验数据集）：`/api/v1/projects` → 200、`/api/v1/board?project_id=trial` → 200、`/api/v1/board` → **200**。只读例子：
 
@@ -35,7 +35,7 @@ curl --fail --silent --show-error "${DEVBOARD_URL:?}/api/v1/board?project_id=PRO
 | `prepare_handoff` | `preflight_handoff`，仅核验，不转移租约 |
 | `accept_handoff` | `takeover`，intent=`handoff`，需完整恢复核验 |
 | `release_task` | `release_task`，HTTP 已有，旧 MCP 未必有同名工具 |
-| `create_task` / `update_task` / `pause_task` / `resume_task` / `append_checkpoint` / 完成及提案裁决 | 同名 |
+| `create_task` / `update_task` / `pause_task` / `resume_task` / `append_checkpoint` / `decide_task_proposal` | 同名 |
 
 `register_session`、`claim_task` 同名；必填字段读实际 `tools/list` 或已安装 CLI 的帮助。HTTP `register_session` 与首次认领的响应可含秘密，不能让原始响应进入模型上下文。仅使用能内置保存并脱敏的客户端；不手工拼令牌头，不让用户粘贴令牌。
 
@@ -66,9 +66,29 @@ devboard session register --agent AGENT --host-kind HOST --request-id KEY --json
 devboard call OP --session SESSION --request-id KEY --input-file FILE --json
 ```
 
-CLI 建单/更新在已登记项目进行，两机同步后看到同一 ID 与 revision；`claim` 自动保存租约凭据（本机 0600），`heartbeat`/`checkpoint`/`release` 自动注入并在 stdout 脱敏。`devboard endpoint --discover-desktop` 仅 macOS、发现桌面 App 发布的端点（显式 `--endpoint`/`DEVBOARD_URL` 优先且与发现互斥）。现有 `devboard-complete` 等专项工具不等于通用 CLI。协调者调用只用已经配置的授权，参数本身不提升角色。
+CLI 建单/更新在已登记项目进行，两机同步后看到同一 ID 与 revision；`claim` 自动保存租约凭据（本机 0600），`heartbeat`/`checkpoint`/`release` 自动注入并在 stdout 脱敏。`devboard endpoint --discover-desktop` 仅 macOS、发现桌面 App 发布的端点（显式 `--endpoint`/`DEVBOARD_URL` 优先且与发现互斥）。现有 `devboard-complete` 等专项工具不等于通用 CLI。board 模式非租约动作不再要求 coordinator；仍按用户授权与实际响应执行，参数本身不提升角色。
 
-board 模式操作员边界（§3.6.5）：操作员裁决（如 `decide_task_completion`）走专用 0600 绑定文件（`DEVBOARD_OPERATOR_TOKEN_FILE`，内含 operator 令牌与其代理的会话），未配置时一切操作员动作 fail-closed。**桌面 App 的口令登录在 board 模式是设计性关闭**（board 无口令注册表）：App 只能浏览看板，操作员动作经绑定文件由 CLI/MCP 执行；不要把 agent 会话令牌当操作员凭据，也不要试图用口令登录 board 服务。
+board 模式完成判定（ADR-0012 D12-06/D12-07）：`request_task_completion` 至少需要一条 `git:<40位提交SHA>`；服务端核验任务绑定工作树、提交是否为 HEAD 祖先、工作树是否干净，以及该 SHA 的 `verify` CI 是否成功。通过则任务立即 completed 并释放任务/工作树租约；失败保留租约并返回 `EVIDENCE_CI_PENDING` / `EVIDENCE_CI_FAILED` / `EVIDENCE_CI_UNAVAILABLE`。没有 `decide_task_completion` 人工裁决；旧 operator 绑定文件（`BOARD_OPERATOR_TOKEN_FILE`）不再被 board 读取。桌面 App 使用内置 `sess_desktop`，无需登录或 operator 令牌。
+
+## 开放写入模式（BOARD_OPEN_ACCESS）
+
+部署可用 `BOARD_OPEN_ACCESS=1` 显式开启（仅 `1`/`true`/`yes` 生效，默认关闭；本机 2026-11-16 起启用）。开启后：
+
+- **写入**：跳过设备—项目写授权文件 `grants/<device>/<project>.yaml`，任何活跃会话可写任意已登记项目；新建项目不再需要补 grant。
+- **身份**：本机 UI 固定使用内置 `sess_desktop`（ADR-0012 D12-08），不需要登录、operator 绑定或 `X-Operator-Token`；`BOARD_LOCAL_DEVICE_ID` 必须指向已登记的本地设备，否则 fail-closed。
+- **不变**：会话有效性、设备撤销、租约/代际与 `BOARD_WRITE_ACTIONS` 白名单照旧生效；协调者授权语义已退役。
+- **不劫持**：带 `X-Session-Token`、`X-Bootstrap-Token` 或协调者头的 Agent 请求保持自身身份，不会被提升为 desktop。
+
+识别与排查：
+
+```bash
+# 200 + operator_id=desktop 表示 board 已提供 sess_desktop；501 表示当前模式不支持
+curl --silent --show-error "${DEVBOARD_URL:?}/api/v1/operator/me"
+```
+
+- 仍出现 `device ... has no write permission on project ...`：先确认服务是否开了该变量或需要重载（LaunchAgent 改 plist 后必须 `bootout` + `bootstrap`，`kickstart -k` 不重读环境变量）。若确认 OpenAccess 已生效，则问题不在 grant：写入放行而重放仍按 grant 判定时，合法提交会在历史重放中被隔离，后续写入报 `UNAVAILABLE: board history has N quarantined commits`，这是重放策略一致性缺陷，按 bug 流程处理；不要为此手写 `grants/` 或改 board 提交。
+- 不要为了消错去手写 `grants/` 文件，也不要把开放模式当成 Gate 或完成授权：完成仍由 git + CI 证据判定，提案裁决仍需用户授权与任务状态。
+- 发送 Agent 请求时不要省略 `X-Session-Token`，否则会被当作本机 desktop 请求，丢失 Agent 会话归属。
 
 ## 换机器和 worktree
 
