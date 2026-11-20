@@ -312,9 +312,9 @@ Issue 评论里写 `CI PASS` 不等于 `full_ci_run=PASS`。接管方必须按�
 2. 写 checkpoint（`append_checkpoint`）并同步任务状态；
 3. 更新该 workflow 绑定 task 的状态字段。
 
-每条记录只绑定一个 task_id，不再默认创建第二张 tracking Issue。完成裁决
-（request/decide completion）、设备/权限管理、项目源码 commit/push/merge、CI 与发布
-不在本政策内。
+每条记录只绑定一个 task_id，不再默认创建第二张 tracking Issue。完成判定
+（`request_task_completion` 的 git+CI 证据核验）、设备/权限管理、项目源码
+commit/push/merge、CI 与发布不在本政策内。
 ```
 
 额外约束：

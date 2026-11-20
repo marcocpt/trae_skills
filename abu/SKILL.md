@@ -19,6 +19,19 @@ description: 通过 curl 收发企业微信消息（阿布热线协作面）。�
 
 时序：`回执 → 处理 → 交付 → 推进 cursor`。**冷启动计数口径**：`N_total` = 返回条数；`N_total = 0` → `N_skipped = 0`、`N_processed = 0`、不发回执（写 cursor=0 进入 wait）；`N_total > 0` → `N_skipped = N_total - 1`、`N_processed = 1`。回执文案不含条数与范围，跳过积压的说明放到结果交付里；统计命令用 `min(seq)`/`max(seq)` 取端点。回执**不替代**「需要用户时，一律走微信」的完整问题与连续等待。完整规范见仓库 `docs/协作指引.md`「收到即回执」。
 
+## 心跳纪律（F4.2，强制）
+
+**宿主开始处理消息批次前、长任务每个主要步骤完成时、交付后，更新心跳**：
+
+```bash
+node --experimental-strip-types "$REPO/src/heartbeat-cli.ts" \
+  --host <宿主标识> --state working|idle|paused --task "<一句话>" --bot <bot名>
+```
+
+交付/回合结束→`idle`，主动暂停→`paused`；`--state` 非法退出码 1，**写入失败只警告、退出码仍 0**，不阻塞 agent、不回滚 cursor。心跳文件 `~/.abu-hotline/heartbeat/<host>.json`（五字段、`updated_at` 为 ISO8601，原子写、单文件最后写入胜出）；watchdog 只信任 `updated_at` 计算 age，`working` 超 30 分钟未更新触发心跳超时告警（含误报提示语「若该会话仍在工作请忽略（心跳未更新）」）。收件箱中整条内容为「状态」或「status」的消息由看门狗应答（F4.3 已接入）：**回执照发**（回执是批次级统一动作，按 `ack-<bot>-<last_seq>` 照常发送，不豁免）、**业务跳过**（不作为任务处理、不回复结果，由 watchdog 应答状态摘要）、**cursor 照常**（处理完批次后正常推进自身 cursor）。混合批次：回执按批次 `last_seq` 一次；业务消息正常处理，关键词消息跳过业务处理。看门狗另监测客户端持续掉线与收件箱积压（未完成处理），企微全部候选 bot 失败时降级 macOS 通知；完整规范见仓库 `docs/协作指引.md`「心跳纪律」「看门狗（watchdog）」。
+
+**F4.8 宿主静默提醒**：`paused` / `idle` 心跳超 1 小时（3600 秒）未更新会收到**一次**企微提醒，同一段静默不重复、不推「已恢复」；属正常提醒非故障告警，文案注明「若属正常空闲可忽略」。宿主转 `working` 后静默恢复（不发消息），再次静默可再提醒一次；心跳纪律本身不变。
+
 ## 需要用户时，一律走微信（强制路由）
 
 **凡是要决策、要暂停、或卡住等用户，都必须把完整问题发到微信机器人，并持续等到回复；不得只在当前会话里提问后结束回合。**
@@ -78,7 +91,7 @@ description: 通过 curl 收发企业微信消息（阿布热线协作面）。�
 **本机配置是唯一事实源。** 先定位仓库根，再读配置：
 
 ```bash
-REPO=$(ls -d ~/work/AICoding/abu ~/Working/AICoding/abu 2>/dev/null | head -1)
+REPO=$(ls -d ~/Working/AICoding/abu-hotline 2>/dev/null)
 # 多机器人模式：打印 name → apiPort 完整映射
 python3 - "$REPO" <<'PY'
 import json, os, sys
@@ -93,8 +106,8 @@ PY
 
 | 用户提示词 | 机器人 | 端口 | cursor state 文件 |
 |---|---|---|---|
-| 未指定 / "阿布热线" / "默认" | 本机默认 bot（`bots.config.json` 第一条的 `name`；单机 `.env` 模式无名） | 该 bot 的 `apiPort`（单机 `.env` 模式取 `API_PORT`） | `~/.abu/state/<bot>.<host>.cursor` |
-| "用 wxrN" / "查 wxrN 收件箱" | wxrN | `bots.config.json` 里 `name=wxrN` 的 `apiPort` | `~/.abu/state/wxrN.<host>.cursor` |
+| 未指定 / "阿布热线" / "默认" | 本机默认 bot（`bots.config.json` 第一条的 `name`；单机 `.env` 模式无名） | 该 bot 的 `apiPort`（单机 `.env` 模式取 `API_PORT`） | `~/.abu-hotline/state/<bot>.<host>.cursor` |
+| "用 wxrN" / "查 wxrN 收件箱" | wxrN | `bots.config.json` 里 `name=wxrN` 的 `apiPort` | `~/.abu-hotline/state/wxrN.<host>.cursor` |
 
 **路由规则**：用户明确指定（如"用 wxrN 发"/"查 wxrN 收件箱"）→ 用该 bot 的端口；未指定 → 本机默认 bot；配置里没有的机器人名 → 说明本机没配这个 bot，不要瞎猜端口。**机器人按机器分组**（开发机 wxr1/wxr2，其他机器各自新建如 wxr3/wxr4）——同一 BOT 凭据只能一台机器长连接，两台同时跑会互踢。`<host>` = 宿主稳定标识（codebuddy / codex / opencode / trae 等）——每宿主独立 state 文件（对齐 ADR-0004"各宿主各自维护 cursor"），同一宿主跨会话复用同一文件。**零绑定原则**：无需预先绑定机器人，切换机器人 = 换端口号 + 换 state 文件，其余操作不变。
 
@@ -104,7 +117,7 @@ PY
 
 ### cursor state 文件（唯一可靠载体）
 
-路径：`~/.abu/state/<bot>.<host>.cursor`（如 `wxr1.codebuddy.cursor`，见路由表）。
+路径：`~/.abu-hotline/state/<bot>.<host>.cursor`（如 `wxr1.codebuddy.cursor`，见路由表）。
 
 - **读**：回合开始**整值判别**。注意 shell 命令替换 `$(cat ...)` 会吞掉全部尾换行、无法区分一个与多个尾换行，须经 python3 读原始字节校验：
 
@@ -113,12 +126,12 @@ cursor=$(python3 -c 'import os, sys
 p = sys.argv[1]
 d = open(p, "rb").read() if os.path.exists(p) else b""
 v = d[:-1] if d.endswith(b"\n") else d
-print(v.decode() if v.isdigit() else "")' ~/.abu/state/wxr1.codebuddy.cursor)
+print(v.decode() if v.isdigit() else "")' ~/.abu-hotline/state/wxr1.codebuddy.cursor)
 [[ "$cursor" =~ ^[0-9]+$ ]] || cursor=   # 空 → 冷启动
 ```
 
 整值恰为一个非负整数（允许单个尾换行）才有效；文件缺失/为空/非数字/多行/多尾换行一律 cursor 为空 → 走冷启动（不得把缺失折叠成 0，否则与合法 cursor=0 无法区分）
-- **写（处理后推进）**：**处理完**返回的消息批次后，才把最后一条 `seq` 写入：`mkdir -p ~/.abu/state && echo -n <seq> > ~/.abu/state/wxr1.codebuddy.cursor`；**空返回不写**。cursor 语义 = 已完成处理的位置：中断恢复后未确认批次会被重新拉取（at-least-once），重复回复由 req_id 幂等去重兜底
+- **写（处理后推进）**：**处理完**返回的消息批次后，才把最后一条 `seq` 写入：`mkdir -p ~/.abu-hotline/state && echo -n <seq> > ~/.abu-hotline/state/wxr1.codebuddy.cursor`；**空返回不写**。cursor 语义 = 已完成处理的位置：中断恢复后未确认批次会被重新拉取（at-least-once），重复回复由 req_id 幂等去重兜底
 - 会话内上下文可顺带记住 cursor 省一次读，但 state 文件是事实源；上下文被压缩或进入新回合后以文件为准
 
 ### 冷启动（仅当无有效 state：缺失 / 为空 / 非数字）
@@ -187,7 +200,7 @@ while true; do
 p=sys.argv[1]
 d=open(p,"rb").read() if os.path.exists(p) else b""
 v=d[:-1] if d.endswith(b"\n") else d
-print(v.decode() if v.isdigit() else "")' ~/.abu/state/<bot>.<host>.cursor)
+print(v.decode() if v.isdigit() else "")' ~/.abu-hotline/state/<bot>.<host>.cursor)
   case "$cursor" in ''|*[!0-9]*) sleep 15; continue;; esac
   resp=$(curl -sf -m 580 "http://127.0.0.1:<端口>/wait?cursor=$cursor&timeout=570") || { sleep 10; continue; }
   printf '%s' "$resp" | grep -q '"messages":\[\]' && continue
@@ -285,6 +298,7 @@ req_id 规则同 `/send`：每次附件交付独立生成（如 `task-42-file1`�
 ## 完整回合模板
 
 ```
+↳ 前置：更新心跳（步骤 0 之前）  node --experimental-strip-types "$REPO/src/heartbeat-cli.ts" --host <host> --state working --task "<一句话>" --bot <bot名>；长任务主要步骤完成/交付后按「心跳纪律」再写一次，写失败不阻塞
 0. 读 cursor   state 整值判别（合法数字 → 增量续接；缺失/空/损坏 → 冷启动，绝不盲拉全量）
 1. 取消息      curl /messages?cursor=N 或 /wait 返回新消息
    ↳ 非空：**先发回执**（见「收到即回执」，req_id=ack-<bot>-<last_seq>）→ 再进入 2
