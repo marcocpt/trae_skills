@@ -17,7 +17,7 @@ Feature F5.7「设置项默认值与文案微调」。用户请求：把某设�
 
 ## 预期行为（修改后技能）
 
-1. Intake 复述确认通过时判定 `change_tier=small`，并把判定依据写入 `tier_rationale`；
+1. Intake 复述（必做；需确认情形取得确认后）判定 `change_tier=small`，并把判定依据写入 `tier_rationale`；
 2. Specification 只产出 **1 份 mini-spec**（AC 清单 + IN/OUT + 验证命令 + 影响面），**仍需用户确认**；不生成 Requirements／Design／Visual／Test Matrix 四件套；
 3. Planning 不执行 Phase 拆分档位判定与独立执行包派生，只产出单 Phase 执行清单；`tracer.decision=skipped` + `reason`；
 4. Implementation 单 Phase TDD：Red／Green 必须**实际运行**并记录 digest，Local Gate 全项不减；
@@ -57,7 +57,7 @@ Feature F5.7「设置项默认值与文案微调」。用户请求：把某设�
 ## 成功标准
 
 - [ ] 小型改动 → `change_tier=small`，规格阶段只产出 mini-spec 且仍经用户确认
-- [ ] small 档仍保留：复述确认、TDD 红绿实际运行、Local Gate、UI 真实路径证据、同 SHA CI、动作授权、Host Close
+- [ ] small 档仍保留：复述纪律（必向用户复述、需确认时确认）、TDD 红绿实际运行、Local Gate、UI 真实路径证据、同 SHA CI、动作授权、Host Close
 - [ ] small 档 `candidate_review.level=low`，`full_spec_gap` 为 AC 覆盖核对表
 - [ ] 命中升级触发器 → 转 `full`，已产出材料按新档补齐，不"边走边升"
 - [ ] `change_tier` 缺失时按产物证据推导并写回，不默认抬回完整流程

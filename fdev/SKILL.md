@@ -23,7 +23,7 @@ description: 当实现需要规格套件、分阶段计划、TDD、CI 或用户�
 
 一个 Feature 从需求到交付的大致旅程：
 
-1. **新任务首次进入 Intake 时，若目标、范围与成功标准尚不清楚或存在冲突，先用通俗语言复述需求并取得确认**（要解决什么问题、范围边界、成功标准）——防跑偏的闸口；目标/范围/成功标准已清楚（用户请求已写明、或状态/有效 Handoff 已含确认）且无未解决决定时，不机械复述再等一次确认，记录确认依据后直接收集剩余事实；真正不确定、冲突、行为变更或高风险决策仍 ASK；恢复任务若状态已含有效需求确认则复用，不重复 ASK；随后复用已有 Handoff 和已解决事实，不重复询问；
+1. **新任务首次进入 Intake 时，一律先向用户用通俗语言复述需求**（要解决什么问题、范围边界 IN/OUT、怎样算成功）——防跑偏的闸口，不得跳过；目标/范围/成功标准清楚、无歧义且无未解决的产品决定时，复述即继续、不停下等确认（用户可随时纠偏），复述要点与"清楚即继续"写入 `decisions`，随后收集剩余事实；不清楚或仍不确定、冲突、行为变更或高风险决策**必须先取得用户确认**才继续，确认方式一并写入 `decisions`；恢复任务若状态或有效 Handoff 已含有效确认则复用，不重复复述；随后复用已有 Handoff 和已解决事实，不重复询问；
 2. **首次建立执行环境时默认新建隔离 worktree，且在修改项目产物（代码、测试、规格、项目文档等交付范围内文件）之前完成**；恢复任务、有效 Handoff 或父工作流已提供的 worktree 必须复用并验证，不重新创建；仅用户明确要求时才允许在当前工作区，且须记录原因；
 3. Intake按 [small-change-track.md](references/small-change-track.md) 的原准入判定change_tier（默认full）；两档文档均默认使用一个持久任务包，明确独立消费者才补对应合同，用户或项目明确要求完整套件才调用spec完整路径。文档组织不降低原风险控制；
 4. 从已明确且有有效批准依据的目标/验收条件拆Phase与Task，复用持久入口；计划拆分与tracer按现有属主执行，风险档准入保持；
@@ -110,7 +110,7 @@ intake → environment → specification → planning → implementation
 
 | Stage | 实际要做什么 | 完成标志 | 详细规则 |
 |---|---|---|---|
-| Intake | **目标/范围/成功标准不清或存在冲突时，先用通俗语言复述需求并取得用户确认**（目标已清楚且无未解决决定时不机械复述再等一次确认，记录确认依据；恢复任务状态已含有效确认则复用，不重复 ASK），再确认 Feature 的目标、范围、成功标准、失败路径、兼容性及可验证 AC，只补尚未解决的 blocker；同时判定 `change_tier`（默认full）并写 `tier_rationale`（`small` 逐条证明原准入条件），并建立或复用持久任务入口（见[看板与接手入口](#看板与接手入口)） | 目标/范围/成功标准已确认或确认依据已记录，档位与理由已持久化，持久任务入口已建立或复用 | [intake-and-environment.md](references/intake-and-environment.md)／[small-change-track.md](references/small-change-track.md) |
+| Intake | **一律先向用户用通俗语言复述需求（问题、范围边界 IN/OUT、怎样算成功）**——清楚且无未解决的产品决定时复述即继续、不等确认（复述要点与"清楚即继续"写入 `decisions`），不清楚/冲突/行为变更/高风险时须取得确认并写入 `decisions`（恢复任务状态或有效 Handoff 已含有效确认则复用，不重复复述），再确认 Feature 的目标、范围、成功标准、失败路径、兼容性及可验证 AC，只补尚未解决的 blocker；同时判定 `change_tier`（默认full）并写 `tier_rationale`（`small` 逐条证明原准入条件），并建立或复用持久任务入口（见[看板与接手入口](#看板与接手入口)） | 目标/范围/成功标准已向用户复述并记入 `decisions`，或已复用有效确认；需确认情形已获确认，档位与理由已持久化，持久任务入口已建立或复用 | [intake-and-environment.md](references/intake-and-environment.md)／[small-change-track.md](references/small-change-track.md) |
 | Environment | **首次建立执行环境时默认新建隔离 worktree，且在修改项目产物之前完成**；恢复任务、有效 Handoff 或父工作流已提供的 worktree 必须复用并验证；仅用户明确要求时才允许在当前工作区并记录原因。验证基线和并发状态。**worktree 与分支确定后、Environment Gate 前，必须按 [task-tracking](../wrt/references/task-tracking.md) §3 完成 provider 路由的外部任务绑定尝试并持久化其结果——成功绑定 GitHub Issue 或 Devboard task，或按该合同记录合法失败结果（`sync` / `sync_reason`）——`provider=github` 创建并绑定一张 GitHub Issue，`provider=devboard` 创建或复用并绑定一个 Devboard task（`task_id`），绑定失败不阻塞 Workflow Gate 但完全没有尝试且没有记录不得通过，复用还是创建由 §3 唯一规定；并在该 Gate 前运行 `wrt/agents/validate-tracking-binding.py --state <state_file>` 通过** | worktree 已新建或已复用并验证，工作环境与状态一致，绑定尝试结果已按 owner 合同记录且判定器通过，可安全进入规格阶段 | [intake-and-environment.md](references/intake-and-environment.md) |
 | Specification | 两档默认复用一个持久任务包；明确消费者只补对应合同，完整套件仅按明确要求产出 | 目标/范围/验收条件与关键决定有有效批准依据 | [specification.md](references/specification.md) |
 | Planning | 从已批准规格生成 Phase 和可执行 Task 包，建立 AC → Task → Test/Evidence 映射（紧凑表达于计划内，不维护独立追溯表），并判定 tracer（required/skipped，按 tracer-contract §3 风险判定）；Phase 数量与计划文件组织按 planning-stage 拆分档位规则（`small` 档同样适用） | 所有 Phase/Task 输入输出、写入范围、验证方式和停止条件都明确，tracer 决策已记录 | [planning-stage.md](references/planning-stage.md)／[small-change-track.md](references/small-change-track.md) |
@@ -158,7 +158,8 @@ intake → environment → specification → planning → implementation
 
 ### 阶段纪律
 
-- 目标/范围/成功标准不清、存在冲突或涉及行为变更/高风险决策时未澄清确认就开始收集规格或修改项目产物（目标已清楚且无未解决决定时不机械复述等待，但确认依据必须记录；恢复任务状态已含有效确认的除外）；
+- 新任务首次进入 Intake 未向用户复述目标/范围/成功标准就开始收集规格或修改项目产物（恢复任务状态或有效 Handoff 已含有效确认的除外）；
+- 目标/范围/成功标准不清楚、存在冲突或涉及行为变更/高风险决策时未取得用户确认就继续（清楚时复述即继续，不停下等二次确认）；
 - 首次建立执行环境时未新建 worktree 就修改项目产物（恢复/Handoff/用户明确要求的例外除外）；
 - Environment Gate 前未按 [task-tracking](../wrt/references/task-tracking.md) §3 完成外部任务的绑定尝试并把结果落盘，或未让 `validate-tracking-binding.py` 通过就推进——只登记调用点不执行，等同未尝试；
 - 未通过 Phase Local Gate 就进入下一 Phase；
