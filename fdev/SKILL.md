@@ -14,7 +14,7 @@ description: 当实现需要规格套件、分阶段计划、TDD、CI 或用户�
 - Bug 修复：使用 `bug`；
 - 用户明确要先快速拿到可用实现（先跑起来、之后再补齐流程与测试）：使用 `fft`；
 - 项目级 Bootstrap：使用 `boot`；
-- 简单文本或纯文档微调：直接使用对应工具或 writer；
+- 简单文本或纯文档微调：不走本流程，但按 [mutation-gate](../wrt/references/mutation-gate.md) §6 的轻量文档路径执行（复述范围 + 首次修改前 GO，不建 worktree、不写状态）；
 - 只读审查。
 
 小型功能改动**不属于**上述例外：它仍走本工作流，默认按最小任务包组织；change_tier仍按原准入判定，审查独立按实际风险决定，不因少写文档自动判small。
@@ -27,7 +27,7 @@ description: 当实现需要规格套件、分阶段计划、TDD、CI 或用户�
 2. **首次建立执行环境时默认新建隔离 worktree，且在修改项目产物（代码、测试、规格、项目文档等交付范围内文件）之前完成**；恢复任务、有效 Handoff 或父工作流已提供的 worktree 必须复用并验证，不重新创建；仅用户明确要求时才允许在当前工作区，且须记录原因；
 3. Intake按 [small-change-track.md](references/small-change-track.md) 的原准入判定change_tier（默认full）；两档文档均默认使用一个持久任务包，明确独立消费者才补对应合同，用户或项目明确要求完整套件才调用spec完整路径。文档组织不降低原风险控制；
 4. 从已明确且有有效批准依据的目标/验收条件拆Phase与Task，复用持久入口；计划拆分与tracer按现有属主执行，风险档准入保持；
-5. 按 Phase → Task → TDD 实现，每个 Phase 必须通过 Local Gate；
+5. 按 Phase → Task → TDD 实现；**第一次写入项目产物前按 [mutation-gate](../wrt/references/mutation-gate.md) 取得 GO**（已批准规格/任务包已明确列出写入范围时，该批准中写明的范围即 GO，不再重复询问），每个 Phase 必须通过 Local Gate；
 6. 根据真实实现同步受影响文档；
 7. 完成验证——绑定唯一被验证版本（已提交且内容干净时冻结 `candidate_sha`；未提交时用 `verification_evidence` 的 `implementation_digest` 绑定真实工作树内容，含相关 dirty/未跟踪输入），对照验收条件核对完整性、遗漏和越界，运行项目要求的测试并按 review-gate 风险路由审查（普通改动主 Agent A/B/C 自检，命中风险触发器才升级独立强审），项目要求的 CI 严格绑定同一版本；仍有效的结果直接复用，不无条件全量重跑，但也不可用仅 HEAD 相同掩盖 dirty 变化；
 8. 按授权交付——复用已有动作级授权，执行已获授权的提交、推送或合并，交付内容与验证版本一致；只有缺少必要授权或出现新决定才询问，不泛问"继续交付还是回退"；
@@ -114,7 +114,7 @@ intake → environment → specification → planning → implementation
 | Environment | **首次建立执行环境时默认新建隔离 worktree，且在修改项目产物之前完成**；恢复任务、有效 Handoff 或父工作流已提供的 worktree 必须复用并验证；仅用户明确要求时才允许在当前工作区并记录原因。验证基线和并发状态。**worktree 与分支确定后、Environment Gate 前，必须按 [task-tracking](../wrt/references/task-tracking.md) §3 完成 provider 路由的外部任务绑定尝试并持久化其结果——成功绑定 GitHub Issue 或 Devboard task，或按该合同记录合法失败结果（`sync` / `sync_reason`）——`provider=github` 创建并绑定一张 GitHub Issue，`provider=devboard` 创建或复用并绑定一个 Devboard task（`task_id`），绑定失败不阻塞 Workflow Gate 但完全没有尝试且没有记录不得通过，复用还是创建由 §3 唯一规定；并在该 Gate 前运行 `wrt/agents/validate-tracking-binding.py --state <state_file>` 通过** | worktree 已新建或已复用并验证，工作环境与状态一致，绑定尝试结果已按 owner 合同记录且判定器通过，可安全进入规格阶段 | [intake-and-environment.md](references/intake-and-environment.md) |
 | Specification | 两档默认复用一个持久任务包；明确消费者只补对应合同，完整套件仅按明确要求产出 | 目标/范围/验收条件与关键决定有有效批准依据 | [specification.md](references/specification.md) |
 | Planning | 从已批准规格生成 Phase 和可执行 Task 包，建立 AC → Task → Test/Evidence 映射（紧凑表达于计划内，不维护独立追溯表），并判定 tracer（required/skipped，按 tracer-contract §3 风险判定）；Phase 数量与计划文件组织按 planning-stage 拆分档位规则（`small` 档同样适用） | 所有 Phase/Task 输入输出、写入范围、验证方式和停止条件都明确，tracer 决策已记录 | [planning-stage.md](references/planning-stage.md)／[small-change-track.md](references/small-change-track.md) |
-| Implementation | 按当前 Task 的 `anchors`、全局约束、Out of Scope、失败路径及必要集成输入选择性读取规格（不完整重读）；按 Phase 执行 Task 并采用 TDD；每个 Phase 通过 Local Gate 并完成按风险路由的紧凑 Phase 复核（命中风险触发器时升级独立强审）；高风险 UI 按风险触发远程 Smoke CI；Local Gate 未通过不得进入下一 Phase | 全部 Phase 已验证，无未解释的当前 Phase 缺口 | [implementation.md](references/implementation.md) |
+| Implementation | 按当前 Task 的 `anchors`、全局约束、Out of Scope、失败路径及必要集成输入选择性读取规格（不完整重读）；按 Phase 执行 Task 并采用 TDD；首次写入项目产物前按 [mutation-gate](../wrt/references/mutation-gate.md) 取得 GO（已批准写入范围即 GO）；每个 Phase 通过 Local Gate 并完成按风险路由的紧凑 Phase 复核（命中风险触发器时升级独立强审）；高风险 UI 按风险触发远程 Smoke CI；Local Gate 未通过不得进入下一 Phase | 全部 Phase 已验证，无未解释的当前 Phase 缺口 | [implementation.md](references/implementation.md) |
 | Documentation | 根据最终已验证行为判断哪些长期文档需要更新、无需更新或已过期；无受影响合同时可给出可验证的"本次无需修改合同"结论，不强制制造新文档或等待批量同步 | 文档与即将冻结的实现一致，或无需修改结论附影响判定与理由 | [documentation.md](references/documentation.md) |
 | Final Candidate | 绑定唯一被验证版本（已提交且内容干净 → 冻结 `candidate_sha`；未提交 → 用 `verification_evidence` 的 `implementation_digest` 绑定真实工作树内容，含相关 dirty/未跟踪输入）；对同一版本做确定性验证、对照验收条件核对完整性／遗漏／越界、按 [review-gate](../wrt/references/review-gate.md) 风险路由审查（未命中风险触发器为主 Agent A/B/C 自检，命中则升级独立强审并覆盖全局不变量／负向要求／迁移兼容）和项目要求的 CI（严格绑定该版本，仍有效的同版本结果复用）。候选 Gate 只产出并验证可交付候选，不推进目标分支 | review / gap / CI 均绑定同一被验证版本；项目要求的 CI 未运行、未绑定或未经授权时记为明确缺口，不得放行 | [candidate.md](references/candidate.md)／[small-change-track.md](references/small-change-track.md) |
 | Confirmation | 复用已有动作级授权，只在缺少必要授权或出现新决定时询问；无新决定不泛问"继续交付还是回退"，不修改被验证内容 | 继续或回退的决策已记录并持久化；仅当决定继续时才进入 Delivery | [candidate.md](references/candidate.md) |
@@ -148,6 +148,7 @@ intake → environment → specification → planning → implementation
 ### 授权边界
 
 - 把内容批准、测试 PASS 或审查者 PASS 解释成 Commit／Push／外部动作授权；
+- 未取得 GO 就写入项目产物，或在 GO 范围外夹带修改；把"复述通过""用户没反对"当成 GO——不含明确写入范围的内容认可（测试 PASS、审查者 PASS、泛泛口头认可）不构成 GO；规格/任务包 `write_scope` 列出的范围即 GO 范围；
 
 ### 状态与恢复
 

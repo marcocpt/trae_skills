@@ -43,6 +43,21 @@ def h2_section(text: str, heading: str) -> str:
     return "\n".join(lines[start:])
 
 
+def h3_section(text: str, heading: str) -> str:
+    lines = text.splitlines()
+    head_re = re.compile(rf"^### {re.escape(heading)}$")
+    start = None
+    for i, line in enumerate(lines):
+        if start is None:
+            if head_re.match(line):
+                start = i + 1
+        elif re.match(r"^#{1,3} ", line):
+            return "\n".join(lines[start:i])
+    if start is None:
+        raise AssertionError(f"section not found: {heading}")
+    return "\n".join(lines[start:])
+
+
 class TestRestatementIsMandatory(unittest.TestCase):
     def test_router_requires_restating_the_three_parts_to_the_user(self):
         text = read(SKILL_MD)
@@ -135,6 +150,82 @@ class TestRedLines(unittest.TestCase):
     def test_red_line_exempts_confirmed_resume(self):
         red = h2_section(read(SKILL_MD), "红线")
         self.assertIn("恢复任务状态或有效 Handoff 已含有效确认的除外", red)
+
+
+class TestMutationGate(unittest.TestCase):
+    """Files must not change before the user says GO; investigation stays open."""
+
+    MUTATION_GATE = SKILL_ROOT.parent / "wrt" / "references" / "mutation-gate.md"
+    WEAKENERS = ("建议", "可选", "尽量", "视情况", "不强制")
+
+    def test_owner_reference_keeps_each_rule_body(self):
+        self.assertTrue(self.MUTATION_GATE.exists(), "mutation-gate.md must own the rule")
+        text = read(self.MUTATION_GATE)
+        for heading in ("## 1. 触发点", "## 2. GO 必须说清三件事", "## 3. 复用与失效",
+                        "## 4. 与 Intake 复述的关系", "## 5. 速通与其他工作流",
+                        "## 6. 轻量文档路径", "## 7. 红线"):
+            self.assertIn(heading, text)
+
+        trigger = text.split("## 1. 触发点", 1)[1].split("## 2.", 1)[0]
+        self.assertIn("不需要 GO", trigger, "investigation must stay open")
+        self.assertIn("debug-logs/", trigger)
+        self.assertIn("entry.md", trigger)
+        self.assertIn("新建、尚未通过其批准 Gate", trigger, "draft exemption must stay narrow")
+
+        body = text.split("## 2. GO 必须说清三件事", 1)[1].split("## 3.", 1)[0]
+        items = [ln for ln in body.splitlines() if re.match(r"^\d\. ", ln)]
+        self.assertEqual(len(items), 3, f"GO must keep exactly three items, got {items}")
+        self.assertIn("路径或路径模式", items[0])
+        self.assertIn("每个文件改成什么", items[1])
+        self.assertIn("影响与不碰什么", items[2])
+
+        light = text.split("## 6. 轻量文档路径", 1)[1].split("## 7.", 1)[0]
+        self.assertIn("取得 GO 后再修改", light)
+        self.assertIn("不写工作流状态", light)
+        self.assertIn("不改变规范语义", light)
+
+        reuse = text.split("## 3. 复用与失效", 1)[1].split("## 4.", 1)[0]
+        self.assertIn("`write_scope`", reuse, "reuse must bind to the existing owner field")
+        self.assertIn("未超出已批准规格/任务包声明的范围", reuse)
+        self.assertIn("触及未列文件，重新 GO", reuse)
+
+        fast = text.split("## 5. 速通与其他工作流", 1)[1].split("## 6.", 1)[0]
+        self.assertIn("不适用 §2 的三项格式", fast)
+        self.assertIn("不追加 GO", fast, "fast track must have a legal exit for scope growth")
+        self.assertIn("欠账台账", fast)
+
+    def test_wrt_routes_to_the_gate(self):
+        wrt = read(SKILL_ROOT.parent / "wrt" / "SKILL.md")
+        self.assertIn("[mutation-gate.md](references/mutation-gate.md)", wrt)
+        self.assertIn("必须遵守", wrt, "the route must stay mandatory, not advisory")
+
+    def test_phase_docs_are_routed_to_the_lightweight_path(self):
+        text = read(SKILL_MD)
+        self.assertIn("简单文本或纯文档修改：不走本流程", text)
+        self.assertIn("轻量文档路径", text)
+        self.assertIn("mutation-gate", text)
+
+    def test_repair_needs_go_but_investigation_does_not(self):
+        text = read(SKILL_MD)
+        self.assertIn("只读调查与工作流内部证据不需要 GO", text)
+        diag = h3_section(h2_section(text, "Stage 路由"), "Diagnosis and Repair")
+        self.assertIn("定义稳定复现与只读复现不受 GO 限制", diag)
+        go_sentence = next(s for s in diag.split("。") if "取得 GO" in s)
+        self.assertIn(
+            "写第一个项目产物", go_sentence,
+            "GO must attach to the first write, not to the repro definition",
+        )
+        for weak in self.WEAKENERS:
+            self.assertNotIn(weak, diag.split("Gate：")[0],
+                             f"GO requirement must not be weakened with '{weak}'")
+
+    def test_reproduction_reference_points_at_the_gate(self):
+        self.assertIn("mutation-gate", read(DIAG))
+
+    def test_go_cannot_be_inferred(self):
+        red = h2_section(read(SKILL_MD), "红线")
+        self.assertIn("未取得 GO 就写入项目产物", red)
+        self.assertIn("把\"复述通过\"\"用户没反对\"当成 GO", red)
 
 
 if __name__ == "__main__":

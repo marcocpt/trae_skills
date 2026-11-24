@@ -335,5 +335,20 @@ class TestRedLines(unittest.TestCase):
         self.assertIn("内容完成不等于 Git 或外部动作授权", text)
 
 
+class TestDocOnlyLightPath(unittest.TestCase):
+    """Doc-only work must not be a silent bypass of the write approval."""
+
+    def test_doc_only_exit_points_at_the_gate(self):
+        text = read(SKILL)
+        self.assertIn("纯文档微调", text)
+        self.assertIn("mutation-gate", text)
+        self.assertIn("取得写入批准", text)
+        self.assertIn("不建 worktree、不写状态", text)
+
+    def test_gate_stays_outside_the_single_ask_point(self):
+        text = read(SKILL)
+        self.assertIn("唯一一次询问", text, "the fast track still has exactly one ask")
+
+
 if __name__ == "__main__":
     unittest.main()

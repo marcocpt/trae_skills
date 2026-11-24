@@ -216,6 +216,7 @@ reference 负责：
 * 审查等级与强弱模型路由：`wrt/references/model-routing.md`；
 * ChatGPT 外部审核闭环与传输：`gpt`；
 * 通用 CI / test-location：`wrt/references/` 对应文件；
+* 写入项目产物前的 GO 与纯文档轻量路径：`wrt/references/mutation-gate.md`；
 * Git 操作：`git`；
 * Requirements / Design / Visual / Test Matrix 写作语义：`spec`；
 * Skill 编写方法和 Skill TDD：`skl`。

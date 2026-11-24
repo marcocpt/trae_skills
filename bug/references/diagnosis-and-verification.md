@@ -82,6 +82,8 @@ Gate：Bug state 原子写入，tracking 绑定尝试的结果已按 owner 合�
 
 ## 3. Reproduction
 
+**写复现测试或任何项目产物前，先按 [mutation-gate](../../wrt/references/mutation-gate.md) 取得 GO；只读复现、日志扫描与工作流内部证据不需要。**
+
 优先写最小自动化复现：
 
 - 一次只验证一个行为；

@@ -56,6 +56,8 @@ tracking: null
 
 Stage 创建或消费规范文档、人审视图、弱模型执行包或验证证据时，读取 [artifact-contract.md](references/artifact-contract.md)；调用方只补领域检查，不复制通用字段和语义。
 
+写入项目产物前是否需要用户 GO、GO 必须包含什么，按 [mutation-gate.md](references/mutation-gate.md) 判定：`bug-fix`、`feature-development` 与纯文档轻量路径必须遵守；速通流程（`bug-fast-track`／`feature-fast-track`）以唯一一次复述确认代替，不增加第二次询问。
+
 任务结案时按 [artifact-lifecycle](references/artifact-lifecycle.md) §3.6 在既有持久任务入口留下简短记录；回答项目当前行为、修改原因或进度时按同文件 §3.7 定向检索。只读提问不启动开发流程，也不新建记忆库。
 
 ## Preflight

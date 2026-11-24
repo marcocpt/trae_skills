@@ -16,7 +16,8 @@ description: 当用户要尽快拿到能跑起来的新功能、不想先走规�
 - 用户要的是完整流程（规格套件先行、多 Phase、独立强审）→ `fdev`；
 - Bug 修复 → `bfix` 或 `bug`；
 - 项目 Bootstrap：→ `boot`；
-- 纯文档微调、只读审查；
+- 纯文档微调（措辞、笔误、格式、局部说明）：不进本流程，但按 [mutation-gate](../wrt/references/mutation-gate.md) §6 轻量路径执行（说明改哪个文件、改成什么、影响什么并取得写入批准；不建 worktree、不写状态）；
+- 只读审查；
 - 需求无法在一句话内说清范围边界与验收——复述会反复失败，直接转 `fdev` 的 Intake。
 
 ## 运行时

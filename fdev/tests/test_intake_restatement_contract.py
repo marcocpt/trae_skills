@@ -150,5 +150,40 @@ class TestRouterAndRedLines(unittest.TestCase):
         self.assertIn("清楚时复述即继续，不停下等二次确认", confirm[0])
 
 
+class TestMutationGate(unittest.TestCase):
+    """Files must not change before the user says GO; approved scope counts as GO."""
+
+    MUTATION_GATE = SKILL_ROOT.parent / "wrt" / "references" / "mutation-gate.md"
+
+    def test_owner_reference_exists(self):
+        self.assertTrue(self.MUTATION_GATE.exists(), "mutation-gate.md must own the rule")
+
+    def test_doc_only_work_is_routed_to_the_lightweight_path(self):
+        text = read(SKILL_MD)
+        self.assertIn("简单文本或纯文档微调：不走本流程", text)
+        self.assertIn("轻量文档路径", text)
+
+    def test_implementation_needs_go(self):
+        text = read(SKILL_MD)
+        self.assertIn("第一次写入项目产物前按 [mutation-gate]", text)
+        self.assertIn("已批准规格/任务包已明确列出写入范围时，该批准中写明的范围即 GO", text)
+        self.assertIn("已批准写入范围即 GO", text)
+
+    def test_go_is_separate_from_content_approval(self):
+        red = read(SKILL_MD).split("### 授权边界", 1)[1]
+        self.assertIn("未取得 GO 就写入项目产物", red)
+        self.assertIn("不含明确写入范围的内容认可", red)
+        self.assertIn("`write_scope` 列出的范围即 GO 范围", red)
+
+    def test_implementation_go_is_not_weakened(self):
+        lines = [ln for ln in read(SKILL_MD).splitlines() if "写入项目产物前按" in ln]
+        self.assertGreaterEqual(
+            len(lines), 2, "both the journey step and the Stage row must state GO",
+        )
+        for line in lines:
+            for weak in ("建议", "可选", "尽量", "视情况", "不强制"):
+                self.assertNotIn(weak, line, f"GO must not be weakened with '{weak}': {line}")
+
+
 if __name__ == "__main__":
     unittest.main()
