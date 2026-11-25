@@ -1,0 +1,681 @@
+#!/usr/bin/env python3
+"""Parallels 虚拟机命令通道。
+
+优先使用 prlctl exec；服务不可用时自动回退到共享应用存根（WinAppHelper）。
+所有结果以统一 JSON 返回，供脚本、CI 与后续 MCP 适配层消费。
+
+多个 Agent 共享同一台虚拟机与同一个调试器时，由本工具内的独占锁串行化：
+flock 保证互斥，票号保证先来先得，进程退出自动释放（不会留下死锁文件）。
+
+用法：
+  guest-run run    --bat <mac 路径> --log <mac 路径> --marker <文本> [选项]
+  guest-run exec   --command <Windows 命令> --log <mac 路径> [选项]
+  guest-run probe  [--vm <名称>]
+  guest-run status [--key <锁名>] [--vm <名称>]
+
+退出码：0 成功 / 1 失败 / 2 等锁超时 / 3 保留（等待人工确认超时，由调用方使用）
+"""
+import argparse
+import errno
+import fcntl
+import json
+import os
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import time
+import uuid
+from pathlib import Path
+
+PRLCTL = os.environ.get(
+    "PEMB_PRLCTL", "/Applications/Parallels Desktop.app/Contents/MacOS/prlctl"
+)
+SHARE_ROOT_DEFAULT = r"\\Mac\Home"
+STUB_NAME = "Windows PowerShell.app"
+OPEN = "/usr/bin/open"
+PGREP = "/usr/bin/pgrep"
+PKILL = "/usr/bin/pkill"
+DEFAULT_MARKER = "PEMB_DONE"
+EXIT_PATTERN = re.compile(r"(?:rc|_EXIT|RC|EXIT)\s*=\s*(-?\d+)")
+
+EXIT_OK = 0
+EXIT_FAIL = 1
+EXIT_BUSY = 2
+EXIT_NO_CONFIRM = 3
+
+PEMB_HOME = Path(os.environ.get("PEMB_HOME") or (Path.home() / ".pemb"))
+LOCK_DIR = PEMB_HOME / "locks"
+QUEUE_DIR = PEMB_HOME / "queue"
+LOCK_POLL = 0.25
+
+
+def to_unc(mac_path, mac_home, share_root):
+    """把 Mac 侧共享目录路径换算成 Windows 侧 UNC 路径。"""
+    p = str(Path(mac_path).resolve())
+    h = str(Path(mac_home).resolve())
+    if p != h and not p.startswith(h + "/"):
+        raise ValueError("路径 %s 不在共享主目录 %s 下" % (p, h))
+    return share_root + p[len(h):].replace("/", "\\")
+
+
+def current_vm():
+    """从正在运行的 prl_vm_app 进程解析虚拟机名。"""
+    try:
+        out = subprocess.run(
+            [PGREP, "-fl", "prl_vm_app"], capture_output=True, text=True, timeout=5
+        ).stdout
+    except Exception:
+        return None
+    m = re.search(r"--vm-name\s+(\S+)", out)
+    return m.group(1) if m else None
+
+
+def find_stub_src(vm):
+    """找到与目标虚拟机匹配的共享应用存根。"""
+    base = Path.home() / "Applications (Parallels)"
+    if not base.is_dir():
+        return None
+    cands = sorted(base.glob("* Applications.localized/" + STUB_NAME))
+    if vm:
+        for c in cands:
+            try:
+                if vm in (c / "Contents/Resources/AppParams.pva").read_text(
+                    errors="replace"
+                ):
+                    return c
+            except Exception:
+                pass
+    return cands[0] if cands else None
+
+
+def prlctl_ok():
+    """dispatcher 服务可登录时才走同步通道。"""
+    try:
+        r = subprocess.run(
+            [PRLCTL, "list", "-a"], capture_output=True, text=True, timeout=6
+        )
+    except Exception:
+        return False
+    return r.returncode == 0 and "running" in r.stdout
+
+
+def pick_transport(vm, override):
+    if override and override != "auto":
+        return override
+    return "prlctl" if prlctl_ok() else "stub"
+
+
+def prepare_stub(vm, bat_unc):
+    """复制存根、改写 APP Path，并结束同路径的旧实例。"""
+    src = find_stub_src(vm)
+    if src is None:
+        raise RuntimeError("找不到 Parallels 共享应用存根 %s" % STUB_NAME)
+    dst = Path("/tmp") / ("pemb-%s.app" % (vm or "guest"))
+    pattern = "^/private/tmp/" + re.escape(dst.name) + r"/Contents/MacOS/WinAppHelper"
+    subprocess.run([PKILL, "-f", pattern], capture_output=True, timeout=5)
+    if dst.exists():
+        shutil.rmtree(dst)
+    shutil.copytree(src, dst)
+    pva = dst / "Contents/Resources/AppParams.pva"
+    lines = pva.read_text(errors="replace").splitlines()
+    pva.write_text(
+        "\n".join(
+            "APP Path = " + bat_unc if line.startswith("APP Path =") else line
+            for line in lines
+        )
+        + "\n"
+    )
+    return dst
+
+
+def parse_exit_code(text):
+    codes = EXIT_PATTERN.findall(text)
+    return int(codes[-1]) if codes else None
+
+
+def wait_marker(log, marker, timeout):
+    deadline = time.time() + timeout
+    text = ""
+    while time.time() < deadline:
+        if log.exists():
+            text = log.read_text(errors="replace")
+            if marker in text:
+                return text, True
+        time.sleep(1)
+    return text, False
+
+
+def run_prlctl(vm, bat_unc, log, timeout, marker):
+    cmd = [PRLCTL, "exec", vm, "--current-user", "cmd.exe", "/C", '"%s"' % bat_unc]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        out = (r.stdout or "") + (r.stderr or "")
+        rc = r.returncode
+    except subprocess.TimeoutExpired as exc:
+        out, rc = "超时：%s" % exc, 124
+    with log.open("a", errors="replace") as f:
+        f.write("\n---- guest-run (prlctl) ----\n" + out)
+    return rc, out, True
+
+
+def run_stub(vm, bat_unc, log, marker, timeout):
+    dst = prepare_stub(vm, bat_unc)
+    subprocess.run([OPEN, str(dst)], capture_output=True, timeout=10)
+    text, found = wait_marker(log, marker, timeout)
+    return parse_exit_code(text) if found else None, text, found
+
+
+# ---- 并发控制：flock 独占 + 票号排队 ----
+
+
+def sanitize_key(text):
+    """把锁名收敛成安全的文件名片段。"""
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", (text or "").strip())
+    return cleaned.strip("._")[:80] or "default"
+
+
+def new_job_id():
+    return "%s-%s" % (time.strftime("%H%M%S"), uuid.uuid4().hex[:6])
+
+
+def pid_alive(pid):
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError as exc:
+        return exc.errno == errno.EPERM
+    return True
+
+
+def lock_key_for(args, vm):
+    """按作用域算出锁名。device 与 vm 目前都落到同一台虚拟机，保留区分便于扩展。"""
+    scope = getattr(args, "lock_scope", "device")
+    if scope == "none":
+        return None
+    explicit = getattr(args, "lock_key", None)
+    if explicit:
+        return sanitize_key(explicit)
+    prefix = "vm-" if scope == "vm" else "dev-"
+    return sanitize_key(prefix + (vm or "default"))
+
+
+def live_tickets(qdir):
+    """返回仍在等待的票号，顺带清掉进程已死的残留票。"""
+    out = []
+    if not qdir.is_dir():
+        return out
+    now = time.time()
+    for t in sorted(qdir.glob("*.ticket")):
+        try:
+            info = json.loads(t.read_text() or "{}")
+        except Exception:
+            info = {}
+        if not isinstance(info, dict):
+            info = {}
+        pid = info.get("pid")
+        if pid_alive(pid):
+            out.append((t, info))
+        elif now - t.stat().st_mtime < 5:
+            out.append((t, info))
+        else:
+            try:
+                t.unlink()
+            except OSError:
+                pass
+    return out
+
+
+def write_holder(key, payload):
+    data = dict(payload)
+    data["host"] = socket.gethostname()
+    data["acquired_at"] = time.time()
+    try:
+        (LOCK_DIR / (key + ".holder")).write_text(
+            json.dumps(data, ensure_ascii=False)
+        )
+    except OSError:
+        pass
+
+
+def acquire_lock(key, timeout, info):
+    """阻塞取锁。返回 (fd, 等待毫秒, 排队位置, 错误)；fd 为 None 表示没拿到。"""
+    key = sanitize_key(key)
+    LOCK_DIR.mkdir(parents=True, exist_ok=True)
+    qdir = QUEUE_DIR / key
+    qdir.mkdir(parents=True, exist_ok=True)
+
+    payload = dict(info)
+    payload["pid"] = os.getpid()
+    payload["started_at"] = time.time()
+    ticket = qdir / ("%020d.ticket" % time.time_ns())
+    ticket.write_text(json.dumps(payload, ensure_ascii=False))
+
+    lock_path = LOCK_DIR / (key + ".lock")
+    fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o644)
+    started = time.time()
+    deadline = started + max(timeout, 0)
+    position = 0
+    try:
+        while True:
+            tickets = live_tickets(qdir)
+            position = next(
+                (i for i, (t, _) in enumerate(tickets) if t == ticket), 0
+            )
+            if position == 0:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except OSError:
+                    pass
+                else:
+                    try:
+                        ticket.unlink()
+                    except OSError:
+                        pass
+                    write_holder(key, payload)
+                    return fd, int((time.time() - started) * 1000), 0, None
+            if timeout <= 0 or time.time() >= deadline:
+                try:
+                    ticket.unlink()
+                except OSError:
+                    pass
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+                return None, int((time.time() - started) * 1000), position, "lock_timeout"
+            time.sleep(LOCK_POLL)
+    except BaseException:
+        try:
+            ticket.unlink()
+        except OSError:
+            pass
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        raise
+
+
+def release_lock(fd, key):
+    """解锁。进程被强杀时 flock 由内核自动释放，这里只是正常路径的收尾。"""
+    key = sanitize_key(key)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    except OSError:
+        pass
+    try:
+        os.close(fd)
+    except OSError:
+        pass
+    try:
+        (LOCK_DIR / (key + ".holder")).unlink()
+    except OSError:
+        pass
+
+
+def lock_state(key):
+    key = sanitize_key(key)
+    info = None
+    holder_path = LOCK_DIR / (key + ".holder")
+    if holder_path.exists():
+        try:
+            info = json.loads(holder_path.read_text() or "{}")
+        except Exception:
+            info = {}
+        if not isinstance(info, dict):
+            info = {}
+    held = bool(info) and pid_alive(info.get("pid"))
+    waiting = []
+    for i, (_, ti) in enumerate(live_tickets(QUEUE_DIR / key)):
+        waiting.append(
+            {
+                "position": i,
+                "pid": ti.get("pid"),
+                "job_id": ti.get("job_id"),
+                "action": ti.get("action"),
+                "wait_ms": int(
+                    (time.time() - ti.get("started_at", time.time())) * 1000
+                ),
+            }
+        )
+    return {
+        "key": key,
+        "held": held,
+        "holder": info if held else None,
+        "stale_holder": bool(info) and not held,
+        "waiting": waiting,
+    }
+
+
+# ---- 日志与批处理命名 ----
+
+
+def resolve_log(base_log, job_id, mode):
+    """unique 模式下给日志加 job 后缀，避免并发任务互相覆盖。"""
+    base_log = Path(base_log)
+    if mode != "unique":
+        return base_log
+    suffix = base_log.suffix
+    if suffix:
+        return base_log.with_name("%s.%s%s" % (base_log.stem, job_id, suffix))
+    return base_log.with_name("%s.%s" % (base_log.name, job_id))
+
+
+def archive_log(log, job_id):
+    """清空前把上一份日志留档，避免证据被覆盖。"""
+    try:
+        if log.exists() and log.stat().st_size > 0:
+            shutil.copy2(log, log.with_name("%s.%s.prev" % (log.name, job_id)))
+    except OSError:
+        pass
+
+
+def emit(result, human, code=None):
+    if human:
+        keys = [
+            "transport",
+            "vm",
+            "job_id",
+            "lock_key",
+            "lock_wait_ms",
+            "exit_code",
+            "ok",
+            "duration_ms",
+            "log",
+        ]
+        if result.get("dry_run"):
+            keys.insert(6, "dry_run")
+        print(
+            " ".join(
+                "%s=%s" % (key, result.get(key))
+                for key in keys
+                if result.get(key) is not None and result.get(key) != ""
+            )
+        )
+        if result.get("error"):
+            print("error=%s" % result["error"], file=sys.stderr)
+    else:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    if code is None:
+        code = EXIT_OK if (result["ok"] or result.get("dry_run")) else EXIT_FAIL
+    return code
+
+
+def cmd_run(args):
+    started = time.time()
+    bat = Path(args.bat).resolve()
+    base_log = Path(args.log).resolve()
+    log = resolve_log(base_log, args.job_id, args.log_mode)
+    mac_home = Path(args.mac_home).resolve()
+    vm = args.vm or current_vm()
+    key = lock_key_for(args, vm)
+    result = {
+        "ok": False,
+        "transport": None,
+        "vm": vm,
+        "job_id": args.job_id,
+        "lock_scope": args.lock_scope,
+        "lock_key": key,
+        "lock_wait_ms": None,
+        "bat": str(bat),
+        "bat_unc": None,
+        "log": str(log),
+        "log_base": str(base_log),
+        "log_unc": None,
+        "marker": args.marker,
+        "exit_code": None,
+        "duration_ms": 0,
+        "stdout_tail": "",
+        "error": None,
+        "dry_run": args.dry_run,
+    }
+    try:
+        result["bat_unc"] = to_unc(bat, mac_home, args.share_root)
+        result["log_unc"] = to_unc(log, mac_home, args.share_root)
+    except ValueError as exc:
+        result["error"] = str(exc)
+        result["duration_ms"] = int((time.time() - started) * 1000)
+        return emit(result, args.human, EXIT_FAIL)
+
+    transport = pick_transport(vm, args.transport)
+    result["transport"] = transport
+
+    if args.dry_run:
+        result["plan"] = (
+            [
+                '%s exec %s --current-user cmd.exe /C "%s"'
+                % (PRLCTL, vm, result["bat_unc"])
+            ]
+            if transport == "prlctl"
+            else ["%s /tmp/pemb-%s.app  (APP Path=%s)" % (OPEN, vm, result["bat_unc"])]
+        )
+        if key:
+            result["plan"].insert(
+                0,
+                "wait lock %s (timeout %ss；干运行不取锁)"
+                % (key, args.lock_timeout),
+            )
+        result["ok"] = False
+        return emit(result, args.human)
+
+    if not bat.is_file():
+        result["error"] = "批处理文件不存在：%s" % bat
+        result["duration_ms"] = int((time.time() - started) * 1000)
+        return emit(result, args.human, EXIT_FAIL)
+
+    fd = None
+    try:
+        if key:
+            fd, wait_ms, position, err = acquire_lock(
+                key,
+                args.lock_timeout,
+                {
+                    "job_id": args.job_id,
+                    "action": args.action,
+                    "vm": vm,
+                    "bat": str(bat),
+                },
+            )
+            result["lock_wait_ms"] = wait_ms
+            if fd is None:
+                result["error"] = (
+                    "等待 %s 锁超时（%s 秒），排队位置 %s；设备正被其它任务占用"
+                    % (key, args.lock_timeout, position)
+                )
+                result["duration_ms"] = int((time.time() - started) * 1000)
+                return emit(result, args.human, EXIT_BUSY)
+
+        log.parent.mkdir(parents=True, exist_ok=True)
+        archive_log(log, args.job_id)
+        log.write_text("")
+        if transport == "prlctl":
+            if not vm:
+                raise RuntimeError("prlctl 通道需要指定虚拟机（--vm）")
+            rc, out, found = run_prlctl(
+                vm, result["bat_unc"], log, args.timeout, args.marker
+            )
+        else:
+            rc, out, found = run_stub(
+                vm, result["bat_unc"], log, args.marker, args.timeout
+            )
+        result["exit_code"] = rc
+        result["stdout_tail"] = out[-4000:]
+        result["ok"] = found and (rc is None or rc == 0)
+        if not found:
+            result["error"] = "超时 %s 秒内日志未出现结束标记 %s" % (
+                args.timeout,
+                args.marker,
+            )
+        elif rc not in (None, 0):
+            result["error"] = "远端退出码 %s" % rc
+    except Exception as exc:
+        result["error"] = "%s: %s" % (type(exc).__name__, exc)
+    finally:
+        if fd is not None:
+            release_lock(fd, key)
+    result["duration_ms"] = int((time.time() - started) * 1000)
+    return emit(result, args.human)
+
+
+def cmd_exec(args):
+    """把一条 Windows 命令包装成临时批处理，再复用 run 的通道逻辑。"""
+    base_log = Path(args.log).resolve()
+    eff_log = resolve_log(base_log, args.job_id, args.log_mode)
+    eff_log.parent.mkdir(parents=True, exist_ok=True)
+    bat = eff_log.parent / ("pemb_exec_%s.bat" % args.job_id)
+    log_unc = to_unc(eff_log, Path(args.mac_home).resolve(), args.share_root)
+    body = (
+        "@echo off\r\n"
+        + args.command.strip()
+        + "\r\n"
+        + 'echo %s rc=%%ERRORLEVEL%% >> "%s"\r\n' % (DEFAULT_MARKER, log_unc)
+    )
+    if not args.dry_run:
+        bat.write_bytes(body.encode("ascii", errors="replace"))
+    args.bat = str(bat)
+    args.marker = DEFAULT_MARKER
+    return cmd_run(args)
+
+
+def cmd_probe(args):
+    vm = args.vm or current_vm()
+    transport = pick_transport(vm, args.transport)
+    stub = find_stub_src(vm)
+    result = {
+        "ok": True,
+        "vm": vm,
+        "transport": transport,
+        "prlctl_available": prlctl_ok(),
+        "stub_source": str(stub) if stub else None,
+        "share_root": args.share_root,
+        "mac_home": str(Path(args.mac_home).resolve()),
+        "lock_key": lock_key_for(args, vm),
+        "dry_run": False,
+    }
+    return emit(result, args.human, EXIT_OK)
+
+
+def cmd_status(args):
+    if args.key:
+        keys = [sanitize_key(args.key)]
+    else:
+        seen = set()
+        for d in (LOCK_DIR, QUEUE_DIR):
+            if not d.is_dir():
+                continue
+            for p in d.iterdir():
+                name = p.name
+                for suf in (".lock", ".holder", ".ticket"):
+                    if name.endswith(suf):
+                        name = name[: -len(suf)]
+                seen.add(name)
+        keys = sorted(seen)
+    rows = [lock_state(k) for k in keys]
+    if args.vm:
+        rows = [
+            r
+            for r in rows
+            if args.vm in r["key"] or (r["holder"] or {}).get("vm") == args.vm
+        ]
+    if args.human:
+        if not rows:
+            print("no locks")
+        for r in rows:
+            holder = r["holder"] or {}
+            print(
+                "key=%s held=%s pid=%s job=%s action=%s waiters=%d%s"
+                % (
+                    r["key"],
+                    r["held"],
+                    holder.get("pid"),
+                    holder.get("job_id"),
+                    holder.get("action"),
+                    len(r["waiting"]),
+                    " stale=1" if r["stale_holder"] else "",
+                )
+            )
+        return EXIT_OK
+    print(
+        json.dumps(
+            {"ok": True, "home": str(PEMB_HOME), "locks": rows, "dry_run": False},
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return EXIT_OK
+
+
+def common(parser):
+    parser.add_argument("--vm", help="虚拟机名称或 UUID；默认自动发现正在运行的虚拟机")
+    parser.add_argument("--transport", choices=["auto", "prlctl", "stub"], default="auto")
+    parser.add_argument("--share-root", default=SHARE_ROOT_DEFAULT, help="Windows 侧共享根")
+    parser.add_argument("--mac-home", default=str(Path.home()), help="共享根对应的 Mac 路径")
+    parser.add_argument("--human", action="store_true", help="输出摘要而非 JSON")
+
+
+def lock_options(parser):
+    parser.add_argument(
+        "--lock-scope",
+        choices=["device", "vm", "none"],
+        default="device",
+        help="独占粒度：device 覆盖调试器与目标板（默认），vm 只锁虚拟机，none 不加锁",
+    )
+    parser.add_argument("--lock-key", help="显式指定锁名，例如 J-Link 序列号")
+    parser.add_argument(
+        "--lock-timeout", type=int, default=900, help="等锁秒数，0 表示立即失败"
+    )
+    parser.add_argument("--job-id", help="任务标识，默认自动生成")
+    parser.add_argument(
+        "--log-mode",
+        choices=["exact", "unique"],
+        default="exact",
+        help="exact 用给定日志路径（兼容旧脚本），unique 加 job 后缀",
+    )
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Parallels 虚拟机命令通道")
+    sub = ap.add_subparsers(dest="action", required=True)
+
+    run = sub.add_parser("run", help="执行共享目录中的批处理并读取日志")
+    common(run)
+    lock_options(run)
+    run.add_argument("--bat", required=True, help="批处理的 Mac 路径")
+    run.add_argument("--log", required=True, help="远端写入、本机轮询的日志路径")
+    run.add_argument("--marker", default=DEFAULT_MARKER, help="日志中的结束标记")
+    run.add_argument("--timeout", type=int, default=180, help="等待秒数")
+    run.add_argument("--dry-run", action="store_true", help="只输出计划，不执行")
+    run.set_defaults(func=cmd_run)
+
+    ex = sub.add_parser("exec", help="执行一条 Windows 命令")
+    common(ex)
+    lock_options(ex)
+    ex.add_argument("--command", required=True, help="Windows 命令")
+    ex.add_argument("--log", required=True, help="回传日志路径")
+    ex.add_argument("--timeout", type=int, default=180, help="等待秒数")
+    ex.add_argument("--dry-run", action="store_true", help="只输出计划，不执行")
+    ex.set_defaults(func=cmd_exec)
+
+    pr = sub.add_parser("probe", help="只读探测通道与虚拟机")
+    common(pr)
+    pr.set_defaults(func=cmd_probe)
+
+    st = sub.add_parser("status", help="查看锁占用与等待队列")
+    st.add_argument("--key", help="只看指定锁")
+    st.add_argument("--vm", help="只看与指定虚拟机相关的锁")
+    st.add_argument("--human", action="store_true", help="输出摘要而非 JSON")
+    st.set_defaults(func=cmd_status)
+
+    args = ap.parse_args()
+    if not hasattr(args, "log"):
+        args.log = str(Path.home() / ".pemb-probe.log")
+    if hasattr(args, "lock_scope") and not getattr(args, "job_id", None):
+        args.job_id = new_job_id()
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
